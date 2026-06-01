@@ -9,6 +9,8 @@ dist/
 build/
 out/
 bin/
+!web/dist/
+!web/dist/**
 
 # Runtime data
 data/
@@ -29,6 +31,9 @@ node_modules/
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
+*.tsbuildinfo
+web/vite.config.js
+web/vite.config.d.ts
 
 # Go
 coverage.out

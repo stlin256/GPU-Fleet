@@ -19,6 +19,7 @@ func main() {
 	flag.StringVar(&cfg.BootstrapDeviceID, "bootstrap-device-id", env("GPUFLEET_BOOTSTRAP_DEVICE_ID", "local-dev"), "initial device id")
 	flag.StringVar(&cfg.BootstrapSecret, "bootstrap-secret", env("GPUFLEET_BOOTSTRAP_SECRET", "local-dev-secret"), "initial device secret")
 	flag.StringVar(&cfg.AdminPassword, "admin-password", env("GPUFLEET_ADMIN_PASSWORD", ""), "initial admin password")
+	flag.StringVar(&cfg.WebDir, "web-dir", env("GPUFLEET_WEB_DIR", "web/dist"), "web dashboard build directory")
 	flag.IntVar(&minFreeMB, "min-free-mb", envInt("GPUFLEET_MIN_FREE_MB", 800), "minimum free disk space before rejecting metrics")
 	flag.IntVar(&retentionDays, "retention-days", envInt("GPUFLEET_RETENTION_DAYS", 30), "compressed metric retention days")
 	flag.Parse()

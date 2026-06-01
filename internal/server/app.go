@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -28,6 +29,7 @@ type Config struct {
 	BootstrapDeviceID string
 	BootstrapSecret   string
 	AdminPassword     string
+	WebDir            string
 }
 
 type App struct {
@@ -52,6 +54,9 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	}
 	if config.Retention == 0 {
 		config.Retention = 30 * 24 * time.Hour
+	}
+	if config.WebDir == "" {
+		config.WebDir = "web/dist"
 	}
 	if logger == nil {
 		logger = log.Default()
@@ -113,12 +118,54 @@ func (a *App) ListenAndServe() error {
 }
 
 func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if a.serveWebDist(w, r) {
+		return
+	}
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = io.WriteString(w, dashboardHTML)
+}
+
+func (a *App) serveWebDist(w http.ResponseWriter, r *http.Request) bool {
+	webRoot, err := filepath.Abs(a.config.WebDir)
+	if err != nil {
+		return false
+	}
+	index := filepath.Join(webRoot, "index.html")
+	if _, err := os.Stat(index); err != nil {
+		return false
+	}
+
+	cleanPath := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
+	if cleanPath == "." || cleanPath == string(filepath.Separator) {
+		http.ServeFile(w, r, index)
+		return true
+	}
+
+	target := filepath.Join(webRoot, cleanPath)
+	rel, err := filepath.Rel(webRoot, target)
+	if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+		http.NotFound(w, r)
+		return true
+	}
+	if info, err := os.Stat(target); err == nil && !info.IsDir() {
+		http.ServeFile(w, r, target)
+		return true
+	}
+
+	if strings.Contains(filepath.Base(cleanPath), ".") {
+		http.NotFound(w, r)
+		return true
+	}
+	http.ServeFile(w, r, index)
+	return true
 }
 
 func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
