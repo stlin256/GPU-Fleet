@@ -188,6 +188,16 @@ func (s *MetadataStore) CreateDevice(alias string) (Device, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	id := "device_" + time.Now().UTC().Format("20060102150405")
+	for {
+		if _, exists := s.data.Devices[id]; !exists {
+			break
+		}
+		suffix, err := randomHex(3)
+		if err != nil {
+			return Device{}, "", err
+		}
+		id = "device_" + time.Now().UTC().Format("20060102150405") + "_" + suffix
+	}
 	if alias == "" {
 		alias = id
 	}
@@ -205,6 +215,38 @@ func (s *MetadataStore) CreateDevice(alias string) (Device, string, error) {
 	s.data.Devices[id] = &device
 	s.addAuditLocked("device_created", fmt.Sprintf("created device %s", id))
 	return device, secret, s.saveLocked()
+}
+
+func (s *MetadataStore) SetDeviceEnabled(deviceID string, enabled bool) (Device, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	device, ok := s.data.Devices[deviceID]
+	if !ok {
+		return Device{}, errors.New("device not found")
+	}
+	device.Enabled = enabled
+	action := "device_disabled"
+	if enabled {
+		action = "device_enabled"
+	}
+	s.addAuditLocked(action, fmt.Sprintf("%s device %s", action, deviceID))
+	return *device, s.saveLocked()
+}
+
+func (s *MetadataStore) RotateDeviceSecret(deviceID string) (Device, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	device, ok := s.data.Devices[deviceID]
+	if !ok {
+		return Device{}, "", errors.New("device not found")
+	}
+	secret, err := randomHex(24)
+	if err != nil {
+		return Device{}, "", err
+	}
+	device.Secret = secret
+	s.addAuditLocked("device_secret_rotated", fmt.Sprintf("rotated device secret for %s", deviceID))
+	return *device, secret, s.saveLocked()
 }
 
 func (s *MetadataStore) VerifyAdmin(username, password string) bool {

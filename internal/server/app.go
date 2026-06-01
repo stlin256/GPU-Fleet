@@ -39,6 +39,8 @@ type App struct {
 	processes *ProcessStore
 	nonces    *NonceStore
 	sessions  *SessionStore
+	loginRate *RateLimiter
+	agentRate *RateLimiter
 	logger    *log.Logger
 }
 
@@ -87,6 +89,8 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		processes: processes,
 		nonces:    NewNonceStore(10 * time.Minute),
 		sessions:  NewSessionStore(12 * time.Hour),
+		loginRate: NewRateLimiter(10, time.Minute),
+		agentRate: NewRateLimiter(240, time.Minute),
 		logger:    logger,
 	}, generatedPassword, nil
 }
@@ -102,6 +106,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/stats/gpu-utilization", a.requireSession(a.handleGPUStats))
 	mux.HandleFunc("/api/v1/processes/latest", a.requireSession(a.handleLatestProcesses))
 	mux.HandleFunc("/api/v1/admin/devices", a.requireSession(a.handleCreateDevice))
+	mux.HandleFunc("/api/v1/admin/devices/", a.requireSession(a.handleAdminDeviceAction))
 	mux.HandleFunc("/api/v1/agent/heartbeat", a.handleAgentHeartbeat)
 	mux.HandleFunc("/api/v1/agent/samples", a.handleAgentSamples)
 	mux.HandleFunc("/api/v1/agent/process-snapshots", a.handleAgentProcesses)
@@ -171,6 +176,10 @@ func (a *App) serveWebDist(w http.ResponseWriter, r *http.Request) bool {
 func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !a.loginRate.Allow(clientIP(r), time.Now()) {
+		writeError(w, http.StatusTooManyRequests, "too many login attempts")
 		return
 	}
 	var body struct {
@@ -311,6 +320,44 @@ func (a *App) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 		"device": deviceView{ID: device.ID, Alias: device.Alias, Enabled: device.Enabled},
 		"secret": secret,
 	})
+}
+
+func (a *App) handleAdminDeviceAction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/devices/"), "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	deviceID, action := parts[0], parts[1]
+	switch action {
+	case "enable":
+		device, err := a.meta.SetDeviceEnabled(deviceID, true)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
+	case "disable":
+		device, err := a.meta.SetDeviceEnabled(deviceID, false)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
+	case "rotate-secret":
+		device, secret, err := a.meta.RotateDeviceSecret(deviceID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device), "secret": secret})
+	default:
+		writeError(w, http.StatusNotFound, "not found")
+	}
 }
 
 func (a *App) handleGPUSeries(w http.ResponseWriter, r *http.Request) {
@@ -455,6 +502,12 @@ func (a *App) handleAgentProcesses(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
+	deviceID := r.Header.Get(auth.HeaderDeviceID)
+	rateKey := clientIP(r) + ":" + deviceID
+	if !a.agentRate.Allow(rateKey, time.Now()) {
+		writeError(w, http.StatusTooManyRequests, "too many agent requests")
+		return "", nil, false
+	}
 	if r.ContentLength > 2*1024*1024 {
 		writeError(w, http.StatusRequestEntityTooLarge, "request body too large")
 		return "", nil, false
@@ -464,13 +517,14 @@ func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string,
 		writeError(w, http.StatusBadRequest, err.Error())
 		return "", nil, false
 	}
-	deviceID := r.Header.Get(auth.HeaderDeviceID)
 	secret, enabled, exists := a.meta.DeviceSecret(deviceID)
 	if !exists {
+		_ = a.meta.AddAudit("device_auth_failed", "unknown device attempted authentication")
 		writeError(w, http.StatusUnauthorized, "unknown device")
 		return "", nil, false
 	}
 	if !enabled {
+		_ = a.meta.AddAudit("device_auth_failed", fmt.Sprintf("disabled device %s attempted authentication", deviceID))
 		writeError(w, http.StatusForbidden, "device disabled")
 		return "", nil, false
 	}
@@ -494,6 +548,7 @@ func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string,
 		time.Now().UTC(),
 		5*time.Minute,
 	); err != nil {
+		_ = a.meta.AddAudit("device_auth_failed", fmt.Sprintf("authentication failed for %s: %v", deviceID, err))
 		writeError(w, http.StatusUnauthorized, err.Error())
 		return "", nil, false
 	}
@@ -609,6 +664,22 @@ type deviceView struct {
 	LastSeenAt   time.Time `json:"last_seen_at,omitempty"`
 	LastSampleAt time.Time `json:"last_sample_at,omitempty"`
 	LastError    string    `json:"last_error,omitempty"`
+}
+
+func toDeviceView(device Device) deviceView {
+	return deviceView{
+		ID:           device.ID,
+		Alias:        device.Alias,
+		Enabled:      device.Enabled,
+		Hostname:     device.Hostname,
+		OS:           device.OS,
+		OSVersion:    device.OSVersion,
+		AgentVersion: device.AgentVersion,
+		GPUCount:     device.GPUCount,
+		LastSeenAt:   device.LastSeenAt,
+		LastSampleAt: device.LastSampleAt,
+		LastError:    device.LastError,
+	}
 }
 
 func HumanBytes(n uint64) string {
