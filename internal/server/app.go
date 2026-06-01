@@ -88,6 +88,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/overview", a.requireSession(a.handleOverview))
 	mux.HandleFunc("/api/v1/devices", a.requireSession(a.handleDevices))
 	mux.HandleFunc("/api/v1/gpus/", a.requireSession(a.handleGPUSeries))
+	mux.HandleFunc("/api/v1/stats/gpu-utilization", a.requireSession(a.handleGPUStats))
 	mux.HandleFunc("/api/v1/admin/devices", a.requireSession(a.handleCreateDevice))
 	mux.HandleFunc("/api/v1/agent/heartbeat", a.handleAgentHeartbeat)
 	mux.HandleFunc("/api/v1/agent/samples", a.handleAgentSamples)
@@ -271,19 +272,26 @@ func (a *App) handleGPUSeries(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "missing device_id")
 		return
 	}
-	hours := 1
-	if raw := r.URL.Query().Get("hours"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err == nil && parsed > 0 && parsed <= 24*30 {
-			hours = parsed
-		}
-	}
+	hours := parseHours(r, 1)
 	points, err := a.metrics.Series(deviceID, gpuID, time.Now().Add(-time.Duration(hours)*time.Hour))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, points)
+}
+
+func (a *App) handleGPUStats(w http.ResponseWriter, r *http.Request) {
+	hours := parseHours(r, 24)
+	stats, err := a.metrics.Stats(r.URL.Query().Get("device_id"), time.Now().Add(-time.Duration(hours)*time.Hour))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"hours": hours,
+		"stats": stats,
+	})
 }
 
 func (a *App) handleAgentHeartbeat(w http.ResponseWriter, r *http.Request) {
@@ -467,6 +475,17 @@ func clientIP(r *http.Request) string {
 		return host
 	}
 	return r.RemoteAddr
+}
+
+func parseHours(r *http.Request, fallback int) int {
+	hours := fallback
+	if raw := r.URL.Query().Get("hours"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err == nil && parsed > 0 && parsed <= 24*30 {
+			hours = parsed
+		}
+	}
+	return hours
 }
 
 type overviewResponse struct {
