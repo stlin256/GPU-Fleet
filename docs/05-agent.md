@@ -39,8 +39,10 @@ gpu_uuid_mode = "hash"
 MVP 优先使用 `nvidia-smi`：
 
 ```powershell
-nvidia-smi --query-gpu=name,uuid,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits
+nvidia-smi --query-gpu=index,name,uuid,driver_version,vbios_version,memory.total,memory.used,memory.free,memory.reserved,utilization.gpu,utilization.memory,temperature.gpu,temperature.memory,temperature.gpu.tlimit,power.draw,power.limit,enforced.power.limit,fan.speed,clocks.gr,clocks.mem,clocks.sm,clocks.video,pstate,pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current,pcie.link.width.max,compute_mode,compute_cap,display_active,display_attached,persistence_mode,driver_model.current,ecc.mode.current,mig.mode.current,clocks_event_reasons.active --format=csv,noheader,nounits
 ```
+
+如果某个驱动版本不支持上述完整字段，Agent 会自动回退到基础字段集，保证基础采集和上报不中断。不支持的字段，例如部分消费级显卡上的 ECC/MIG，会被规范化为空值。
 
 后续替换或增强为 NVML：
 
@@ -78,21 +80,27 @@ Agent 不应以高权限运行，除非采集环境确实需要。
 - GPU UUID 哈希。
 - 显存总量。
 - 驱动版本。
-- CUDA 版本。
-- MIG 模式。
-- ECC 模式。
+- VBIOS 版本。
+- Compute 模式和 Compute Capability。
+- 显示状态、持久化模式和驱动模型。
+- MIG 模式，若设备支持。
+- ECC 模式，若设备支持。
+- CUDA 版本暂未由当前 `nvidia-smi --query-gpu` 路径采集，后续通过 NVML 或其他只读来源补齐。
 
 ### GPU 动态字段
 
 - GPU 利用率。
-- 显存已用。
-- 温度。
-- 功耗。
+- 显存已用、空闲、保留和显存利用率。
+- GPU 温度、显存温度和温度上限，若设备支持。
+- 当前功耗、功耗上限和强制功耗上限。
 - 风扇。
-- 显卡核心时钟。
+- 图形时钟。
 - 显存时钟。
+- SM 时钟。
+- 视频时钟。
 - P-State。
-- PCIe 链路宽度和速率。
+- PCIe 当前和最大链路代际、宽度。
+- 当前时钟限速原因。
 
 ### 进程字段
 
@@ -117,4 +125,3 @@ Agent 不能因为单次采集失败退出。
 - `server_insufficient_storage`
 
 错误状态会上报给服务端，也会写入本地日志。
-

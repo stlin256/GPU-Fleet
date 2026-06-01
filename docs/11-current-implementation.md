@@ -7,8 +7,9 @@
 - Go module：`gpufleet`。
 - 服务端命令：`cmd/gpufleet-server`。
 - 客户端命令：`cmd/gpufleet-agent`。
-- Agent 使用 `nvidia-smi` 只读采集 NVIDIA GPU 指标。
+- Agent 使用 `nvidia-smi` 只读采集 NVIDIA GPU 指标，优先采集扩展字段并在驱动不支持时回退到基础字段集。
 - Agent 支持 `--print` 本地采集调试模式。
+- Agent 当前字段包含显存空闲/保留、显存利用率、温度上限、功耗上限、图形/显存/SM/视频时钟、PCIe 当前/最大链路、VBIOS、Compute、显示状态、驱动模型、ECC/MIG 和时钟限速原因等；不支持字段为空。
 - Agent 使用 HMAC-SHA256 签名主动上报。
 - 服务端校验设备 ID、时间戳、nonce 和签名。
 - 服务端拒绝重放 nonce。
@@ -26,12 +27,12 @@
 - 已提供 Windows Service 和 Linux systemd 安装/卸载脚本。
 - 已提供 GPU 利用率统计 API 和最新进程快照 API。
 - 已添加静态面板路由测试，覆盖 SPA fallback、API 404 和目录越界防护。
+- 已提供 Chrome/Edge CDP 前端验证脚本，覆盖登录、刷新会话恢复、设备页、移动端 GPU 页、截图和移动端横向溢出检查。
 
 ## 当前未实现
 
 - VictoriaMetrics 存储适配。
 - SQLite 元数据适配。
-- 浏览器截图级 UI 验证。
 
 ## 运行边界
 

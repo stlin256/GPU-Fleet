@@ -12,7 +12,7 @@
 已验证命令：
 
 ```powershell
-nvidia-smi --query-gpu=name,uuid,driver_version,memory.total,memory.used,utilization.gpu,temperature.gpu,power.draw --format=csv,noheader,nounits
+nvidia-smi --query-gpu=index,name,uuid,driver_version,vbios_version,memory.total,memory.used,memory.free,memory.reserved,utilization.gpu,utilization.memory,temperature.gpu,temperature.memory,temperature.gpu.tlimit,power.draw,power.limit,enforced.power.limit,fan.speed,clocks.gr,clocks.mem,clocks.sm,clocks.video,pstate,pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current,pcie.link.width.max,compute_mode,compute_cap,display_active,display_attached,persistence_mode,driver_model.current,ecc.mode.current,mig.mode.current,clocks_event_reasons.active --format=csv,noheader,nounits
 ```
 
 返回字段包含：
@@ -20,11 +20,14 @@ nvidia-smi --query-gpu=name,uuid,driver_version,memory.total,memory.used,utiliza
 - GPU 型号。
 - GPU UUID。
 - 驱动版本。
-- 总显存。
-- 已用显存。
-- GPU 利用率。
-- 温度。
-- 功耗。
+- VBIOS。
+- 总显存、已用显存、空闲显存和保留显存。
+- GPU 利用率和显存利用率。
+- GPU 温度、温度上限，显存温度在本机不支持时为空。
+- 当前功耗、功耗上限和强制功耗上限。
+- 风扇、图形/显存/SM/视频时钟、P-State。
+- PCIe 当前和最大链路信息。
+- Compute 能力、显示状态、驱动模型、ECC/MIG 和时钟限速原因。
 
 文档中不记录完整 GPU UUID，避免把设备唯一标识写入仓库。
 
@@ -65,7 +68,9 @@ cd ..
 - 显存占用。
 - 温度。
 - 功耗。
-- 风扇、时钟、P-State、PCIe 链路字段。
+- 风扇、图形/显存/SM/视频时钟、P-State、PCIe 当前和最大链路字段。
+- VBIOS、显存空闲/保留、显存利用率、功耗上限、Compute 能力、显示状态和驱动模型。
+- ECC/MIG 字段在本机不支持时规范化为空值。
 - GPU UUID 以 SHA-256 哈希形式输出，不输出原始 UUID。
 
 ### 端到端验证
@@ -182,7 +187,32 @@ cd ..
 - 磁盘保护状态。
 - 图表密集数据状态。
 
-当前会话中浏览器插件所需的 Node REPL 控制工具未暴露。本机存在 Chrome/Edge 可执行文件，但 headless/CDP 探测未稳定开放调试 target，因此尚未完成真实浏览器截图级验证。已完成的前端验证包括 Vite 构建、服务端静态资源托管和端到端 API 数据返回。
+当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖登录、刷新后 Cookie 会话恢复、设备管理页、移动端 GPU 页、扩展 GPU 字段可见性和移动端无横向溢出。
+
+验证使用临时服务端 `127.0.0.1:18121`、`web/dist` 静态面板和真实 `gpufleet-agent.exe` 上报数据。结果文件位于 `logs/frontend-verify-20260602020252/result.json`：
+
+```json
+{
+  "ok": true,
+  "screenshots": {
+    "desktop_overview": "F:\\project\\GPUFleet\\logs\\frontend-verify-20260602020252\\desktop-overview.png",
+    "desktop_devices": "F:\\project\\GPUFleet\\logs\\frontend-verify-20260602020252\\desktop-devices.png",
+    "mobile_gpu": "F:\\project\\GPUFleet\\logs\\frontend-verify-20260602020252\\mobile-gpu.png"
+  },
+  "layout": {
+    "width": 390,
+    "scrollWidth": 390,
+    "cardCount": 1,
+    "buttonCount": 6
+  }
+}
+```
+
+截图尺寸已确认：
+
+- `desktop-overview.png`：1440x2484。
+- `desktop-devices.png`：1440x1000。
+- `mobile-gpu.png`：390x4918。
 
 ## MVP 验收标准
 
@@ -191,4 +221,4 @@ cd ..
 - 服务端可以查询最近 1 小时历史曲线：API 已实现。
 - 设备断网上线状态正确变化：逻辑已实现，仍需补自动化验证。
 - 服务端低磁盘空间时停止指标写入，并保留 800MiB 空闲空间：逻辑已实现。
-- Web 面板在桌面和手机宽度下无明显布局错乱：响应式样式已实现，仍需浏览器截图验证。
+- Web 面板在桌面和手机宽度下无明显布局错乱：已通过 Chrome headless 截图和移动端 `scrollWidth` 验证。

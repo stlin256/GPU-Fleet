@@ -10,7 +10,7 @@
 ## Phase 1：最小可运行链路
 
 - 编写 Windows/Linux Agent：已完成 MVP。
-- 使用 `nvidia-smi` 采集基础 GPU 指标：已完成，含风扇、时钟、P-State、PCIe 字段。
+- 使用 `nvidia-smi` 采集 GPU 指标：已完成，含显存、利用率、温度、功耗、风扇、图形/显存/SM/视频时钟、P-State、PCIe、VBIOS、Compute、显示状态、驱动模型、ECC/MIG 等字段。
 - 实现 HMAC 上报：已完成。
 - 实现服务端接收 API：已完成。
 - MVP 写入 gzip JSONL 压缩分段文件：已完成。
@@ -21,7 +21,7 @@
 
 ## Phase 2：历史曲线和统计
 
-- GPU 详情页：待做。
+- GPU 详情页：独立详情路由待做；当前 GPU 卡片已展示扩展运行字段。
 - 最近 1 小时、24 小时、7 天曲线 API：已完成基础接口，待补 UI。
 - 平均利用率、峰值温度、峰值功耗统计 API：已完成。
 - 设备离线检测：已完成基础状态判定。
@@ -40,14 +40,14 @@
 
 - NVML 采集替换 `nvidia-smi`。
 - 进程快照：已完成 `nvidia-smi --query-compute-apps` 采集和展示。
-- MIG/ECC 信息。
-- PCIe、时钟、风扇等更多字段。
+- MIG/ECC 信息：已通过 `nvidia-smi` 字段采集，设备不支持时为空；后续 NVML 可增强一致性。
+- PCIe、时钟、风扇等更多字段：已完成。
 - Linux 多发行版验证。
 
 ## Phase 5：体验增强
 
 - 深色主题：待做。
-- 响应式设备管理界面：已完成基础实现，仍需浏览器截图级验证。
+- 响应式设备管理界面：已完成，并通过 Chrome headless 桌面/移动端截图验证。
 - 响应式图表优化：待做。
 - CSV 导出。
 - 告警规则配置。
