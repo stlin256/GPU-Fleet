@@ -89,6 +89,15 @@ export type StatsResponse = {
   stats: GPUStats[];
 };
 
+export type DeviceSecretResponse = {
+  device: Device;
+  secret: string;
+};
+
+export type DeviceResponse = {
+  device: Device;
+};
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     credentials: 'same-origin',
@@ -112,6 +121,10 @@ export function login(username: string, password: string) {
   });
 }
 
+export function logout() {
+  return request<{ ok: boolean }>('/api/v1/auth/logout', { method: 'POST' });
+}
+
 export function getOverview() {
   return request<Overview>('/api/v1/overview');
 }
@@ -120,3 +133,21 @@ export function getStats(hours = 24) {
   return request<StatsResponse>(`/api/v1/stats/gpu-utilization?hours=${hours}`);
 }
 
+export function createDevice(alias: string) {
+  return request<DeviceSecretResponse>('/api/v1/admin/devices', {
+    method: 'POST',
+    body: JSON.stringify({ alias })
+  });
+}
+
+export function setDeviceEnabled(deviceId: string, enabled: boolean) {
+  return request<DeviceResponse>(`/api/v1/admin/devices/${encodeURIComponent(deviceId)}/${enabled ? 'enable' : 'disable'}`, {
+    method: 'POST'
+  });
+}
+
+export function rotateDeviceSecret(deviceId: string) {
+  return request<DeviceSecretResponse>(`/api/v1/admin/devices/${encodeURIComponent(deviceId)}/rotate-secret`, {
+    method: 'POST'
+  });
+}
