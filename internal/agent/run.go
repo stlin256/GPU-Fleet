@@ -13,6 +13,7 @@ import (
 type Runner struct {
 	Client           *Client
 	Collector        Collector
+	Queue            *SampleQueue
 	SampleInterval   time.Duration
 	CollectProcesses bool
 	Once             bool
@@ -30,7 +31,10 @@ func (r Runner) Run(ctx context.Context) error {
 	}
 
 	if err := r.collectAndUpload(ctx); err != nil {
-		return err
+		if r.Once {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "upload failed: %v\n", err)
 	}
 	if r.Once {
 		return nil
@@ -52,6 +56,11 @@ func (r Runner) Run(ctx context.Context) error {
 
 func (r Runner) collectAndUpload(ctx context.Context) error {
 	sample, err := r.Collector.Collect(ctx)
+	batch := model.SampleBatch{
+		DeviceID:     r.Client.DeviceID,
+		AgentVersion: model.AgentVersion,
+		Samples:      []model.GPUSample{sample},
+	}
 	heartbeat := model.Heartbeat{
 		AgentVersion: model.AgentVersion,
 		Hostname:     hostname(),
@@ -61,14 +70,17 @@ func (r Runner) collectAndUpload(ctx context.Context) error {
 		Timestamp:    time.Now().UTC(),
 	}
 	if hbErr := r.Client.PostHeartbeat(heartbeat); hbErr != nil {
+		_ = r.Queue.Enqueue(batch)
 		return hbErr
 	}
-	batch := model.SampleBatch{
-		DeviceID:     r.Client.DeviceID,
-		AgentVersion: model.AgentVersion,
-		Samples:      []model.GPUSample{sample},
+	if r.Queue != nil {
+		if flushErr := r.Queue.Flush(r.Client, 100); flushErr != nil {
+			_ = r.Queue.Enqueue(batch)
+			return flushErr
+		}
 	}
 	if postErr := r.Client.PostSamples(batch); postErr != nil {
+		_ = r.Queue.Enqueue(batch)
 		return postErr
 	}
 	if r.CollectProcesses {
