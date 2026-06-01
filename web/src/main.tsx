@@ -46,9 +46,10 @@ echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRendere
 
 const queryClient = new QueryClient();
 type View = 'overview' | 'devices' | 'gpus' | 'settings';
+type AuthState = 'checking' | 'authenticated' | 'anonymous';
 
 function fmtBytes(value?: number) {
-  if (!value) return '0 B';
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
   const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
   let size = value;
   let index = 0;
@@ -64,12 +65,60 @@ function pct(value?: number) {
   return `${Math.round(value)}%`;
 }
 
+function watts(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+  return `${value.toFixed(1)} W`;
+}
+
+function mhz(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+  return `${Math.round(value)} MHz`;
+}
+
+function temp(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
+  return `${Math.round(value)}°C`;
+}
+
 function App() {
-  const [authenticated, setAuthenticated] = useState(false);
-  if (!authenticated) {
-    return <Login onSuccess={() => setAuthenticated(true)} />;
+  const [authState, setAuthState] = useState<AuthState>('checking');
+
+  useEffect(() => {
+    let cancelled = false;
+    getOverview()
+      .then(() => {
+        if (!cancelled) setAuthState('authenticated');
+      })
+      .catch(() => {
+        if (!cancelled) setAuthState('anonymous');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (authState === 'checking') {
+    return <LoadingScreen />;
   }
-  return <Dashboard onUnauthorized={() => setAuthenticated(false)} />;
+  if (authState === 'anonymous') {
+    return <Login onSuccess={() => setAuthState('authenticated')} />;
+  }
+  return <Dashboard onUnauthorized={() => setAuthState('anonymous')} />;
+}
+
+function LoadingScreen() {
+  return (
+    <main className="login-shell">
+      <div className="login-panel auth-loading">
+        <div className="brand">
+          <span className="brand-mark">G</span>
+          <span>GPUFleet</span>
+        </div>
+        <h1>正在连接</h1>
+        <p>检查当前 Web 会话</p>
+      </div>
+    </main>
+  );
 }
 
 function Login({ onSuccess }: { onSuccess: () => void }) {
@@ -238,6 +287,31 @@ function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: st
 function GPUCard({ item }: { item: StoredGPU }) {
   const gpu = item.gpu;
   const mem = gpu.memory_total_bytes ? (gpu.memory_used_bytes / gpu.memory_total_bytes) * 100 : 0;
+  const pcie = [gpu.pcie_link_generation ? `Gen ${gpu.pcie_link_generation}` : '', gpu.pcie_link_width ? `x${gpu.pcie_link_width}` : ''].filter(Boolean).join(' ');
+  const pcieMax = [gpu.pcie_link_generation_max ? `Gen ${gpu.pcie_link_generation_max}` : '', gpu.pcie_link_width_max ? `x${gpu.pcie_link_width_max}` : ''].filter(Boolean).join(' ');
+  const detailRows = [
+    ['显存空闲', fmtBytes(gpu.memory_free_bytes)],
+    ['显存保留', fmtBytes(gpu.memory_reserved_bytes)],
+    ['显存利用', pct(gpu.utilization_memory_percent)],
+    ['温度上限', temp(gpu.temperature_limit_celsius)],
+    ['显存温度', temp(gpu.temperature_memory_celsius)],
+    ['功耗上限', watts(gpu.power_limit_watts ?? gpu.power_enforced_limit_watts)],
+    ['风扇', pct(gpu.fan_speed_percent)],
+    ['图形时钟', mhz(gpu.graphics_clock_mhz)],
+    ['显存时钟', mhz(gpu.memory_clock_mhz)],
+    ['SM 时钟', mhz(gpu.sm_clock_mhz)],
+    ['视频时钟', mhz(gpu.video_clock_mhz)],
+    ['P-State', gpu.pstate || '-'],
+    ['PCIe 当前', pcie || '-'],
+    ['PCIe 最大', pcieMax || '-'],
+    ['Compute', gpu.compute_capability || gpu.compute_mode || '-'],
+    ['显示', [gpu.display_active, gpu.display_attached].filter(Boolean).join(' / ') || '-'],
+    ['驱动模型', gpu.driver_model || '-'],
+    ['VBIOS', gpu.vbios_version || '-'],
+    ['ECC', gpu.ecc_mode_current || '-'],
+    ['MIG', gpu.mig_mode_current || '-']
+  ].filter(([, value]) => value !== '-');
+
   return (
     <article className="gpu-card">
       <div className="card-title">
@@ -249,8 +323,17 @@ function GPUCard({ item }: { item: StoredGPU }) {
       </div>
       <div className="meter"><i style={{ width: `${gpu.utilization_gpu_percent ?? 0}%` }} /></div>
       <div className="kv"><span>显存</span><strong>{pct(mem)} · {fmtBytes(gpu.memory_used_bytes)}</strong></div>
-      <div className="kv"><span><Thermometer size={14} />温度</span><strong>{gpu.temperature_celsius ? `${Math.round(gpu.temperature_celsius)}°C` : '-'}</strong></div>
-      <div className="kv"><span><Zap size={14} />功耗</span><strong>{gpu.power_draw_watts ? `${gpu.power_draw_watts.toFixed(1)} W` : '-'}</strong></div>
+      <div className="kv"><span><Thermometer size={14} />温度</span><strong>{temp(gpu.temperature_celsius)}</strong></div>
+      <div className="kv"><span><Zap size={14} />功耗</span><strong>{watts(gpu.power_draw_watts)}</strong></div>
+      <div className="gpu-detail-grid">
+        {detailRows.map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+      {gpu.clock_throttle_reasons && <p className="gpu-note">Throttle {gpu.clock_throttle_reasons}</p>}
     </article>
   );
 }

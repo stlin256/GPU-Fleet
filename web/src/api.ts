@@ -9,17 +9,38 @@ export type GPUStatus = {
   uuid_hash: string;
   name: string;
   driver_version: string;
+  vbios_version?: string;
   memory_total_bytes: number;
   memory_used_bytes: number;
+  memory_free_bytes?: number;
+  memory_reserved_bytes?: number;
   utilization_gpu_percent?: number;
+  utilization_memory_percent?: number;
   temperature_celsius?: number;
+  temperature_memory_celsius?: number;
+  temperature_limit_celsius?: number;
   power_draw_watts?: number;
+  power_limit_watts?: number;
+  power_enforced_limit_watts?: number;
   fan_speed_percent?: number;
   graphics_clock_mhz?: number;
   memory_clock_mhz?: number;
+  sm_clock_mhz?: number;
+  video_clock_mhz?: number;
   pstate?: string;
   pcie_link_generation?: string;
   pcie_link_width?: string;
+  pcie_link_generation_max?: string;
+  pcie_link_width_max?: string;
+  compute_mode?: string;
+  compute_capability?: string;
+  display_active?: string;
+  display_attached?: string;
+  persistence_mode?: string;
+  driver_model?: string;
+  ecc_mode_current?: string;
+  mig_mode_current?: string;
+  clock_throttle_reasons?: string;
 };
 
 export type StoredGPU = {

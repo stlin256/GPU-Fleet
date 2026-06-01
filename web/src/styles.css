@@ -250,6 +250,41 @@ p { color: var(--muted); font-size: 13px; margin-top: 5px; }
 .kv:last-child, .list-row:last-child, .table-row:last-child { border-bottom: 0; }
 .kv span { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 13px; }
 
+.gpu-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gpu-detail-grid div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--bg) 58%, var(--panel));
+}
+
+.gpu-detail-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.gpu-detail-grid strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.gpu-note {
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+}
+
 .stack {
   display: grid;
   gap: 14px;
@@ -329,6 +364,11 @@ input {
 }
 
 .error { color: var(--bad); }
+
+.auth-loading {
+  display: grid;
+  gap: 8px;
+}
 
 .device-admin, .settings-grid {
   display: grid;
@@ -434,6 +474,9 @@ input {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .metric strong { font-size: 23px; }
+  .gpu-detail-grid {
+    grid-template-columns: 1fr;
+  }
   .device-form, .device-row, .secret-box, .settings-grid {
     grid-template-columns: 1fr;
   }
