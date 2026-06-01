@@ -1,0 +1,26 @@
+[Unit]
+Description=GPUFleet Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/gpufleet/agent.env
+ExecStart=/usr/local/bin/gpufleet-agent \
+  -server-url ${GPUFLEET_SERVER_URL} \
+  -device-id ${GPUFLEET_DEVICE_ID} \
+  -secret ${GPUFLEET_SECRET} \
+  -interval ${GPUFLEET_INTERVAL} \
+  -queue-path /var/lib/gpufleet-agent/queue \
+  -queue-max-mb ${GPUFLEET_QUEUE_MAX_MB}
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gpufleet-agent
+
+[Install]
+WantedBy=multi-user.target
+
