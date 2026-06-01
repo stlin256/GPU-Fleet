@@ -10,6 +10,17 @@ go build -o bin\gpufleet-server.exe .\cmd\gpufleet-server
 go build -o bin\gpufleet-agent.exe .\cmd\gpufleet-agent
 ```
 
+前端：
+
+```powershell
+cd web
+npm install
+npm run build
+cd ..
+```
+
+`web/dist` 已提交，可直接由服务端托管；只有修改前端源码后才需要重新构建。
+
 Linux Agent 交叉编译示例：
 
 ```powershell
@@ -76,7 +87,8 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
   -bootstrap-device-id "device_xxx" `
   -bootstrap-secret "replace-with-device-secret" `
   -min-free-mb 800 `
-  -retention-days 30
+  -retention-days 30 `
+  -web-dir web/dist
 ```
 
 生产环境建议在服务端前面放 Caddy/Nginx/Traefik 终止 HTTPS，再反代到 `127.0.0.1:8080`。
@@ -87,4 +99,3 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 - 服务端 API 不提供命令下发、配置下发或远程执行。
 - `agent.env` 和 Windows 服务参数包含设备密钥，应限制读取权限。
 - Agent 本地队列只缓存 GPU 指标样本，不回放进程快照。
-

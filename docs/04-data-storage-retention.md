@@ -2,16 +2,48 @@
 
 ## 存储选型
 
-MVP 使用两类存储：
+当前 MVP 使用两类零外部服务存储，优先满足部署简单、压缩和空间可回收：
 
 | 数据类型 | 存储 | 内容 |
 | --- | --- | --- |
-| 时序指标 | VictoriaMetrics single-node | GPU 利用率、显存、温度、功耗、风扇、时钟等 |
-| 元数据 | SQLite | 用户、设备、GPU 静态信息、密钥、告警、审计日志 |
+| 时序指标 | gzip JSONL 小时分段文件 | GPU 利用率、显存、温度、功耗、风扇、时钟等 |
+| 元数据 | JSON 文件 | 管理员、设备、密钥、审计日志 |
+| 最新进程快照 | JSON 文件 | 每台设备最近一次 GPU 进程占用 |
 
-这样比直接上 PostgreSQL/TimescaleDB 更轻，部署时只需要服务端程序、VictoriaMetrics 和一个 SQLite 文件。
+这样比直接上 PostgreSQL/TimescaleDB 更轻，服务端只需要一个 Go 二进制和数据目录。VictoriaMetrics 与 SQLite 保留为后续生产增强选项。
 
-## VictoriaMetrics 配置
+## 当前 MVP 文件布局
+
+默认数据目录为 `data`：
+
+```text
+data/
+  metadata.json
+  processes.json
+  metrics/
+    samples-YYYYMMDDHH.jsonl.gz
+```
+
+时序样本按小时写入 `samples-YYYYMMDDHH.jsonl.gz`。每个分段是 gzip 压缩 JSON Lines，便于追加、审计和按保留期整段删除。
+
+## 当前 MVP 空间回收
+
+服务端每次写入新指标前会：
+
+1. 按 `-retention-days` 清理过期 gzip 分段。
+2. 检查数据盘空闲空间。
+3. 若空闲空间低于 `-min-free-mb`，拒绝新指标写入并返回 `507 Insufficient Storage`。
+
+默认值：
+
+```text
+-retention-days 30
+-min-free-mb 800
+```
+
+这满足“压缩 + 空间回收 + 预留 800MiB”的 MVP 目标。即使拒绝指标写入，服务端仍保持 Web 登录、历史查询和磁盘状态展示。
+
+## VictoriaMetrics 增强选项
 
 VictoriaMetrics 推荐仅绑定本机：
 
@@ -31,7 +63,7 @@ victoria-metrics.exe `
 - 通过 `-retentionPeriod` 控制保留时长。
 - 通过 `-storage.minFreeDiskSpaceBytes` 在磁盘空闲过低时保护存储目录。
 
-## SQLite 配置
+## SQLite 增强选项
 
 SQLite 用于低频元数据，不承载大规模时序样本。
 
@@ -69,17 +101,17 @@ PRAGMA auto_vacuum = INCREMENTAL;
 
 ## 磁盘保护策略
 
-GPUFleet 使用三层保护。
+当前 MVP 使用服务端内置 Disk Guard。若后续引入 VictoriaMetrics，可形成三层保护。
 
-### 第一层：数据库保留策略
+### 第一层：MVP 文件保留策略
 
-VictoriaMetrics 通过 `-retentionPeriod` 自动删除超出保留期的数据。
+gzip JSONL 分段通过 `-retention-days` 删除超出保留期的数据。删除的是整段文件，释放空间明确、直接。
 
-注意：VictoriaMetrics 的保留清理不是每条样本到期后立刻释放空间，而是随分区和后台合并逐步完成。因此服务端仍需要 Disk Guard 做实时保护。
+若使用 VictoriaMetrics，它也应配置 `-retentionPeriod`。注意 VictoriaMetrics 的保留清理不是每条样本到期后立刻释放空间，而是随分区和后台合并逐步完成。因此服务端仍需要 Disk Guard 做实时保护。
 
 ### 第二层：数据库最小空闲空间
 
-VictoriaMetrics 使用：
+使用 VictoriaMetrics 时配置：
 
 ```text
 -storage.minFreeDiskSpaceBytes=838860800
@@ -89,10 +121,9 @@ VictoriaMetrics 使用：
 
 ### 第三层：服务端 Disk Guard
 
-GPUFleet Server 每 30 秒检查一次数据盘空闲空间：
+GPUFleet Server 写入指标前检查数据盘空闲空间：
 
-- 空闲空间大于 1GiB：正常接收。
-- 空闲空间在 800MiB 到 1GiB：接收降级，只接收心跳和关键状态。
+- 空闲空间大于 `-min-free-mb`：正常接收。
 - 空闲空间小于 800MiB：拒绝新指标写入，返回 `507 Insufficient Storage`。
 
 即使拒绝指标写入，服务端仍保持：
@@ -114,9 +145,9 @@ upload_timeout_seconds = 10
 
 队列超限时丢弃最旧样本，并记录本地事件。不能因为公网服务端异常导致客户端磁盘写满。
 
-## 指标命名
+## 后续指标命名
 
-建议使用 Prometheus 风格指标名，写入 VictoriaMetrics：
+若适配 VictoriaMetrics，建议使用 Prometheus 风格指标名：
 
 ```text
 gpufleet_gpu_utilization_percent

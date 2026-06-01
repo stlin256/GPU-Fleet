@@ -120,39 +120,51 @@ POST /api/v1/agent/process-snapshots
 
 ## 服务端错误码
 
+当前实现：
+
 | 状态码 | 含义 |
 | --- | --- |
 | 202 | 已接收 |
 | 400 | 请求格式错误 |
 | 401 | 签名错误或设备不存在 |
 | 403 | 设备被禁用 |
-| 408 | 请求时间戳过期 |
 | 409 | nonce 重放 |
 | 413 | 请求体过大 |
-| 429 | 限流 |
 | 507 | 磁盘空间保护，拒绝写入 |
+
+预留增强：
+
+| 状态码 | 含义 |
+| --- | --- |
+| 408 | 请求时间戳过期，当前实现归入 `401` |
+| 429 | 独立限流，当前尚未实现 |
 
 ## Web API
 
-Web API 使用 Cookie Session 或管理员 API Token。
+Web API 当前使用 Cookie Session。
 
-核心接口：
+已实现接口：
 
 ```text
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
 GET  /api/v1/overview
 GET  /api/v1/devices
+GET  /api/v1/gpus/{gpu_id}/series
+GET  /api/v1/stats/gpu-utilization
+GET  /api/v1/processes/latest
+POST /api/v1/admin/devices
+```
+
+规划中接口：
+
+```text
 GET  /api/v1/devices/{device_id}
 GET  /api/v1/devices/{device_id}/gpus
-GET  /api/v1/gpus/{gpu_id}/series
 GET  /api/v1/gpus/{gpu_id}/processes/latest
-GET  /api/v1/stats/gpu-utilization
 GET  /api/v1/alerts
-POST /api/v1/admin/devices
 POST /api/v1/admin/devices/{device_id}/rotate-secret
 POST /api/v1/admin/devices/{device_id}/disable
 ```
 
 管理接口只影响服务端记录和认证状态，不修改客户端本地配置。
-
