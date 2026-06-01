@@ -1,0 +1,42 @@
+# Binaries
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build outputs
+dist/
+build/
+out/
+bin/
+
+# Runtime data
+data/
+logs/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+agent-queue/
+
+# Env and local config
+.env
+.env.*
+*.local
+config.local.*
+
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Go
+coverage.out
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+Thumbs.db
+Desktop.ini
