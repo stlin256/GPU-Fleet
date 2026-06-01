@@ -32,6 +32,7 @@ yarn-debug.log*
 
 # Go
 coverage.out
+.gocache/
 
 # IDE
 .idea/
