@@ -50,11 +50,12 @@ cd ..
 .\bin\gpufleet-server.exe `
   -addr 127.0.0.1:8080 `
   -data-dir data `
-  -admin-password change-me `
   -bootstrap-device-id local-dev `
   -bootstrap-secret local-dev-secret `
   -min-free-mb 800
 ```
+
+首次启动使用启动参数指定的端口和 HTTP 协议；浏览器打开面板后会进入交互式配置引导，设置访问密码、端口和可选 HTTPS 证书。`-admin-password` 仍可用于自动化环境预置初始密码，但普通部署建议走首次配置引导。
 
 启动一次性客户端上报：
 
@@ -76,7 +77,7 @@ cd ..
 前端浏览器级验证脚本：
 
 ```powershell
-node scripts\verify-frontend-chrome.mjs --url http://127.0.0.1:8080 --username admin --password change-me --out logs\frontend-verify-manual
+node scripts\verify-frontend-chrome.mjs --url http://127.0.0.1:8080 --password change-me --out logs\frontend-verify-manual
 ```
 
 Web 面板：
@@ -85,7 +86,7 @@ Web 面板：
 http://127.0.0.1:8080
 ```
 
-默认管理员用户名是 `admin`，密码由 `-admin-password` 指定；若未指定，服务端会在首次启动时生成并打印一次。
+Web 登录只使用密码作为凭据；没有证书时服务端使用 HTTP，有证书并重启后使用 HTTPS。
 
 ## 设备接入
 

@@ -280,11 +280,14 @@ const dashboardHTML = `<!doctype html>
       padding: 12px;
       min-width: 0;
     }
-    .fleet-kpi span, .setting-stat span, .setting-item span {
+    .fleet-kpi span, .setting-stat span {
       display: block;
       color: var(--muted);
       font-size: 12px;
       font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .fleet-kpi strong {
       display: block;
@@ -358,6 +361,14 @@ const dashboardHTML = `<!doctype html>
       min-width: 0;
     }
     .fleet-device-cell strong, .list-row strong, .table-row strong { overflow-wrap: anywhere; }
+    .fleet-device-cell p,
+    .trend-head p,
+    .setting-stat p,
+    .operation-head p {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .status-dot {
       width: 9px;
       height: 9px;
@@ -383,7 +394,9 @@ const dashboardHTML = `<!doctype html>
       padding: 8px;
       font-size: 12px;
       line-height: 1.25;
-      overflow-wrap: anywhere;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .gpu-trend-grid, .gpu-detail-trend-grid {
       display: grid;
@@ -418,6 +431,7 @@ const dashboardHTML = `<!doctype html>
       color: var(--muted);
       font-size: 12px;
       font-weight: 800;
+      white-space: nowrap;
     }
     .trend-head strong {
       display: block;
@@ -576,31 +590,20 @@ const dashboardHTML = `<!doctype html>
       flex-wrap: wrap;
       justify-content: flex-end;
     }
-    .settings-page { display: grid; gap: 14px; }
-    .settings-hero {
-      display: grid;
-      grid-template-columns: minmax(260px, .78fr) minmax(420px, 1.22fr);
-      gap: 18px;
-      align-items: stretch;
-    }
-    .settings-hero-copy {
-      display: grid;
-      align-content: center;
-      gap: 8px;
-    }
-    .settings-hero-copy h2 { font-size: clamp(22px, 3vw, 30px); line-height: 1.08; }
+    .settings-page, .settings-status, .setting-operation { display: grid; gap: 14px; }
     .settings-kpi-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0 14px;
-      align-content: center;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
     }
     .setting-stat {
       min-width: 0;
-      padding: 12px 0;
-      border-bottom: 1px solid var(--line);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: var(--panel-soft);
     }
-    .setting-stat:nth-last-child(-n + 2) { border-bottom: 0; }
+    .setting-stat span { white-space: nowrap; }
     .setting-stat strong {
       display: block;
       margin-top: 7px;
@@ -608,28 +611,34 @@ const dashboardHTML = `<!doctype html>
       line-height: 1.12;
       overflow-wrap: anywhere;
     }
-    .settings-grid {
+    .settings-actions-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(260px, 1fr));
+      grid-template-columns: repeat(2, minmax(280px, 1fr));
       gap: 14px;
+      align-items: start;
     }
-    .settings-list { display: grid; gap: 0; }
-    .setting-item {
-      min-width: 0;
-      padding: 10px 0;
-      border-bottom: 1px solid var(--line);
+    .operation-head {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
     }
-    .setting-item:last-child { border-bottom: 0; }
-    .setting-item strong {
-      display: block;
-      margin-top: 5px;
-      font-size: 13px;
-      line-height: 1.35;
-      overflow-wrap: anywhere;
+    .operation-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: var(--accent-strong);
+      background: var(--accent-soft);
+    }
+    .action-button {
+      width: fit-content;
+      text-decoration: none;
     }
     @media (max-width: 1180px) {
-      .fleet-command, .overview-layout, .overview-secondary, .settings-hero { grid-template-columns: 1fr; }
-      .settings-grid { grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+      .fleet-command, .overview-layout, .overview-secondary { grid-template-columns: 1fr; }
+      .settings-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 980px) {
       .app { grid-template-columns: 1fr; }
@@ -642,7 +651,7 @@ const dashboardHTML = `<!doctype html>
       }
       nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       nav button { justify-content: center; font-size: 13px; }
-      .metric-grid, .main-grid, .settings-grid { grid-template-columns: 1fr 1fr; }
+      .metric-grid, .main-grid, .settings-actions-grid { grid-template-columns: 1fr 1fr; }
       .content { padding: 16px; }
       .table-row { grid-template-columns: 1fr 1fr; align-items: start; }
     }
@@ -652,9 +661,7 @@ const dashboardHTML = `<!doctype html>
       .fleet-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .fleet-card-grid, .gpu-card-meta, .metric-grid, .main-grid { grid-template-columns: 1fr; }
       nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .gpu-detail-grid, .device-form, .device-row, .secret-box, .settings-grid, .settings-kpi-grid { grid-template-columns: 1fr; }
-      .setting-stat:nth-last-child(-n + 2) { border-bottom: 1px solid var(--line); }
-      .setting-stat:last-child { border-bottom: 0; }
+      .gpu-detail-grid, .device-form, .device-row, .secret-box, .settings-actions-grid, .settings-kpi-grid { grid-template-columns: 1fr; }
       .row-actions { justify-content: flex-start; }
     }
     @media (max-width: 430px) {
@@ -672,7 +679,6 @@ const dashboardHTML = `<!doctype html>
         <button class="icon-button" type="button" id="loginTheme" title="切换主题">◐</button>
       </div>
       <h1>登录面板</h1>
-      <label>用户名<input name="username" value="admin" autocomplete="username"></label>
       <label>密码<input name="password" type="password" autocomplete="current-password"></label>
       <button class="primary" type="submit">登录</button>
       <p class="sub error" id="loginError"></p>
@@ -784,7 +790,7 @@ const dashboardHTML = `<!doctype html>
       try {
         await api('/api/v1/auth/login', {
           method: 'POST',
-          body: JSON.stringify({username: form.get('username'), password: form.get('password')})
+          body: JSON.stringify({password: form.get('password')})
         });
         document.getElementById('loginError').textContent = '';
         await refresh();
@@ -1124,58 +1130,30 @@ const dashboardHTML = `<!doctype html>
 
     function renderSettings(data) {
       const disk = data.disk || {};
+      const service = data.service || {};
       const min = data.min_free_space_bytes || disk.min_free_bytes || 0;
-      const offline = Math.max(0, (data.device_count || 0) - (data.online_device_count || 0));
       document.getElementById('settingsView').innerHTML =
         '<div class="settings-page" data-testid="settings-page">' +
-          '<section class="settings-hero panel"><div class="settings-hero-copy"><span class="pill ' + (disk.status || 'ok') + '">' + esc(disk.status || 'ok') + '</span><h2>服务运行与安全边界</h2><p>当前服务只接收客户端主动上报和 Web 管理请求，不提供远程命令、配置下发或客户端控制通道。</p></div>' +
+          '<section class="settings-status panel"><div class="panel-head"><div><h2>服务状态</h2><p>' + esc((service.current_addr || '-') + ' · ' + String(service.current_scheme || 'http').toUpperCase()) + '</p></div>' + (service.restart_required ? '<span class="pill warn">需要重启</span>' : '') + '</div>' +
           '<div class="settings-kpi-grid">' +
-            settingStat('服务时间', new Date(data.server_time).toLocaleString(), '来自服务端') +
-            settingStat('数据保留', fmtHours(data.retention_hours || 0), 'gzip 分段清理窗口') +
-            settingStat('磁盘预留', fmtBytes(min), '低于阈值拒绝写入') +
-            settingStat('设备状态', (data.online_device_count || 0) + '/' + (data.device_count || 0), offline > 0 ? offline + ' 台离线' : '全部在线') +
+            settingStat('当前协议', String(service.current_scheme || 'http').toUpperCase(), service.https_enabled ? '证书已配置' : '未启用证书') +
+            settingStat('访问端口', String(service.configured_port || location.port || 8080), service.current_addr || '-') +
+            settingStat('证书到期', service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置', service.https_enabled ? 'HTTPS 下次启动生效' : 'HTTP 模式') +
+            settingStat('磁盘预留', fmtBytes(min), '空闲 ' + fmtBytes(disk.free_bytes)) +
           '</div></section>' +
-          '<section class="settings-grid">' +
-            settingPanel('服务端边界', [
-              ['客户端控制', '无命令下发、无配置下发、无远程执行接口'],
-              ['管理动作', '只修改服务端设备认证状态和密钥记录'],
-              ['公网部署', '建议仅暴露 Web/API 入口，数据目录和后续数据库不直接暴露']
-            ]) +
-            settingPanel('存储与回收', [
-              ['当前空闲', fmtBytes(disk.free_bytes)],
-              ['保留阈值', fmtBytes(min)],
-              ['数据格式', 'gzip JSONL 按小时分段保存指标'],
-              ['回收策略', '写入前清理超过 ' + fmtHours(data.retention_hours || 0) + ' 的分段']
-            ]) +
-            settingPanel('Agent 接入', [
-              ['认证方式', '设备 ID + HMAC-SHA256 签名'],
-              ['重放保护', '时间戳 5 分钟窗口，nonce 10 分钟去重'],
-              ['请求限制', '解压后请求体最大 2 MiB，Agent 基础限流 240 次/分钟'],
-              ['客户端行为', '失败时本地队列缓存，恢复后主动回放']
-            ]) +
-            settingPanel('Web 会话', [
-              ['登录保护', '管理员密码派生存储，登录基础限流 10 次/分钟'],
-              ['会话 Cookie', 'HttpOnly，同源请求携带，会话有效期 12 小时'],
-              ['设备密钥', '创建设备返回一次性密钥，支持禁用、启用和轮换']
-            ]) +
-            settingPanel('API 范围', [
-              ['Agent 写入', '/agent/heartbeat、/agent/samples、/agent/process-snapshots'],
-              ['Web 查询', '/overview、/stats/gpu-utilization、/gpus/{id}/series'],
-              ['管理接口', '/admin/devices 及启用、禁用、密钥轮换动作']
-            ]) +
-            settingPanel('当前快照', [
-              ['GPU 数量', (data.gpu_count || 0) + ' 块'],
-              ['进程快照', (data.latest_processes || []).length + ' 条'],
-              ['平均利用率', pct(data.average_utilization || 0)],
-              ['聚合显存', fmtBytes(data.memory_used_bytes) + ' / ' + fmtBytes(data.memory_total_bytes)]
-            ]) +
+          '<section class="settings-actions-grid">' +
+            operationPanel('密码更改', '仅使用密码作为 Web 凭据', 'PW', '<button class="secondary action-button" type="button">更新密码</button>', 'settings-password') +
+            operationPanel('端口配置', service.current_addr || '当前监听端口', '◎', '<button class="secondary action-button" type="button">保存端口</button>', 'settings-port') +
+            operationPanel('HTTPS 证书', '到期 ' + (service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置'), 'TLS', '<button class="secondary action-button" type="button">上传证书</button>', 'settings-certificate') +
+            operationPanel('数据库下载', fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
+            operationPanel('配置引导', '重新打开端口、密码和证书配置流程', 'CFG', '<button class="secondary action-button" type="button">打开引导</button>', '') +
           '</section></div>';
     }
     function settingStat(label, value, caption) {
       return '<div class="setting-stat" data-testid="setting-stat"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong><p>' + esc(caption) + '</p></div>';
     }
-    function settingPanel(title, rows) {
-      return '<article class="panel"><div class="panel-head"><h2>' + esc(title) + '</h2><span>OK</span></div><div class="settings-list">' + rows.map((row) => '<div class="setting-item"><span>' + esc(row[0]) + '</span><strong>' + esc(row[1]) + '</strong></div>').join('') + '</div></article>';
+    function operationPanel(title, caption, icon, action, testID) {
+      return '<article class="panel setting-operation"' + (testID ? ' data-testid="' + esc(testID) + '"' : '') + '><div class="operation-head"><div class="operation-icon">' + esc(icon) + '</div><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>' + action + '</article>';
     }
 
     function gpuHealth(item, device) {

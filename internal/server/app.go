@@ -231,14 +231,13 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Username string `json:"username"`
 		Password string `json:"password"`
 	}
 	if err := decodeJSON(r, &body, 1<<20); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !a.meta.VerifyAdmin(body.Username, body.Password) {
+	if !a.meta.VerifyAdmin(body.Password) {
 		_ = a.meta.AddAudit("login_failed", "admin login failed")
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return

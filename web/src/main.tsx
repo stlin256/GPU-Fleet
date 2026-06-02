@@ -11,37 +11,52 @@ import {
   Clipboard,
   Cpu,
   Database,
+  Download,
+  FileKey2,
   Gauge,
   HardDrive,
   KeyRound,
+  LockKeyhole,
   LogIn,
   LogOut,
   MonitorUp,
   Moon,
+  Network,
   Plus,
   Power,
   PowerOff,
   RefreshCw,
+  Save,
   Server,
   Settings,
-  ShieldCheck,
-  Sun
+  Sun,
+  Upload
 } from 'lucide-react';
 import {
+  applyInitialSetup,
+  applySetup,
+  changePassword,
   createDevice,
+  databaseDownloadURL,
   Device,
   getGPUSeries,
   getOverview,
+  getSetupStatus,
   getStats,
   GPUSeriesPoint,
   GPUStats,
   login,
   logout,
   Overview,
+  reopenSetup,
   rotateDeviceSecret,
+  ServiceStatus,
   setDeviceEnabled,
+  SetupStatus,
   StoredGPU,
-  StoredProcess
+  StoredProcess,
+  updateServerConfig,
+  uploadCertificate
 } from './api';
 import './styles.css';
 
@@ -49,7 +64,7 @@ echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRendere
 
 const queryClient = new QueryClient();
 type View = 'overview' | 'devices' | 'gpus' | 'settings';
-type AuthState = 'checking' | 'authenticated' | 'anonymous';
+type AuthState = 'checking' | 'setup' | 'authenticated' | 'anonymous';
 type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
 
@@ -107,8 +122,23 @@ function fmtDateTime(value?: string) {
   return date.toLocaleString();
 }
 
+function portFromLocation() {
+  const parsed = Number(window.location.port || (window.location.protocol === 'https:' ? 443 : 80));
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 8080;
+}
+
+function serviceFromOverview(data?: Overview): SetupStatus | undefined {
+  if (!data?.service) return undefined;
+  return {
+    setup_required: false,
+    setup_complete: data.setup_complete,
+    service: data.service
+  };
+}
+
 function App() {
   const [authState, setAuthState] = useState<AuthState>('checking');
+  const [setupStatus, setSetupStatus] = useState<SetupStatus>();
   const [theme, setTheme] = useState<Theme>(initialTheme);
 
   useEffect(() => {
@@ -123,9 +153,21 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
-    getOverview()
-      .then(() => {
-        if (!cancelled) setAuthState('authenticated');
+    getSetupStatus()
+      .then((status) => {
+        if (cancelled) return;
+        setSetupStatus(status);
+        if (status.setup_required) {
+          setAuthState('setup');
+          return;
+        }
+        getOverview()
+          .then(() => {
+            if (!cancelled) setAuthState('authenticated');
+          })
+          .catch(() => {
+            if (!cancelled) setAuthState('anonymous');
+          });
       })
       .catch(() => {
         if (!cancelled) setAuthState('anonymous');
@@ -137,6 +179,17 @@ function App() {
 
   if (authState === 'checking') {
     return <LoadingScreen theme={theme} onToggleTheme={toggleTheme} />;
+  }
+  if (authState === 'setup') {
+    return (
+      <SetupWizard
+        mode="initial"
+        status={setupStatus}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        onComplete={() => setAuthState('authenticated')}
+      />
+    );
   }
   if (authState === 'anonymous') {
     return <Login onSuccess={() => setAuthState('authenticated')} theme={theme} onToggleTheme={toggleTheme} />;
@@ -162,8 +215,149 @@ function LoadingScreen({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
   );
 }
 
+function SetupWizard({
+  mode,
+  status,
+  theme,
+  onToggleTheme,
+  onComplete,
+  onCancel
+}: {
+  mode: 'initial' | 'authenticated';
+  status?: SetupStatus;
+  theme: Theme;
+  onToggleTheme: () => void;
+  onComplete: () => void;
+  onCancel?: () => void;
+}) {
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [port, setPort] = useState(String(status?.service.configured_port || portFromLocation()));
+  const [certificatePEM, setCertificatePEM] = useState('');
+  const [privateKeyPEM, setPrivateKeyPEM] = useState('');
+  const [certificateName, setCertificateName] = useState('未选择');
+  const [keyName, setKeyName] = useState('未选择');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const service = status?.service;
+  const requirePassword = mode === 'initial';
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setError('');
+    setMessage('');
+    const parsedPort = Number(port);
+    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+      setError('端口范围应为 1-65535');
+      return;
+    }
+    if ((requirePassword || password || confirmPassword) && password.length < 8) {
+      setError('密码至少 8 位');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('两次密码不一致');
+      return;
+    }
+    if ((certificatePEM && !privateKeyPEM) || (!certificatePEM && privateKeyPEM)) {
+      setError('证书和私钥需要同时上传');
+      return;
+    }
+    setLoading(true);
+    try {
+      const payload = {
+        password: password || undefined,
+        port: parsedPort,
+        certificate_pem: certificatePEM || undefined,
+        private_key_pem: privateKeyPEM || undefined
+      };
+      const result = mode === 'initial' ? await applyInitialSetup(payload) : await applySetup(payload);
+      if (mode === 'initial' && password) {
+        await login(password);
+      }
+      setMessage(result.restart_required ? '配置已保存，重启服务后端口或 HTTPS 生效' : '配置已保存');
+      onComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'setup failed');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadPEM(event: React.ChangeEvent<HTMLInputElement>, target: 'cert' | 'key') {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    if (target === 'cert') {
+      setCertificatePEM(text);
+      setCertificateName(file.name);
+    } else {
+      setPrivateKeyPEM(text);
+      setKeyName(file.name);
+    }
+  }
+
+  return (
+    <main className={mode === 'initial' ? 'login-shell' : 'setup-inline'} data-testid={mode === 'initial' ? 'setup-wizard' : 'setup-wizard-inline'}>
+      <form className={`setup-panel ${mode === 'initial' ? 'panel' : ''}`} onSubmit={submit}>
+        <div className="login-head">
+          <div className="brand">
+            <span className="brand-mark">G</span>
+            <span>GPUFleet</span>
+          </div>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
+        <div className="setup-title">
+          <span className="pill good">{service?.current_scheme?.toUpperCase() ?? 'HTTP'}</span>
+          <h1>{mode === 'initial' ? '首次配置' : '配置引导'}</h1>
+          <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : '初始化服务访问参数'}</p>
+        </div>
+
+        <div className="setup-grid">
+          <label>
+            {mode === 'initial' ? '访问密码' : '新密码'}
+            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? '至少 8 位' : '留空则不变'} />
+          </label>
+          <label>
+            确认密码
+            <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? '再次输入密码' : '仅修改密码时填写'} />
+          </label>
+          <label>
+            访问端口
+            <input value={port} onChange={(event) => setPort(event.target.value)} type="number" min={1} max={65535} inputMode="numeric" />
+          </label>
+          <div className="setup-file-row">
+            <label>
+              HTTPS 证书
+              <input type="file" accept=".pem,.crt,.cer" onChange={(event) => loadPEM(event, 'cert')} />
+              <span>{certificateName}</span>
+            </label>
+            <label>
+              私钥文件
+              <input type="file" accept=".pem,.key" onChange={(event) => loadPEM(event, 'key')} />
+              <span>{keyName}</span>
+            </label>
+          </div>
+        </div>
+
+        <div className="setup-actions">
+          {onCancel && <button className="secondary" type="button" onClick={onCancel}>取消</button>}
+          <button className="primary compact" disabled={loading}>
+            <Save size={17} />
+            {loading ? '保存中' : '保存配置'}
+          </button>
+        </div>
+        {service?.cert_not_after && <p className="notice">当前证书到期：{fmtDateTime(service.cert_not_after)}</p>}
+        {message && <p className="notice">{message}</p>}
+        {error && <p className="error">{error}</p>}
+      </form>
+    </main>
+  );
+}
+
 function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; theme: Theme; onToggleTheme: () => void }) {
-  const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -173,7 +367,7 @@ function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; the
     setLoading(true);
     setError('');
     try {
-      await login(username, password);
+      await login(password);
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'login failed');
@@ -193,10 +387,6 @@ function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; the
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
         <h1>登录面板</h1>
-        <label>
-          用户名
-          <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" />
-        </label>
         <label>
           密码
           <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" />
@@ -285,7 +475,7 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
         {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} memoryPct={memoryPct} theme={theme} />}
 
         {view === 'devices' && <DeviceAdminPanel data={data} />}
-        {view === 'settings' && <SettingsPanel data={data} />}
+        {view === 'settings' && <SettingsPanel data={data} theme={theme} onToggleTheme={onToggleTheme} />}
       </main>
     </div>
   );
@@ -880,103 +1070,82 @@ function StatsPanel({ statRows }: { statRows: GPUStats[] }) {
   );
 }
 
-function SettingsPanel({ data }: { data?: Overview }) {
-  const free = data?.disk.free_bytes ?? 0;
+function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme: Theme; onToggleTheme: () => void }) {
+  const query = useQueryClient();
+  const service = data?.service;
   const min = data?.min_free_space_bytes ?? data?.disk.min_free_bytes ?? 0;
-  const retentionHours = data?.retention_hours ?? 0;
-  const offline = Math.max(0, (data?.device_count ?? 0) - (data?.online_device_count ?? 0));
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStatus, setWizardStatus] = useState<SetupStatus>();
+  const [message, setMessage] = useState('');
+
+  async function refreshOverview() {
+    await query.invalidateQueries({ queryKey: ['overview'] });
+  }
+
+  async function openWizard() {
+    setMessage('');
+    try {
+      const result = await reopenSetup();
+      setWizardStatus(result.setup);
+      setWizardOpen(true);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'setup reopen failed');
+    }
+  }
+
   return (
     <div className="settings-page" data-testid="settings-page">
-      <section className="settings-hero panel">
-        <div className="settings-hero-copy">
-          <span className={`pill ${data?.disk.status ?? 'ok'}`}>{data?.disk.status ?? 'ok'}</span>
-          <h2>服务运行与安全边界</h2>
-          <p>当前服务只接收客户端主动上报和 Web 管理请求，不提供远程命令、配置下发或客户端控制通道。</p>
+      <section className="settings-status panel">
+        <div className="panel-head settings-head">
+          <div>
+            <h2>服务状态</h2>
+            <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : '等待服务端配置'}</p>
+          </div>
+          {service?.restart_required && <span className="pill warn">需要重启</span>}
         </div>
         <div className="settings-kpi-grid">
-          <SettingStat label="服务时间" value={fmtDateTime(data?.server_time)} caption="来自服务端" />
-          <SettingStat label="数据保留" value={fmtHours(retentionHours)} caption="gzip 分段清理窗口" />
-          <SettingStat label="磁盘预留" value={fmtBytes(min)} caption="低于阈值拒绝写入" />
-          <SettingStat label="设备状态" value={`${data?.online_device_count ?? 0}/${data?.device_count ?? 0}`} caption={offline > 0 ? `${offline} 台离线` : '全部在线'} />
+          <SettingStat label="当前协议" value={(service?.current_scheme ?? 'http').toUpperCase()} caption={service?.https_enabled ? '证书已配置' : '未启用证书'} />
+          <SettingStat label="访问端口" value={String(service?.configured_port ?? portFromLocation())} caption={service?.current_addr ?? '-'} />
+          <SettingStat label="证书到期" value={service?.cert_not_after ? fmtDateTime(service.cert_not_after) : '未配置'} caption={service?.https_enabled ? 'HTTPS 下次启动生效' : 'HTTP 模式'} />
+          <SettingStat label="磁盘预留" value={fmtBytes(min)} caption={`空闲 ${fmtBytes(data?.disk.free_bytes)}`} />
         </div>
       </section>
 
-      <section className="settings-grid">
-        <article className="panel setting-panel">
-          <div className="panel-head">
-            <h2>服务端边界</h2>
-            <ShieldCheck size={18} />
+      <section className="settings-actions-grid">
+        <PasswordSettings onDone={refreshOverview} />
+        <PortSettings service={service} onDone={refreshOverview} />
+        <CertificateSettings service={service} onDone={refreshOverview} />
+        <DatabaseSettings data={data} />
+        <article className="panel setting-operation">
+          <div className="operation-head">
+            <div className="operation-icon"><Settings size={18} /></div>
+            <div>
+              <h2>配置引导</h2>
+              <p>重新打开端口、密码和证书配置流程</p>
+            </div>
           </div>
-          <div className="settings-list">
-            <SettingItem label="客户端控制" value="无命令下发、无配置下发、无远程执行接口" />
-            <SettingItem label="管理动作" value="只修改服务端设备认证状态和密钥记录" />
-            <SettingItem label="公网部署" value="建议仅暴露 Web/API 入口，数据目录和后续数据库不直接暴露" />
-          </div>
-        </article>
-
-        <article className="panel setting-panel">
-          <div className="panel-head">
-            <h2>存储与回收</h2>
-            <HardDrive size={18} />
-          </div>
-          <div className="settings-list">
-            <SettingItem label="当前空闲" value={fmtBytes(free)} />
-            <SettingItem label="保留阈值" value={fmtBytes(min)} />
-            <SettingItem label="数据格式" value="gzip JSONL 按小时分段保存指标" />
-            <SettingItem label="回收策略" value={`写入前清理超过 ${fmtHours(retentionHours)} 的分段`} />
-          </div>
-        </article>
-
-        <article className="panel setting-panel">
-          <div className="panel-head">
-            <h2>Agent 接入</h2>
-            <Server size={18} />
-          </div>
-          <div className="settings-list">
-            <SettingItem label="认证方式" value="设备 ID + HMAC-SHA256 签名" />
-            <SettingItem label="重放保护" value="时间戳 5 分钟窗口，nonce 10 分钟去重" />
-            <SettingItem label="请求限制" value="解压后请求体最大 2 MiB，Agent 基础限流 240 次/分钟" />
-            <SettingItem label="客户端行为" value="失败时本地队列缓存，恢复后主动回放" />
-          </div>
-        </article>
-
-        <article className="panel setting-panel">
-          <div className="panel-head">
-            <h2>Web 会话</h2>
-            <KeyRound size={18} />
-          </div>
-          <div className="settings-list">
-            <SettingItem label="登录保护" value="管理员密码派生存储，登录基础限流 10 次/分钟" />
-            <SettingItem label="会话 Cookie" value="HttpOnly，同源请求携带，会话有效期 12 小时" />
-            <SettingItem label="设备密钥" value="创建设备返回一次性密钥，支持禁用、启用和轮换" />
-          </div>
-        </article>
-
-        <article className="panel setting-panel">
-          <div className="panel-head">
-            <h2>API 范围</h2>
-            <Database size={18} />
-          </div>
-          <div className="settings-list">
-            <SettingItem label="Agent 写入" value="/agent/heartbeat、/agent/samples、/agent/process-snapshots" />
-            <SettingItem label="Web 查询" value="/overview、/stats/gpu-utilization、/gpus/{id}/series" />
-            <SettingItem label="管理接口" value="/admin/devices 及启用、禁用、密钥轮换动作" />
-          </div>
-        </article>
-
-        <article className="panel setting-panel">
-          <div className="panel-head">
-            <h2>当前快照</h2>
-            <Activity size={18} />
-          </div>
-          <div className="settings-list">
-            <SettingItem label="GPU 数量" value={`${data?.gpu_count ?? 0} 块`} />
-            <SettingItem label="进程快照" value={`${data?.latest_processes.length ?? 0} 条`} />
-            <SettingItem label="平均利用率" value={pct(data?.average_utilization ?? 0)} />
-            <SettingItem label="聚合显存" value={`${fmtBytes(data?.memory_used_bytes)} / ${fmtBytes(data?.memory_total_bytes)}`} />
-          </div>
+          <button className="secondary action-button" type="button" onClick={openWizard}>
+            <Settings size={16} />
+            打开引导
+          </button>
+          {message && <p className="error">{message}</p>}
         </article>
       </section>
+
+      {wizardOpen && (
+        <SetupWizard
+          mode="authenticated"
+          status={wizardStatus ?? serviceFromOverview(data)}
+          theme={theme}
+          onToggleTheme={onToggleTheme}
+          onCancel={() => setWizardOpen(false)}
+          onComplete={() => {
+            setWizardOpen(false);
+            setMessage('配置已保存，必要时重启服务后生效');
+            void refreshOverview();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -991,12 +1160,180 @@ function SettingStat({ label, value, caption }: { label: string; value: string; 
   );
 }
 
-function SettingItem({ label, value }: { label: string; value: string }) {
+function PasswordSettings({ onDone }: { onDone: () => Promise<void> }) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [nextPassword, setNextPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setMessage('');
+    if (nextPassword.length < 8) {
+      setMessage('新密码至少 8 位');
+      return;
+    }
+    if (nextPassword !== confirmPassword) {
+      setMessage('两次密码不一致');
+      return;
+    }
+    setBusy(true);
+    try {
+      await changePassword(currentPassword, nextPassword);
+      setCurrentPassword('');
+      setNextPassword('');
+      setConfirmPassword('');
+      setMessage('密码已更新');
+      await onDone();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'password update failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="setting-item">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
+    <article className="panel setting-operation" data-testid="settings-password">
+      <div className="operation-head">
+        <div className="operation-icon"><LockKeyhole size={18} /></div>
+        <div>
+          <h2>密码更改</h2>
+          <p>仅使用密码作为 Web 凭据</p>
+        </div>
+      </div>
+      <form className="settings-form" onSubmit={submit}>
+        <label>当前密码<input value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} type="password" autoComplete="current-password" /></label>
+        <label>新密码<input value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} type="password" autoComplete="new-password" /></label>
+        <label>确认新密码<input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" /></label>
+        <button className="primary compact" disabled={busy}><KeyRound size={16} />{busy ? '保存中' : '更新密码'}</button>
+      </form>
+      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+    </article>
+  );
+}
+
+function PortSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const [port, setPort] = useState(String(service?.configured_port || portFromLocation()));
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setPort(String(service?.configured_port || portFromLocation()));
+  }, [service?.configured_port]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setMessage('');
+    const parsed = Number(port);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
+      setMessage('端口范围应为 1-65535');
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await updateServerConfig(parsed);
+      setMessage(result.restart_required ? '端口已保存，重启后生效' : '端口已保存');
+      await onDone();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'port update failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="panel setting-operation" data-testid="settings-port">
+      <div className="operation-head">
+        <div className="operation-icon"><Network size={18} /></div>
+        <div>
+          <h2>端口配置</h2>
+          <p>{service?.current_addr ?? '当前监听端口'}</p>
+        </div>
+      </div>
+      <form className="settings-form inline" onSubmit={submit}>
+        <label>访问端口<input value={port} onChange={(event) => setPort(event.target.value)} type="number" min={1} max={65535} inputMode="numeric" /></label>
+        <button className="primary compact" disabled={busy}><Save size={16} />{busy ? '保存中' : '保存端口'}</button>
+      </form>
+      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+    </article>
+  );
+}
+
+function CertificateSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const [certificatePEM, setCertificatePEM] = useState('');
+  const [privateKeyPEM, setPrivateKeyPEM] = useState('');
+  const [certificateName, setCertificateName] = useState('未选择');
+  const [keyName, setKeyName] = useState('未选择');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function loadPEM(event: React.ChangeEvent<HTMLInputElement>, target: 'cert' | 'key') {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    if (target === 'cert') {
+      setCertificatePEM(text);
+      setCertificateName(file.name);
+    } else {
+      setPrivateKeyPEM(text);
+      setKeyName(file.name);
+    }
+  }
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setMessage('');
+    if (!certificatePEM || !privateKeyPEM) {
+      setMessage('证书和私钥需要同时上传');
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await uploadCertificate(certificatePEM, privateKeyPEM);
+      setMessage(result.restart_required ? '证书已保存，重启后启用 HTTPS' : '证书已保存');
+      await onDone();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'certificate upload failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="panel setting-operation" data-testid="settings-certificate">
+      <div className="operation-head">
+        <div className="operation-icon"><FileKey2 size={18} /></div>
+        <div>
+          <h2>HTTPS 证书</h2>
+          <p>到期 {service?.cert_not_after ? fmtDateTime(service.cert_not_after) : '未配置'}</p>
+        </div>
+      </div>
+      <form className="settings-form" onSubmit={submit}>
+        <label>证书文件<input type="file" accept=".pem,.crt,.cer" onChange={(event) => loadPEM(event, 'cert')} /><span>{certificateName}</span></label>
+        <label>私钥文件<input type="file" accept=".pem,.key" onChange={(event) => loadPEM(event, 'key')} /><span>{keyName}</span></label>
+        <button className="primary compact" disabled={busy}><Upload size={16} />{busy ? '上传中' : '上传证书'}</button>
+      </form>
+      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+    </article>
+  );
+}
+
+function DatabaseSettings({ data }: { data?: Overview }) {
+  return (
+    <article className="panel setting-operation" data-testid="settings-database">
+      <div className="operation-head">
+        <div className="operation-icon"><Database size={18} /></div>
+        <div>
+          <h2>数据库下载</h2>
+          <p>{fmtHours(data?.retention_hours ?? 0)} · {fmtBytes(data?.disk.free_bytes)} 空闲</p>
+        </div>
+      </div>
+      <a className="secondary action-button" href={databaseDownloadURL()} download>
+        <Download size={16} />
+        下载数据库
+      </a>
+    </article>
   );
 }
 

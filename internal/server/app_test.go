@@ -70,13 +70,12 @@ func TestBuiltInDashboardFallback(t *testing.T) {
 		"GPUFleet",
 		"服务设置",
 		"settings-page",
-		"服务端边界",
-		"存储与回收",
-		"Agent 接入",
-		"API 范围",
-		"无命令下发",
-		"gzip JSONL",
-		"HMAC-SHA256",
+		"服务状态",
+		"密码更改",
+		"端口配置",
+		"HTTPS 证书",
+		"数据库下载",
+		"配置引导",
 		"gpu-trend-tile",
 		"sparkline-wrap",
 		"spark-tooltip",
@@ -87,6 +86,9 @@ func TestBuiltInDashboardFallback(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Fatalf("built-in dashboard should contain %q", want)
 		}
+	}
+	if strings.Contains(body, "用户名") {
+		t.Fatal("built-in dashboard should use password-only login")
 	}
 	for _, old := range []string{`class="meter"`, ".meter {"} {
 		if strings.Contains(body, old) {
@@ -149,6 +151,17 @@ func TestLoginRateLimit(t *testing.T) {
 		doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusUnauthorized, nil)
 	}
 	doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusTooManyRequests, nil)
+}
+
+func TestLoginRejectsUsernameField(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+
+	doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"username": "admin",
+		"password": "admin-test",
+	}, nil, http.StatusBadRequest, nil)
 }
 
 func TestInitialSetupCreatesPasswordCredential(t *testing.T) {

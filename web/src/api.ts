@@ -100,6 +100,39 @@ export type GPUStats = {
   peak_power_draw_watts?: number;
 };
 
+export type ServiceStatus = {
+  current_addr: string;
+  current_scheme: 'http' | 'https';
+  configured_addr: string;
+  configured_port: number;
+  https_enabled: boolean;
+  cert_not_after?: string;
+  config_revision: number;
+  updated_at?: string;
+  restart_required: boolean;
+  first_startup_http: boolean;
+  management_base_url?: string;
+};
+
+export type SetupStatus = {
+  setup_required: boolean;
+  setup_complete: boolean;
+  service: ServiceStatus;
+};
+
+export type SetupPayload = {
+  password?: string;
+  port?: number;
+  certificate_pem?: string;
+  private_key_pem?: string;
+};
+
+export type ServiceMutationResponse = {
+  ok: boolean;
+  service: ServiceStatus;
+  restart_required: boolean;
+};
+
 export type Overview = {
   server_time: string;
   device_count: number;
@@ -115,6 +148,8 @@ export type Overview = {
   latest_processes: StoredProcess[];
   retention_hours: number;
   min_free_space_bytes: number;
+  setup_complete: boolean;
+  service: ServiceStatus;
 };
 
 export type StatsResponse = {
@@ -147,10 +182,34 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function login(username: string, password: string) {
+export function getSetupStatus() {
+  return request<SetupStatus>('/api/v1/setup/status');
+}
+
+export function applyInitialSetup(payload: SetupPayload) {
+  return request<ServiceMutationResponse>('/api/v1/setup/apply', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function applySetup(payload: SetupPayload) {
+  return request<ServiceMutationResponse>('/api/v1/admin/setup/apply', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function reopenSetup() {
+  return request<{ ok: boolean; setup: SetupStatus }>('/api/v1/admin/setup/reopen', {
+    method: 'POST'
+  });
+}
+
+export function login(password: string) {
   return request<{ ok: boolean }>('/api/v1/auth/login', {
     method: 'POST',
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ password })
   });
 }
 
@@ -187,4 +246,29 @@ export function rotateDeviceSecret(deviceId: string) {
   return request<DeviceSecretResponse>(`/api/v1/admin/devices/${encodeURIComponent(deviceId)}/rotate-secret`, {
     method: 'POST'
   });
+}
+
+export function changePassword(currentPassword: string, nextPassword: string) {
+  return request<{ ok: boolean }>('/api/v1/admin/password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, next_password: nextPassword })
+  });
+}
+
+export function updateServerConfig(port: number) {
+  return request<ServiceMutationResponse>('/api/v1/admin/server-config', {
+    method: 'POST',
+    body: JSON.stringify({ port })
+  });
+}
+
+export function uploadCertificate(certificatePEM: string, privateKeyPEM: string) {
+  return request<ServiceMutationResponse>('/api/v1/admin/certificate', {
+    method: 'POST',
+    body: JSON.stringify({ certificate_pem: certificatePEM, private_key_pem: privateKeyPEM })
+  });
+}
+
+export function databaseDownloadURL() {
+  return '/api/v1/admin/database/download';
 }

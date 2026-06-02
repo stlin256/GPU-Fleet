@@ -83,7 +83,6 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 .\bin\gpufleet-server.exe `
   -addr 0.0.0.0:8080 `
   -data-dir data `
-  -admin-password "change-me" `
   -bootstrap-device-id "device_xxx" `
   -bootstrap-secret "replace-with-device-secret" `
   -min-free-mb 800 `
@@ -91,7 +90,9 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
   -web-dir web/dist
 ```
 
-生产环境建议在服务端前面放 Caddy/Nginx/Traefik 终止 HTTPS，再反代到 `127.0.0.1:8080`。
+首次启动按 `-addr` 指定的端口使用 HTTP。浏览器打开 Web 面板后会进入首次配置引导，设置访问密码、下一次启动端口和可选 HTTPS 证书。上传证书后需要重启服务，重启后服务端自身会使用 HTTPS；未配置证书时继续使用 HTTP。
+
+`-admin-password` 仍可用于自动化部署预置初始密码，但普通部署建议留空并使用首次配置引导。生产环境也可以在服务端前面放 Caddy/Nginx/Traefik 终止 HTTPS，再反代到 GPUFleet 的 HTTP 监听地址。
 
 ## 设备注册和密钥轮换
 

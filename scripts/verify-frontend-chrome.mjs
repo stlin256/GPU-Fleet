@@ -8,7 +8,6 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const chromePath = options.chrome || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
   const targetURL = required(options.url, '--url');
-  const username = options.username || 'admin';
   const password = required(options.password, '--password');
   const outDir = options.out || path.resolve('logs', `frontend-verify-${Date.now()}`);
   const minFleetCards = Number.parseInt(options['min-fleet-cards'] || '1', 10);
@@ -70,7 +69,7 @@ async function main() {
       await cdp.send('Page.reload', { ignoreCache: true });
       await waitForLoad(cdp);
       logStep('logging in');
-      await login(cdp, username, password);
+      await login(cdp, password);
       await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board'), text('fleet live')], 12000);
       await assertNoConsoleErrors(cdp);
       const fleetStatus = await assertFleetBoard(cdp, { minFleetCards, requireOfflineMask, requireDualDevice });
@@ -101,18 +100,23 @@ async function main() {
 
       logStep('checking settings view');
       await clickButton(cdp, text('settings'));
-      await waitForText(cdp, [text('service settings'), text('service boundary'), text('storage recycling'), text('agent access'), text('api scope')], 5000);
+      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('setup wizard')], 5000);
       const settingsLayout = await evaluate(cdp, () => ({
         statCount: document.querySelectorAll('[data-testid="setting-stat"]').length,
-        itemCount: document.querySelectorAll('.setting-item').length,
+        operationCount: document.querySelectorAll('.setting-operation').length,
+        passwordPanel: Boolean(document.querySelector('[data-testid="settings-password"]')),
+        portPanel: Boolean(document.querySelector('[data-testid="settings-port"]')),
+        certPanel: Boolean(document.querySelector('[data-testid="settings-certificate"]')),
+        databasePanel: Boolean(document.querySelector('[data-testid="settings-database"]')),
+        databaseLink: document.querySelector('[data-testid="settings-database"] a')?.getAttribute('href') || '',
         hasSettingsPage: Boolean(document.querySelector('[data-testid="settings-page"]')),
         bodyText: document.body.innerText
       }));
-      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.itemCount < 18) {
+      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.operationCount < 5) {
         throw new Error(`settings page is incomplete: ${JSON.stringify(settingsLayout)}`);
       }
-      if (!settingsLayout.bodyText.includes('无命令下发') || !settingsLayout.bodyText.includes('gzip JSONL') || !settingsLayout.bodyText.includes('HMAC-SHA256')) {
-        throw new Error('settings page does not expose service boundary, storage and agent access details');
+      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.databasePanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download')) {
+        throw new Error(`settings page does not expose operational controls: ${JSON.stringify(settingsLayout)}`);
       }
       await screenshot(cdp, path.join(outDir, 'desktop-settings.png'));
 
@@ -206,7 +210,7 @@ async function main() {
           detailTrendCount: layout.detailTrendCount,
           meterCount: layout.meterCount,
           settingsStatCount: settingsLayout.statCount,
-          settingsItemCount: settingsLayout.itemCount,
+          settingsOperationCount: settingsLayout.operationCount,
           theme: layout.theme,
           buttonCount: layout.buttonCount
         }
@@ -248,10 +252,12 @@ function text(id) {
     'device management': '\u8bbe\u5907\u7ba1\u7406',
     'register device': '\u6ce8\u518c\u8bbe\u5907',
     'service settings': '\u670d\u52a1\u8bbe\u7f6e',
-    'service boundary': '\u670d\u52a1\u7aef\u8fb9\u754c',
-    'storage recycling': '\u5b58\u50a8\u4e0e\u56de\u6536',
-    'agent access': '\u0041\u0067\u0065\u006e\u0074 \u63a5\u5165',
-    'api scope': '\u0041\u0050\u0049 \u8303\u56f4',
+    'service status': '\u670d\u52a1\u72b6\u6001',
+    'password change': '\u5bc6\u7801\u66f4\u6539',
+    'port config': '\u7aef\u53e3\u914d\u7f6e',
+    'https certificate': '\u0048\u0054\u0054\u0050\u0053 \u8bc1\u4e66',
+    'database download': '\u6570\u636e\u5e93\u4e0b\u8f7d',
+    'setup wizard': '\u914d\u7f6e\u5f15\u5bfc',
     overview: '\u603b\u89c8',
     devices: '\u8bbe\u5907',
     gpu: '\u0047\u0050\u0055',
@@ -292,20 +298,19 @@ async function createTab(port, url) {
   return res.json();
 }
 
-async function login(cdp, user, pass) {
+async function login(cdp, pass) {
   await waitForText(cdp, [text('login panel')], 10000);
-  await evaluate(cdp, ({ user, pass }) => {
+  await evaluate(cdp, (pass) => {
     const setValue = (input, value) => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
       setter.call(input, value);
       input.dispatchEvent(new Event('input', { bubbles: true }));
     };
     const inputs = Array.from(document.querySelectorAll('input'));
-    if (inputs.length < 2) throw new Error('login inputs not found');
-    setValue(inputs[0], user);
-    setValue(inputs[1], pass);
+    if (inputs.length < 1) throw new Error('login input not found');
+    setValue(inputs[0], pass);
     document.querySelector('form').requestSubmit();
-  }, { user, pass });
+  }, pass);
 }
 
 async function clickButton(cdp, label) {

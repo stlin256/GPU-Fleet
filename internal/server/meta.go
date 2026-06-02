@@ -517,7 +517,7 @@ func (s *MetadataStore) RotateDeviceSecret(deviceID string) (Device, string, err
 	return *device, secret, s.saveLocked()
 }
 
-func (s *MetadataStore) VerifyAdmin(username, password string) bool {
+func (s *MetadataStore) VerifyAdmin(password string) bool {
 	s.mu.Lock()
 	account := s.data.Admin
 	s.mu.Unlock()

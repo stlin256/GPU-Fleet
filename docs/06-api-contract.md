@@ -169,6 +169,8 @@ Web API 当前使用 Cookie Session。
 已实现接口：
 
 ```text
+GET  /api/v1/setup/status
+POST /api/v1/setup/apply
 POST /api/v1/auth/login
 POST /api/v1/auth/logout
 GET  /api/v1/overview
@@ -176,6 +178,12 @@ GET  /api/v1/devices
 GET  /api/v1/gpus/{gpu_id}/series
 GET  /api/v1/stats/gpu-utilization
 GET  /api/v1/processes/latest
+POST /api/v1/admin/setup/reopen
+POST /api/v1/admin/setup/apply
+POST /api/v1/admin/password
+POST /api/v1/admin/server-config
+POST /api/v1/admin/certificate
+GET  /api/v1/admin/database/download
 POST /api/v1/admin/devices
 POST /api/v1/admin/devices/{device_id}/enable
 POST /api/v1/admin/devices/{device_id}/disable
@@ -191,7 +199,28 @@ GET  /api/v1/gpus/{gpu_id}/processes/latest
 GET  /api/v1/alerts
 ```
 
-管理接口只影响服务端记录和认证状态，不修改客户端本地配置。
+登录只使用密码作为凭据，不需要账户名。管理接口只影响服务端记录和认证状态，不修改客户端本地配置。
+
+### 首次配置和服务设置
+
+```text
+GET  /api/v1/setup/status
+POST /api/v1/setup/apply
+POST /api/v1/admin/setup/reopen
+POST /api/v1/admin/setup/apply
+POST /api/v1/admin/password
+POST /api/v1/admin/server-config
+POST /api/v1/admin/certificate
+GET  /api/v1/admin/database/download
+```
+
+- `GET /setup/status`：公开状态探测，返回是否需要首次配置、当前监听协议、配置端口、HTTPS 证书状态和是否需要重启。
+- `POST /setup/apply`：仅在尚无密码的首次部署可用，用于设置访问密码、端口和可选证书。
+- `POST /admin/setup/reopen` 与 `/admin/setup/apply`：登录后再次打开并应用配置引导。
+- `POST /admin/password`：修改 Web 访问密码。
+- `POST /admin/server-config`：保存访问端口；当前进程不会热切换端口，响应会标记是否需要重启。
+- `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，有证书并重启后使用 HTTPS。
+- `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
 
 ### 创建设备
 
