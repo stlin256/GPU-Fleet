@@ -28,7 +28,7 @@
 
 当前 React 面板提供四个主视图：
 
-- 总览：多机多卡 GPU Fleet 聚合面板、设备状态、利用率分布、GPU 进程快照和 24 小时统计。
+- 总览：卡片式多机多卡 GPU Fleet 聚合面板、设备状态、利用率分布、GPU 进程快照和 24 小时统计。
 - 设备：创建设备、显示一次性密钥、禁用/启用设备、轮换密钥。
 - GPU：展示单卡详细运行字段、当前利用率图表、设备状态、GPU 进程快照和统计面板；后续会扩展为单卡详情路由。
 - 设置：展示服务端安全边界和磁盘保护状态。
@@ -38,14 +38,14 @@
 桌面端：
 
 - 顶部 Fleet Command：在线设备、GPU 总数、忙碌 GPU、高温 GPU、显存占用和磁盘保护。
-- 主区域：GPU Fleet 聚合表，以设备/GPU 为行，展示利用率、显存、温度、功耗、PCIe 链路和健康状态。
+- 主区域：GPU Fleet 卡片网格，每块 GPU 独立成卡，卡内用 2x2 历史趋势小图展示利用率、显存、温度和功耗，并保留 PCIe 链路和健康状态。
 - 右侧：当前利用率分布和设备状态。
 - 下方：GPU 进程快照和 24 小时统计。
 
 移动端：
 
 - 顶部 Fleet Command 自动收敛为两列或单列。
-- GPU Fleet 聚合表改为卡片式行布局，避免横向溢出。
+- GPU Fleet 卡片网格收敛为单列，2x2 历史趋势图按宽度自动重排，避免横向溢出。
 - 设备和进程面板纵向排列。
 
 ### GPU 页
@@ -151,4 +151,6 @@ MVP 使用轮询：
 
 ## 浏览器验证
 
-已提供 `scripts/verify-frontend-chrome.mjs`，使用本机 Chrome/Edge 的 CDP 能力完成无额外 npm 依赖的端到端浏览器验证。脚本会登录 Web 面板、验证刷新后 Cookie 会话恢复、检查 GPU Fleet 聚合表、检查深浅主题切换和持久化、检查设备页、检查移动端总览和 GPU 页、确认没有横向溢出，并输出桌面/移动端截图和 `result.json`。
+已提供 `scripts/verify-frontend-chrome.mjs`，使用本机 Chrome/Edge 的 CDP 能力完成无额外 npm 依赖的端到端浏览器验证。脚本会登录 Web 面板、验证刷新后 Cookie 会话恢复、检查 GPU Fleet 卡片面板和 2x2 历史趋势图、检查深浅主题切换和持久化、检查设备页、检查移动端总览和 GPU 页、确认没有横向溢出，并输出桌面/移动端截图和 `result.json`。
+
+演示场景可配合 `scripts/seed-demo-data.mjs` 生成 4 台设备、5 块 GPU 的数据，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 用于验证离线灰色蒙版。验证脚本支持 `--min-fleet-cards`、`--require-offline-mask` 和 `--require-dual-device`，用于对这类演示数据做强断言。
