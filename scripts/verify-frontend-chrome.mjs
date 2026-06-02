@@ -11,6 +11,9 @@ async function main() {
   const username = options.username || 'admin';
   const password = required(options.password, '--password');
   const outDir = options.out || path.resolve('logs', `frontend-verify-${Date.now()}`);
+  const minFleetCards = Number.parseInt(options['min-fleet-cards'] || '1', 10);
+  const requireOfflineMask = options['require-offline-mask'] === 'true' || options['require-offline-mask'] === '1';
+  const requireDualDevice = options['require-dual-device'] === 'true' || options['require-dual-device'] === '1';
 
   const port = await freePort();
   const profileDir = path.join(tmpdir(), `gpufleet-chrome-${process.pid}-${Date.now()}`);
@@ -70,7 +73,7 @@ async function main() {
       await login(cdp, username, password);
       await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board'), text('fleet live')], 12000);
       await assertNoConsoleErrors(cdp);
-      await assertFleetBoard(cdp);
+      const fleetStatus = await assertFleetBoard(cdp, { minFleetCards, requireOfflineMask, requireDualDevice });
       await waitForTheme(cdp, 'light');
       logStep('capturing desktop light overview');
       await screenshot(cdp, path.join(outDir, 'desktop-overview.png'));
@@ -110,15 +113,17 @@ async function main() {
       const mobileOverviewLayout = await evaluate(cdp, () => ({
         width: window.innerWidth,
         scrollWidth: document.documentElement.scrollWidth,
-        fleetRowCount: document.querySelectorAll('.fleet-row:not(.fleet-header)').length,
+        fleetCardCount: document.querySelectorAll('[data-testid="fleet-gpu-card"]').length,
+        trendCount: document.querySelectorAll('[data-testid="gpu-trend-tile"]').length,
+        offlineMaskCount: document.querySelectorAll('.offline-mask').length,
         theme: document.documentElement.dataset.theme || '',
         bodyText: document.body.innerText
       }));
       if (mobileOverviewLayout.scrollWidth > mobileOverviewLayout.width + 2) {
         throw new Error(`mobile overview overflows horizontally: ${mobileOverviewLayout.scrollWidth} > ${mobileOverviewLayout.width}`);
       }
-      if (mobileOverviewLayout.fleetRowCount < 1) {
-        throw new Error('fleet overview rows were not rendered in mobile browser');
+      if (mobileOverviewLayout.fleetCardCount < 1) {
+        throw new Error('fleet overview GPU cards were not rendered in mobile browser');
       }
 
       logStep('checking mobile GPU view');
@@ -164,7 +169,10 @@ async function main() {
           width: layout.width,
           scrollWidth: layout.scrollWidth,
           cardCount: layout.cardCount,
-          fleetRowCount: mobileOverviewLayout.fleetRowCount,
+          fleetCardCount: mobileOverviewLayout.fleetCardCount,
+          fleetTrendCount: mobileOverviewLayout.trendCount,
+          offlineMaskCount: mobileOverviewLayout.offlineMaskCount,
+          dualDeviceCardCount: fleetStatus.dualDeviceCardCount,
           theme: layout.theme,
           buttonCount: layout.buttonCount
         }
@@ -296,18 +304,36 @@ async function waitForTheme(cdp, theme) {
   throw new Error(`timed out waiting for theme ${theme}`);
 }
 
-async function assertFleetBoard(cdp) {
+async function assertFleetBoard(cdp, checks) {
   const status = await evaluate(cdp, () => ({
-    rowCount: document.querySelectorAll('.fleet-row:not(.fleet-header)').length,
+    cardCount: document.querySelectorAll('[data-testid="fleet-gpu-card"]').length,
+    trendCount: document.querySelectorAll('[data-testid="gpu-trend-tile"]').length,
+    offlineMaskCount: document.querySelectorAll('.offline-mask').length,
     hasFleetBoard: Boolean(document.querySelector('[data-testid="fleet-board"]')),
+    hasSparkline: Boolean(document.querySelector('.sparkline .spark-line')),
+    dualDeviceCardCount: Math.max(
+      0,
+      ...Array.from(document.querySelectorAll('[data-testid="fleet-gpu-card"]')).reduce((counts, card) => {
+        const device = card.querySelector('.fleet-device-cell strong')?.textContent?.trim() || '';
+        if (device) counts.set(device, (counts.get(device) || 0) + 1);
+        return counts;
+      }, new Map()).values()
+    ),
     text: document.body.innerText
   }));
-  if (!status.hasFleetBoard || status.rowCount < 1) {
+  if (!status.hasFleetBoard || status.cardCount < checks.minFleetCards || status.trendCount < status.cardCount * 4 || !status.hasSparkline) {
     throw new Error(`fleet board missing or empty: ${JSON.stringify(status)}`);
   }
-  if (!status.text.includes('GPU Fleet') || !status.text.includes('显存') || !status.text.includes('功耗')) {
-    throw new Error('fleet board does not expose compact GPU operations fields');
+  if (checks.requireOfflineMask && status.offlineMaskCount < 1) {
+    throw new Error(`offline mask was required but not found: ${JSON.stringify(status)}`);
   }
+  if (checks.requireDualDevice && status.dualDeviceCardCount < 2) {
+    throw new Error(`same-device multi-GPU cards were required but not found: ${JSON.stringify(status)}`);
+  }
+  if (!status.text.includes('GPU Fleet') || !status.text.includes('GPU 利用率') || !status.text.includes('显存') || !status.text.includes('功耗')) {
+    throw new Error('fleet board does not expose trend chart GPU operation fields');
+  }
+  return status;
 }
 
 async function visibleText(cdp) {
