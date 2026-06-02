@@ -63,30 +63,40 @@ async function main() {
       });
 
       await waitForLoad(cdp);
+      await setStoredTheme(cdp, 'light');
+      await cdp.send('Page.reload', { ignoreCache: true });
+      await waitForLoad(cdp);
       logStep('logging in');
       await login(cdp, username, password);
-      await waitForText(cdp, ['GPUFleet', text('GPU resource overview')], 12000);
+      await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board'), text('fleet live')], 12000);
       await assertNoConsoleErrors(cdp);
-      logStep('capturing desktop overview');
+      await assertFleetBoard(cdp);
+      await waitForTheme(cdp, 'light');
+      logStep('capturing desktop light overview');
       await screenshot(cdp, path.join(outDir, 'desktop-overview.png'));
+
+      logStep('checking dark theme');
+      await clickTestId(cdp, 'theme-toggle');
+      await waitForTheme(cdp, 'dark');
+      await screenshot(cdp, path.join(outDir, 'desktop-overview-dark.png'));
 
       logStep('checking reload session restore');
       await cdp.send('Page.reload', { ignoreCache: true });
       await waitForLoad(cdp);
-      await waitForText(cdp, ['GPUFleet', text('GPU resource overview')], 12000);
+      await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board')], 12000);
       const dashboardAfterReload = await visibleText(cdp);
       if (dashboardAfterReload.includes(text('login panel'))) {
         throw new Error('session was not restored after page reload');
       }
+      await waitForTheme(cdp, 'dark');
 
       logStep('checking devices view');
       await clickButton(cdp, text('devices'));
       await waitForText(cdp, [text('device management'), text('register device')], 5000);
       await screenshot(cdp, path.join(outDir, 'desktop-devices.png'));
 
-      logStep('checking mobile GPU view');
-      await clickButton(cdp, text('gpu'));
-      await waitForText(cdp, [text('gpu monitoring')], 5000);
+      logStep('checking mobile overview');
+      await clickButton(cdp, text('overview'));
       await cdp.send('Emulation.setDeviceMetricsOverride', {
         width: 390,
         height: 900,
@@ -95,7 +105,23 @@ async function main() {
       });
       await cdp.send('Page.reload', { ignoreCache: true });
       await waitForLoad(cdp);
-      await waitForText(cdp, ['GPUFleet', text('GPU resource overview')], 12000);
+      await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board')], 12000);
+      await screenshot(cdp, path.join(outDir, 'mobile-overview.png'));
+      const mobileOverviewLayout = await evaluate(cdp, () => ({
+        width: window.innerWidth,
+        scrollWidth: document.documentElement.scrollWidth,
+        fleetRowCount: document.querySelectorAll('.fleet-row:not(.fleet-header)').length,
+        theme: document.documentElement.dataset.theme || '',
+        bodyText: document.body.innerText
+      }));
+      if (mobileOverviewLayout.scrollWidth > mobileOverviewLayout.width + 2) {
+        throw new Error(`mobile overview overflows horizontally: ${mobileOverviewLayout.scrollWidth} > ${mobileOverviewLayout.width}`);
+      }
+      if (mobileOverviewLayout.fleetRowCount < 1) {
+        throw new Error('fleet overview rows were not rendered in mobile browser');
+      }
+
+      logStep('checking mobile GPU view');
       await clickButton(cdp, text('gpu'));
       await waitForText(cdp, [text('gpu monitoring')], 5000);
       await screenshot(cdp, path.join(outDir, 'mobile-gpu.png'));
@@ -105,6 +131,7 @@ async function main() {
         scrollWidth: document.documentElement.scrollWidth,
         title: document.querySelector('h1')?.textContent || '',
         cardCount: document.querySelectorAll('.gpu-card').length,
+        theme: document.documentElement.dataset.theme || '',
         buttonCount: document.querySelectorAll('button').length,
         bodyText: document.body.innerText
       }));
@@ -113,6 +140,9 @@ async function main() {
       }
       if (layout.cardCount < 1) {
         throw new Error('GPU card was not rendered in browser');
+      }
+      if (layout.theme !== 'dark') {
+        throw new Error(`theme did not persist after reload: ${layout.theme}`);
       }
       if (!layout.bodyText.includes('NVIDIA')) {
         throw new Error('GPU model was not visible in browser');
@@ -125,13 +155,17 @@ async function main() {
         ok: true,
         screenshots: {
           desktop_overview: path.join(outDir, 'desktop-overview.png'),
+          desktop_overview_dark: path.join(outDir, 'desktop-overview-dark.png'),
           desktop_devices: path.join(outDir, 'desktop-devices.png'),
+          mobile_overview: path.join(outDir, 'mobile-overview.png'),
           mobile_gpu: path.join(outDir, 'mobile-gpu.png')
         },
         layout: {
           width: layout.width,
           scrollWidth: layout.scrollWidth,
           cardCount: layout.cardCount,
+          fleetRowCount: mobileOverviewLayout.fleetRowCount,
+          theme: layout.theme,
           buttonCount: layout.buttonCount
         }
       };
@@ -167,8 +201,11 @@ function required(value, name) {
 function text(id) {
   const values = {
     'GPU resource overview': '\u0047\u0050\u0055 \u8d44\u6e90\u603b\u89c8',
+    'fleet board': '\u0047\u0050\u0055 \u0046\u006c\u0065\u0065\u0074',
+    'fleet live': '\u591a\u673a \u0047\u0050\u0055 \u8fd0\u884c\u6001',
     'device management': '\u8bbe\u5907\u7ba1\u7406',
     'register device': '\u6ce8\u518c\u8bbe\u5907',
+    overview: '\u603b\u89c8',
     devices: '\u8bbe\u5907',
     gpu: '\u0047\u0050\u0055',
     'gpu monitoring': '\u0047\u0050\u0055 \u76d1\u63a7',
@@ -231,6 +268,46 @@ async function clickButton(cdp, label) {
     if (!button) throw new Error(`button not found: ${label}`);
     button.click();
   }, label);
+}
+
+async function clickTestId(cdp, testId) {
+  await evaluate(cdp, (testId) => {
+    const element = document.querySelector(`[data-testid="${testId}"]`);
+    if (!element) throw new Error(`test id not found: ${testId}`);
+    element.click();
+  }, testId);
+}
+
+async function setStoredTheme(cdp, theme) {
+  await evaluate(cdp, (theme) => {
+    localStorage.setItem('gpufleet-theme', theme);
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+  }, theme);
+}
+
+async function waitForTheme(cdp, theme) {
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
+    const current = await evaluate(cdp, () => document.documentElement.dataset.theme || '');
+    if (current === theme) return;
+    await delay(100);
+  }
+  throw new Error(`timed out waiting for theme ${theme}`);
+}
+
+async function assertFleetBoard(cdp) {
+  const status = await evaluate(cdp, () => ({
+    rowCount: document.querySelectorAll('.fleet-row:not(.fleet-header)').length,
+    hasFleetBoard: Boolean(document.querySelector('[data-testid="fleet-board"]')),
+    text: document.body.innerText
+  }));
+  if (!status.hasFleetBoard || status.rowCount < 1) {
+    throw new Error(`fleet board missing or empty: ${JSON.stringify(status)}`);
+  }
+  if (!status.text.includes('GPU Fleet') || !status.text.includes('显存') || !status.text.includes('功耗')) {
+    throw new Error('fleet board does not expose compact GPU operations fields');
+  }
 }
 
 async function visibleText(cdp) {
