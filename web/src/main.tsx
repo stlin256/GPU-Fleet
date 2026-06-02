@@ -90,6 +90,20 @@ function temp(value?: number) {
   return `${Math.round(value)}°C`;
 }
 
+function fmtHours(value?: number) {
+  if (typeof value !== 'number' || Number.isNaN(value) || value <= 0) return '-';
+  if (value % 24 === 0) return `${Math.round(value / 24)} 天`;
+  if (value > 24) return `${Math.floor(value / 24)} 天 ${value % 24} 小时`;
+  return `${value} 小时`;
+}
+
+function fmtDateTime(value?: string) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleString();
+}
+
 function App() {
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [theme, setTheme] = useState<Theme>(initialTheme);
@@ -823,32 +837,121 @@ function StatsPanel({ statRows }: { statRows: GPUStats[] }) {
 
 function SettingsPanel({ data }: { data?: Overview }) {
   const free = data?.disk.free_bytes ?? 0;
-  const min = data?.disk.min_free_bytes ?? 0;
+  const min = data?.min_free_space_bytes ?? data?.disk.min_free_bytes ?? 0;
+  const retentionHours = data?.retention_hours ?? 0;
+  const offline = Math.max(0, (data?.device_count ?? 0) - (data?.online_device_count ?? 0));
   return (
-    <section className="settings-grid">
-      <article className="panel">
-        <div className="panel-head">
-          <h2>服务端边界</h2>
-          <ShieldCheck size={18} />
-        </div>
-        <div className="settings-list">
-          <div><strong>客户端控制</strong><p>未提供命令下发、配置下发或远程执行接口</p></div>
-          <div><strong>Agent 接入</strong><p>HMAC、时间戳、nonce、请求体大小限制和基础限流</p></div>
-          <div><strong>Web 会话</strong><p>HttpOnly Cookie，会话过期后重新登录</p></div>
-        </div>
-      </article>
-      <article className="panel">
-        <div className="panel-head">
-          <h2>磁盘保护</h2>
+    <div className="settings-page" data-testid="settings-page">
+      <section className="settings-hero panel">
+        <div className="settings-hero-copy">
           <span className={`pill ${data?.disk.status ?? 'ok'}`}>{data?.disk.status ?? 'ok'}</span>
+          <h2>服务运行与安全边界</h2>
+          <p>当前服务只接收客户端主动上报和 Web 管理请求，不提供远程命令、配置下发或客户端控制通道。</p>
         </div>
-        <div className="settings-list">
-          <div><strong>当前空闲</strong><p>{fmtBytes(free)}</p></div>
-          <div><strong>保留阈值</strong><p>{fmtBytes(min)}</p></div>
-          <div><strong>回收策略</strong><p>写入指标前清理过期 gzip 分段</p></div>
+        <div className="settings-kpi-grid">
+          <SettingStat label="服务时间" value={fmtDateTime(data?.server_time)} caption="来自服务端" />
+          <SettingStat label="数据保留" value={fmtHours(retentionHours)} caption="gzip 分段清理窗口" />
+          <SettingStat label="磁盘预留" value={fmtBytes(min)} caption="低于阈值拒绝写入" />
+          <SettingStat label="设备状态" value={`${data?.online_device_count ?? 0}/${data?.device_count ?? 0}`} caption={offline > 0 ? `${offline} 台离线` : '全部在线'} />
         </div>
-      </article>
-    </section>
+      </section>
+
+      <section className="settings-grid">
+        <article className="panel setting-panel">
+          <div className="panel-head">
+            <h2>服务端边界</h2>
+            <ShieldCheck size={18} />
+          </div>
+          <div className="settings-list">
+            <SettingItem label="客户端控制" value="无命令下发、无配置下发、无远程执行接口" />
+            <SettingItem label="管理动作" value="只修改服务端设备认证状态和密钥记录" />
+            <SettingItem label="公网部署" value="建议仅暴露 Web/API 入口，数据目录和后续数据库不直接暴露" />
+          </div>
+        </article>
+
+        <article className="panel setting-panel">
+          <div className="panel-head">
+            <h2>存储与回收</h2>
+            <HardDrive size={18} />
+          </div>
+          <div className="settings-list">
+            <SettingItem label="当前空闲" value={fmtBytes(free)} />
+            <SettingItem label="保留阈值" value={fmtBytes(min)} />
+            <SettingItem label="数据格式" value="gzip JSONL 按小时分段保存指标" />
+            <SettingItem label="回收策略" value={`写入前清理超过 ${fmtHours(retentionHours)} 的分段`} />
+          </div>
+        </article>
+
+        <article className="panel setting-panel">
+          <div className="panel-head">
+            <h2>Agent 接入</h2>
+            <Server size={18} />
+          </div>
+          <div className="settings-list">
+            <SettingItem label="认证方式" value="设备 ID + HMAC-SHA256 签名" />
+            <SettingItem label="重放保护" value="时间戳 5 分钟窗口，nonce 10 分钟去重" />
+            <SettingItem label="请求限制" value="解压后请求体最大 2 MiB，Agent 基础限流 240 次/分钟" />
+            <SettingItem label="客户端行为" value="失败时本地队列缓存，恢复后主动回放" />
+          </div>
+        </article>
+
+        <article className="panel setting-panel">
+          <div className="panel-head">
+            <h2>Web 会话</h2>
+            <KeyRound size={18} />
+          </div>
+          <div className="settings-list">
+            <SettingItem label="登录保护" value="管理员密码派生存储，登录基础限流 10 次/分钟" />
+            <SettingItem label="会话 Cookie" value="HttpOnly，同源请求携带，会话有效期 12 小时" />
+            <SettingItem label="设备密钥" value="创建设备返回一次性密钥，支持禁用、启用和轮换" />
+          </div>
+        </article>
+
+        <article className="panel setting-panel">
+          <div className="panel-head">
+            <h2>API 范围</h2>
+            <Database size={18} />
+          </div>
+          <div className="settings-list">
+            <SettingItem label="Agent 写入" value="/agent/heartbeat、/agent/samples、/agent/process-snapshots" />
+            <SettingItem label="Web 查询" value="/overview、/stats/gpu-utilization、/gpus/{id}/series" />
+            <SettingItem label="管理接口" value="/admin/devices 及启用、禁用、密钥轮换动作" />
+          </div>
+        </article>
+
+        <article className="panel setting-panel">
+          <div className="panel-head">
+            <h2>当前快照</h2>
+            <Activity size={18} />
+          </div>
+          <div className="settings-list">
+            <SettingItem label="GPU 数量" value={`${data?.gpu_count ?? 0} 块`} />
+            <SettingItem label="进程快照" value={`${data?.latest_processes.length ?? 0} 条`} />
+            <SettingItem label="平均利用率" value={pct(data?.average_utilization ?? 0)} />
+            <SettingItem label="聚合显存" value={`${fmtBytes(data?.memory_used_bytes)} / ${fmtBytes(data?.memory_total_bytes)}`} />
+          </div>
+        </article>
+      </section>
+    </div>
+  );
+}
+
+function SettingStat({ label, value, caption }: { label: string; value: string; caption: string }) {
+  return (
+    <div className="setting-stat" data-testid="setting-stat">
+      <span>{label}</span>
+      <strong>{value}</strong>
+      <p>{caption}</p>
+    </div>
+  );
+}
+
+function SettingItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="setting-item">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
   );
 }
 

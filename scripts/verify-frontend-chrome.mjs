@@ -98,6 +98,23 @@ async function main() {
       await waitForText(cdp, [text('device management'), text('register device')], 5000);
       await screenshot(cdp, path.join(outDir, 'desktop-devices.png'));
 
+      logStep('checking settings view');
+      await clickButton(cdp, text('settings'));
+      await waitForText(cdp, [text('service settings'), text('service boundary'), text('storage recycling'), text('agent access'), text('api scope')], 5000);
+      const settingsLayout = await evaluate(cdp, () => ({
+        statCount: document.querySelectorAll('[data-testid="setting-stat"]').length,
+        itemCount: document.querySelectorAll('.setting-item').length,
+        hasSettingsPage: Boolean(document.querySelector('[data-testid="settings-page"]')),
+        bodyText: document.body.innerText
+      }));
+      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.itemCount < 18) {
+        throw new Error(`settings page is incomplete: ${JSON.stringify(settingsLayout)}`);
+      }
+      if (!settingsLayout.bodyText.includes('无命令下发') || !settingsLayout.bodyText.includes('gzip JSONL') || !settingsLayout.bodyText.includes('HMAC-SHA256')) {
+        throw new Error('settings page does not expose service boundary, storage and agent access details');
+      }
+      await screenshot(cdp, path.join(outDir, 'desktop-settings.png'));
+
       logStep('checking mobile overview');
       await clickButton(cdp, text('overview'));
       await cdp.send('Emulation.setDeviceMetricsOverride', {
@@ -170,6 +187,7 @@ async function main() {
           desktop_overview: path.join(outDir, 'desktop-overview.png'),
           desktop_overview_dark: path.join(outDir, 'desktop-overview-dark.png'),
           desktop_devices: path.join(outDir, 'desktop-devices.png'),
+          desktop_settings: path.join(outDir, 'desktop-settings.png'),
           mobile_overview: path.join(outDir, 'mobile-overview.png'),
           mobile_gpu: path.join(outDir, 'mobile-gpu.png')
         },
@@ -183,6 +201,8 @@ async function main() {
           dualDeviceCardCount: fleetStatus.dualDeviceCardCount,
           detailTrendCount: layout.detailTrendCount,
           meterCount: layout.meterCount,
+          settingsStatCount: settingsLayout.statCount,
+          settingsItemCount: settingsLayout.itemCount,
           theme: layout.theme,
           buttonCount: layout.buttonCount
         }
@@ -223,9 +243,15 @@ function text(id) {
     'fleet live': '\u591a\u673a \u0047\u0050\u0055 \u8fd0\u884c\u6001',
     'device management': '\u8bbe\u5907\u7ba1\u7406',
     'register device': '\u6ce8\u518c\u8bbe\u5907',
+    'service settings': '\u670d\u52a1\u8bbe\u7f6e',
+    'service boundary': '\u670d\u52a1\u7aef\u8fb9\u754c',
+    'storage recycling': '\u5b58\u50a8\u4e0e\u56de\u6536',
+    'agent access': '\u0041\u0067\u0065\u006e\u0074 \u63a5\u5165',
+    'api scope': '\u0041\u0050\u0049 \u8303\u56f4',
     overview: '\u603b\u89c8',
     devices: '\u8bbe\u5907',
     gpu: '\u0047\u0050\u0055',
+    settings: '\u8bbe\u7f6e',
     'gpu monitoring': '\u0047\u0050\u0055 \u76d1\u63a7',
     'login panel': '\u767b\u5f55\u9762\u677f'
   };

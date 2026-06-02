@@ -113,6 +113,8 @@ export type Overview = {
   devices: Device[];
   latest_gpus: StoredGPU[];
   latest_processes: StoredProcess[];
+  retention_hours: number;
+  min_free_space_bytes: number;
 };
 
 export type StatsResponse = {

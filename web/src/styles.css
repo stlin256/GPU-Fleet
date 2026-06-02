@@ -720,7 +720,7 @@ input {
   gap: 12px;
 }
 
-.device-admin, .settings-grid {
+.device-admin {
   display: grid;
   gap: 14px;
 }
@@ -777,20 +777,112 @@ input {
   justify-content: flex-end;
 }
 
+.settings-page {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-hero {
+  display: grid;
+  grid-template-columns: minmax(260px, .78fr) minmax(420px, 1.22fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.settings-hero-copy {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.settings-hero-copy h2 {
+  font-size: clamp(22px, 3vw, 30px);
+  line-height: 1.08;
+}
+
+.settings-hero-copy p {
+  max-width: 620px;
+}
+
+.settings-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 14px;
+  align-content: center;
+}
+
+.setting-stat {
+  min-width: 0;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.setting-stat:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.setting-stat span,
+.setting-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.setting-stat strong {
+  display: block;
+  margin-top: 7px;
+  font-size: 20px;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.setting-stat p {
+  margin-top: 5px;
+}
+
 .settings-grid {
-  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.setting-panel {
+  align-self: stretch;
 }
 
 .settings-list {
   display: grid;
-  gap: 12px;
+  gap: 0;
+}
+
+.setting-item {
+  min-width: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.setting-item:last-child {
+  border-bottom: 0;
+}
+
+.setting-item strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1180px) {
   .fleet-command,
   .overview-layout,
-  .overview-secondary {
+  .overview-secondary,
+  .settings-hero {
     grid-template-columns: 1fr;
+  }
+  .settings-grid {
+    grid-template-columns: repeat(2, minmax(260px, 1fr));
   }
 }
 
@@ -847,8 +939,14 @@ input {
   .gpu-detail-grid {
     grid-template-columns: 1fr;
   }
-  .device-form, .device-row, .secret-box, .settings-grid {
+  .device-form, .device-row, .secret-box, .settings-grid, .settings-kpi-grid {
     grid-template-columns: 1fr;
+  }
+  .setting-stat:nth-last-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+  .setting-stat:last-child {
+    border-bottom: 0;
   }
   .row-actions {
     justify-content: flex-start;
@@ -860,7 +958,8 @@ input {
   .fleet-kpis {
     grid-template-columns: 1fr;
   }
-  .gpu-trend-grid {
+  .gpu-trend-grid,
+  .gpu-detail-trend-grid {
     grid-template-columns: 1fr;
   }
   .top-actions {
