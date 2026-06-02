@@ -494,24 +494,6 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
   fill: color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
-.meter {
-  height: 9px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--line) 55%, transparent);
-}
-
-.meter.compact {
-  height: 7px;
-  margin: 0;
-}
-
-.meter i {
-  height: 100%;
-  display: block;
-  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--warn) 34%, var(--accent)));
-}
-
 .pill.online, .pill.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 48%, var(--line)); background: var(--good-soft); }
 .pill.warning, .pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 48%, var(--line)); background: var(--warn-soft); }
 .pill.critical, .pill.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 48%, var(--line)); background: var(--bad-soft); }
@@ -597,8 +579,15 @@ button:disabled { opacity: .65; cursor: default; transform: none; }
   gap: 10px;
 }
 
-.gpu-card > .meter {
-  margin: 12px 0;
+.gpu-detail-trend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.gpu-detail-trend-grid .trend-tile {
+  min-height: 132px;
 }
 
 .kv, .list-row, .table-row {

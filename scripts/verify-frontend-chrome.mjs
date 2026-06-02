@@ -136,6 +136,8 @@ async function main() {
         scrollWidth: document.documentElement.scrollWidth,
         title: document.querySelector('h1')?.textContent || '',
         cardCount: document.querySelectorAll('.gpu-card').length,
+        detailTrendCount: document.querySelectorAll('.gpu-detail-trend-grid [data-testid="gpu-trend-tile"]').length,
+        meterCount: document.querySelectorAll('.meter').length,
         theme: document.documentElement.dataset.theme || '',
         buttonCount: document.querySelectorAll('button').length,
         bodyText: document.body.innerText
@@ -145,6 +147,12 @@ async function main() {
       }
       if (layout.cardCount < 1) {
         throw new Error('GPU card was not rendered in browser');
+      }
+      if (layout.detailTrendCount < layout.cardCount * 4) {
+        throw new Error(`GPU detail trend charts were not rendered: ${JSON.stringify(layout)}`);
+      }
+      if (layout.meterCount > 0) {
+        throw new Error(`legacy meter bars are still visible on GPU detail page: ${JSON.stringify(layout)}`);
       }
       if (layout.theme !== 'dark') {
         throw new Error(`theme did not persist after reload: ${layout.theme}`);
@@ -173,6 +181,8 @@ async function main() {
           fleetTrendCount: mobileOverviewLayout.trendCount,
           offlineMaskCount: mobileOverviewLayout.offlineMaskCount,
           dualDeviceCardCount: fleetStatus.dualDeviceCardCount,
+          detailTrendCount: layout.detailTrendCount,
+          meterCount: layout.meterCount,
           theme: layout.theme,
           buttonCount: layout.buttonCount
         }

@@ -25,9 +25,7 @@ import {
   Server,
   Settings,
   ShieldCheck,
-  Sun,
-  Thermometer,
-  Zap
+  Sun
 } from 'lucide-react';
 import {
   createDevice,
@@ -35,6 +33,7 @@ import {
   getGPUSeries,
   getOverview,
   getStats,
+  GPUSeriesPoint,
   GPUStats,
   login,
   logout,
@@ -422,13 +421,24 @@ function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Devi
         <span>{gpu.compute_capability ? `Compute ${gpu.compute_capability}` : gpu.driver_model || '-'}</span>
       </div>
 
-      <div className="gpu-trend-grid">
-        <TrendTile label="GPU 利用率" value={pct(util)} caption={gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz) : '最近 1 小时'} values={points.map((point) => point.utilization_gpu_percent)} max={100} tone={metricTone(util, 70, 92)} />
-        <TrendTile label="显存" value={`${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes)}`} caption={`总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} max={100} tone={metricTone(mem, 75, 92)} />
-        <TrendTile label="温度" value={temp(gpu.temperature_celsius)} caption={tempToneText(gpu.temperature_celsius)} values={points.map((point) => point.temperature_celsius)} max={100} tone={metricTone(gpu.temperature_celsius, 80, 88)} />
-        <TrendTile label="功耗" value={watts(gpu.power_draw_watts)} caption={powerLimit ? `上限 ${watts(powerLimit)}` : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} />
-      </div>
+      <GPUTrendGrid item={item} points={points} />
     </article>
+  );
+}
+
+function GPUTrendGrid({ item, points, className = 'gpu-trend-grid' }: { item: StoredGPU; points: GPUSeriesPoint[]; className?: string }) {
+  const gpu = item.gpu;
+  const util = gpu.utilization_gpu_percent;
+  const mem = memoryUsagePercent(item);
+  const powerLimit = gpu.power_limit_watts ?? gpu.power_enforced_limit_watts;
+
+  return (
+    <div className={className}>
+      <TrendTile label="GPU 利用率" value={pct(util)} caption={gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz) : '最近 1 小时'} values={points.map((point) => point.utilization_gpu_percent)} max={100} tone={metricTone(util, 70, 92)} />
+      <TrendTile label="显存" value={`${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes)}`} caption={`总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} max={100} tone={metricTone(mem, 75, 92)} />
+      <TrendTile label="温度" value={temp(gpu.temperature_celsius)} caption={tempToneText(gpu.temperature_celsius)} values={points.map((point) => point.temperature_celsius)} max={100} tone={metricTone(gpu.temperature_celsius, 80, 88)} />
+      <TrendTile label="功耗" value={watts(gpu.power_draw_watts)} caption={powerLimit ? `上限 ${watts(powerLimit)}` : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} />
+    </div>
   );
 }
 
@@ -558,9 +568,15 @@ function Metric({ icon, label, value, tone }: { icon: React.ReactNode; label: st
 
 function GPUCard({ item }: { item: StoredGPU }) {
   const gpu = item.gpu;
-  const mem = gpu.memory_total_bytes ? (gpu.memory_used_bytes / gpu.memory_total_bytes) * 100 : 0;
   const pcie = [gpu.pcie_link_generation ? `Gen ${gpu.pcie_link_generation}` : '', gpu.pcie_link_width ? `x${gpu.pcie_link_width}` : ''].filter(Boolean).join(' ');
   const pcieMax = [gpu.pcie_link_generation_max ? `Gen ${gpu.pcie_link_generation_max}` : '', gpu.pcie_link_width_max ? `x${gpu.pcie_link_width_max}` : ''].filter(Boolean).join(' ');
+  const series = useQuery({
+    queryKey: ['gpu-series-detail', item.device_id, gpu.gpu_id, 1],
+    queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
+    refetchInterval: 30000,
+    retry: false
+  });
+  const points = series.data ?? [];
   const detailRows = [
     ['显存空闲', fmtBytes(gpu.memory_free_bytes)],
     ['显存保留', fmtBytes(gpu.memory_reserved_bytes)],
@@ -593,10 +609,7 @@ function GPUCard({ item }: { item: StoredGPU }) {
         </div>
         <span>{pct(gpu.utilization_gpu_percent)}</span>
       </div>
-      <div className="meter"><i style={{ width: `${gpu.utilization_gpu_percent ?? 0}%` }} /></div>
-      <div className="kv"><span>显存</span><strong>{pct(mem)} · {fmtBytes(gpu.memory_used_bytes)}</strong></div>
-      <div className="kv"><span><Thermometer size={14} />温度</span><strong>{temp(gpu.temperature_celsius)}</strong></div>
-      <div className="kv"><span><Zap size={14} />功耗</span><strong>{watts(gpu.power_draw_watts)}</strong></div>
+      <GPUTrendGrid item={item} points={points} className="gpu-detail-trend-grid" />
       <div className="gpu-detail-grid">
         {detailRows.map(([label, value]) => (
           <div key={label}>
