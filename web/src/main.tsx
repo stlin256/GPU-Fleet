@@ -14,6 +14,7 @@ import {
   Download,
   FileKey2,
   Gauge,
+  Github,
   HardDrive,
   KeyRound,
   LockKeyhole,
@@ -69,6 +70,9 @@ type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
 
 const deviceBorderPalette = ['#146c78', '#6750a4', '#b26a00', '#198754', '#c54040', '#2f6fbd', '#8a5a00', '#00806a'];
+const repositoryOwner = 'stlin256';
+const repositoryName = 'GPUFleet';
+const repositoryURL = `https://github.com/${repositoryOwner}/${repositoryName}`;
 
 function initialTheme(): Theme {
   const stored = window.localStorage.getItem('gpufleet-theme');
@@ -202,10 +206,7 @@ function LoadingScreen({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: 
     <main className="login-shell">
       <div className="login-panel auth-loading">
         <div className="login-head">
-          <div className="brand">
-            <span className="brand-mark">G</span>
-            <span>GPUFleet</span>
-          </div>
+          <Brand />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
         <h1>正在连接</h1>
@@ -303,10 +304,7 @@ function SetupWizard({
     <main className={mode === 'initial' ? 'login-shell' : 'setup-inline'} data-testid={mode === 'initial' ? 'setup-wizard' : 'setup-wizard-inline'}>
       <form className={`setup-panel ${mode === 'initial' ? 'panel' : ''}`} onSubmit={submit}>
         <div className="login-head">
-          <div className="brand">
-            <span className="brand-mark">G</span>
-            <span>GPUFleet</span>
-          </div>
+          <Brand />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
         <div className="setup-title">
@@ -380,10 +378,7 @@ function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; the
     <main className="login-shell">
       <form className="login-panel" onSubmit={submit}>
         <div className="login-head">
-          <div className="brand">
-            <span className="brand-mark">G</span>
-            <span>GPUFleet</span>
-          </div>
+          <Brand />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
         <h1>登录面板</h1>
@@ -441,10 +436,7 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
   return (
     <div className="app">
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">G</span>
-          <span>GPUFleet</span>
-        </div>
+        <Brand />
         <nav>
           <button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><Activity size={17} />总览</button>
           <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}><Server size={17} />设备</button>
@@ -479,6 +471,15 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
           {view === 'settings' && <SettingsPanel data={data} theme={theme} onToggleTheme={onToggleTheme} />}
         </div>
       </main>
+    </div>
+  );
+}
+
+function Brand() {
+  return (
+    <div className="brand" aria-label="GPUFleet">
+      <img className="brand-mark" src="/brand/gpufleet-logo.svg" alt="" />
+      <span>GPUFleet</span>
     </div>
   );
 }
@@ -1118,6 +1119,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
         <PortSettings service={service} onDone={refreshOverview} />
         <CertificateSettings service={service} onDone={refreshOverview} />
         <DatabaseSettings data={data} />
+        <ProjectInfoSettings />
         <article className="panel setting-operation">
           <div className="operation-head">
             <div className="operation-icon"><Settings size={18} /></div>
@@ -1149,6 +1151,40 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
         />
       )}
     </div>
+  );
+}
+
+function ProjectInfoSettings() {
+  return (
+    <article className="panel setting-operation project-card" data-testid="settings-project">
+      <div className="operation-head">
+        <div className="operation-icon project-logo">
+          <img src="/brand/gpufleet-logo.svg" alt="" />
+        </div>
+        <div>
+          <h2>项目信息</h2>
+          <p>GPUFleet 开源仓库</p>
+        </div>
+      </div>
+      <div className="project-meta">
+        <div>
+          <span>作者</span>
+          <strong>{repositoryOwner}</strong>
+        </div>
+        <div>
+          <span>仓库</span>
+          <strong>{repositoryName}</strong>
+        </div>
+        <div className="project-url">
+          <span>仓库地址</span>
+          <a href={repositoryURL} target="_blank" rel="noreferrer">{repositoryURL}</a>
+        </div>
+      </div>
+      <a className="secondary action-button" href={repositoryURL} target="_blank" rel="noreferrer">
+        <Github size={16} />
+        打开 GitHub
+      </a>
+    </article>
   );
 }
 

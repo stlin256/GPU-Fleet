@@ -93,6 +93,7 @@
 - 端口配置：保存下一次启动要使用的访问端口；当前进程不热切换监听端口。
 - HTTPS 证书：上传证书 PEM 和私钥 PEM；无证书时使用 HTTP，有证书并重启后使用 HTTPS。
 - 数据库下载：下载运行数据库压缩包，不包含证书私钥。
+- 项目信息：显示项目品牌 Logo、作者 `stlin256` 和仓库地址 `https://github.com/stlin256/GPUFleet`。
 - 配置引导：登录后可重新打开首次配置流程，集中调整密码、端口和证书。
 
 后续增强：
@@ -132,6 +133,7 @@
 - 卡片圆角不超过 8px。
 - 图表突出数据，不使用过多装饰。
 - 使用 lucide 图标表达动作，例如刷新、筛选、下载、设置。
+- 品牌 Logo 使用 `web/public/brand/gpufleet-logo.svg`，侧边栏、登录页、配置引导和设置页复用同一 SVG 标识。
 - 页面切换、卡片进入、按钮按压、表单焦点、图表绘制、提示气泡和离线蒙版都有轻量动效；遵守 `prefers-reduced-motion`，系统要求减少动态时会自动收敛。
 
 ## 交互细节
@@ -157,6 +159,6 @@ MVP 使用轮询：
 
 ## 浏览器验证
 
-已提供 `scripts/verify-frontend-chrome.mjs`，使用本机 Chrome/Edge 的 CDP 能力完成无额外 npm 依赖的端到端浏览器验证。脚本会登录 Web 面板、验证刷新后 Cookie 会话恢复、检查 GPU Fleet 卡片面板和 2x2 历史趋势图、检查趋势图悬浮读数、检查同设备 GPU 边框同色、检查深浅主题切换和持久化、检查设备页、检查设置页操作入口、检查移动端总览和 GPU 页、确认底部导航固定和无横向溢出，并输出桌面/移动端截图和 `result.json`。
+已提供 `scripts/verify-frontend-chrome.mjs`，使用本机 Chrome/Edge 的 CDP 能力完成无额外 npm 依赖的端到端浏览器验证。脚本会登录 Web 面板、验证刷新后 Cookie 会话恢复、检查 GPU Fleet 卡片面板和 2x2 历史趋势图、检查趋势图悬浮读数、检查同设备 GPU 边框同色、检查深浅主题切换和持久化、检查设备页、检查设置页操作入口、检查品牌 Logo 与仓库署名、检查移动端总览和 GPU 页、确认底部导航固定和无横向溢出，并输出桌面/移动端截图和 `result.json`。
 
 演示场景可配合 `scripts/seed-demo-data.mjs` 生成 4 台设备、5 块 GPU 的数据，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 用于验证离线灰色蒙版。验证脚本支持 `--min-fleet-cards`、`--require-offline-mask` 和 `--require-dual-device`，用于对这类演示数据做强断言。

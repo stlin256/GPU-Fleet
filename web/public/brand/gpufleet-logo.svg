@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">GPUFleet logo</title>
+  <desc id="desc">A GPU chip connected to several fleet nodes.</desc>
+  <defs>
+    <linearGradient id="shell" x1="28" y1="24" x2="222" y2="228" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#146C78"/>
+      <stop offset=".58" stop-color="#198754"/>
+      <stop offset="1" stop-color="#B26A00"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="78" y1="73" x2="178" y2="181" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DFF3F2"/>
+    </linearGradient>
+    <filter id="softShadow" x="-20%" y="-20%" width="140%" height="145%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#0F5660" flood-opacity=".24"/>
+    </filter>
+  </defs>
+  <rect x="18" y="18" width="220" height="220" rx="46" fill="url(#shell)"/>
+  <path d="M52 178c28-44 62-72 103-86 21-7 38-19 49-37v118c0 17-14 31-31 31H68c-11 0-17-13-16-26Z" fill="#0E1215" opacity=".13"/>
+  <g fill="none" stroke="#E8FBF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity=".9">
+    <path d="M62 89h34"/>
+    <path d="M62 166h34"/>
+    <path d="M160 62v34"/>
+    <path d="M160 160v34"/>
+    <path d="M178 128h32"/>
+  </g>
+  <g fill="#E8FBF6">
+    <circle cx="62" cy="89" r="13"/>
+    <circle cx="62" cy="166" r="13"/>
+    <circle cx="160" cy="62" r="13"/>
+    <circle cx="160" cy="194" r="13"/>
+    <circle cx="210" cy="128" r="13"/>
+  </g>
+  <g filter="url(#softShadow)">
+    <rect x="84" y="84" width="88" height="88" rx="22" fill="url(#chip)"/>
+    <rect x="105" y="105" width="46" height="46" rx="12" fill="#146C78"/>
+    <path d="M118 130h16c8 0 13-5 13-13s-5-13-13-13h-16v47" fill="none" stroke="#F7FFFC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M121 130h23" fill="none" stroke="#F7FFFC" stroke-width="9" stroke-linecap="round"/>
+  </g>
+</svg>

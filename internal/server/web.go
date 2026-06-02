@@ -66,7 +66,7 @@ const dashboardHTML = `<!doctype html>
     button, input { font: inherit; }
     button { cursor: pointer; }
     h1, h2, h3, p { margin: 0; }
-    h1 { font-size: clamp(24px, 4vw, 34px); line-height: 1.1; }
+    h1 { font-size: 30px; line-height: 1.1; }
     h2 { font-size: 16px; }
     h3 { font-size: 14px; }
     p { color: var(--muted); font-size: 13px; margin-top: 5px; }
@@ -106,11 +106,14 @@ const dashboardHTML = `<!doctype html>
       width: 30px;
       height: 30px;
       border-radius: 8px;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(135deg, var(--accent), var(--warn));
-      color: white;
+      display: block;
+      overflow: hidden;
       box-shadow: var(--shadow-soft);
+    }
+    .brand-mark svg {
+      width: 100%;
+      height: 100%;
+      display: block;
     }
     label {
       display: grid;
@@ -267,7 +270,7 @@ const dashboardHTML = `<!doctype html>
       font-weight: 800;
       padding: 4px 8px;
     }
-    .fleet-command h2 { font-size: clamp(24px, 3.4vw, 34px); line-height: 1.05; }
+    .fleet-command h2 { font-size: 32px; line-height: 1.05; }
     .fleet-kpis {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -632,6 +635,56 @@ const dashboardHTML = `<!doctype html>
       color: var(--accent-strong);
       background: var(--accent-soft);
     }
+    .project-card {
+      background: linear-gradient(135deg, var(--panel), var(--panel-soft));
+    }
+    .project-logo {
+      padding: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+    .project-logo svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .project-meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .project-meta div {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 10px;
+    }
+    .project-meta span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .project-meta strong {
+      display: block;
+      margin-top: 6px;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
+    }
+    .project-url {
+      grid-column: 1 / -1;
+    }
+    .project-meta a {
+      display: block;
+      margin-top: 6px;
+      color: var(--accent-strong);
+      text-decoration: none;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .project-meta a:hover { text-decoration: underline; }
     .action-button {
       width: fit-content;
       text-decoration: none;
@@ -661,7 +714,9 @@ const dashboardHTML = `<!doctype html>
       .fleet-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .fleet-card-grid, .gpu-card-meta, .metric-grid, .main-grid { grid-template-columns: 1fr; }
       nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .gpu-detail-grid, .device-form, .device-row, .secret-box, .settings-actions-grid, .settings-kpi-grid { grid-template-columns: 1fr; }
+      h1 { font-size: 24px; }
+      .fleet-command h2 { font-size: 25px; }
+      .gpu-detail-grid, .device-form, .device-row, .secret-box, .settings-actions-grid, .settings-kpi-grid, .project-meta { grid-template-columns: 1fr; }
       .row-actions { justify-content: flex-start; }
     }
     @media (max-width: 430px) {
@@ -675,7 +730,7 @@ const dashboardHTML = `<!doctype html>
   <div id="login" class="login-shell">
     <form class="login-panel" id="loginForm">
       <div class="login-head">
-        <div class="brand"><span class="brand-mark">G</span><span>GPUFleet</span></div>
+        <div class="brand"><span class="brand-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="fallbackShellA" x1="28" y1="24" x2="222" y2="228" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#146C78"/><stop offset=".58" stop-color="#198754"/><stop offset="1" stop-color="#B26A00"/></linearGradient><linearGradient id="fallbackChipA" x1="78" y1="73" x2="178" y2="181" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DFF3F2"/></linearGradient></defs><rect x="18" y="18" width="220" height="220" rx="46" fill="url(#fallbackShellA)"/><path d="M62 89h34M62 166h34M160 62v34M160 160v34M178 128h32" fill="none" stroke="#E8FBF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><g fill="#E8FBF6"><circle cx="62" cy="89" r="13"/><circle cx="62" cy="166" r="13"/><circle cx="160" cy="62" r="13"/><circle cx="160" cy="194" r="13"/><circle cx="210" cy="128" r="13"/></g><rect x="84" y="84" width="88" height="88" rx="22" fill="url(#fallbackChipA)"/><rect x="105" y="105" width="46" height="46" rx="12" fill="#146C78"/><path d="M118 130h16c8 0 13-5 13-13s-5-13-13-13h-16v47M121 130h23" fill="none" stroke="#F7FFFC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>GPUFleet</span></div>
         <button class="icon-button" type="button" id="loginTheme" title="切换主题">◐</button>
       </div>
       <h1>登录面板</h1>
@@ -687,7 +742,7 @@ const dashboardHTML = `<!doctype html>
   </div>
   <div id="app" class="app hidden">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-mark">G</span><span>GPUFleet</span></div>
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="fallbackShellB" x1="28" y1="24" x2="222" y2="228" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#146C78"/><stop offset=".58" stop-color="#198754"/><stop offset="1" stop-color="#B26A00"/></linearGradient><linearGradient id="fallbackChipB" x1="78" y1="73" x2="178" y2="181" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DFF3F2"/></linearGradient></defs><rect x="18" y="18" width="220" height="220" rx="46" fill="url(#fallbackShellB)"/><path d="M62 89h34M62 166h34M160 62v34M160 160v34M178 128h32" fill="none" stroke="#E8FBF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><g fill="#E8FBF6"><circle cx="62" cy="89" r="13"/><circle cx="62" cy="166" r="13"/><circle cx="160" cy="62" r="13"/><circle cx="160" cy="194" r="13"/><circle cx="210" cy="128" r="13"/></g><rect x="84" y="84" width="88" height="88" rx="22" fill="url(#fallbackChipB)"/><rect x="105" y="105" width="46" height="46" rx="12" fill="#146C78"/><path d="M118 130h16c8 0 13-5 13-13s-5-13-13-13h-16v47M121 130h23" fill="none" stroke="#F7FFFC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span>GPUFleet</span></div>
       <nav>
         <button class="active" data-view="overview">总览</button>
         <button data-view="devices">设备</button>
@@ -1147,6 +1202,7 @@ const dashboardHTML = `<!doctype html>
             operationPanel('端口配置', service.current_addr || '当前监听端口', '◎', '<button class="secondary action-button" type="button">保存端口</button>', 'settings-port') +
             operationPanel('HTTPS 证书', '到期 ' + (service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置'), 'TLS', '<button class="secondary action-button" type="button">上传证书</button>', 'settings-certificate') +
             operationPanel('数据库下载', fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
+            projectPanel() +
             operationPanel('配置引导', '重新打开端口、密码和证书配置流程', 'CFG', '<button class="secondary action-button" type="button">打开引导</button>', '') +
           '</section></div>';
     }
@@ -1155,6 +1211,10 @@ const dashboardHTML = `<!doctype html>
     }
     function operationPanel(title, caption, icon, action, testID) {
       return '<article class="panel setting-operation"' + (testID ? ' data-testid="' + esc(testID) + '"' : '') + '><div class="operation-head"><div class="operation-icon">' + esc(icon) + '</div><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>' + action + '</article>';
+    }
+    function projectPanel() {
+      const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="projectShell" x1="28" y1="24" x2="222" y2="228" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#146C78"/><stop offset=".58" stop-color="#198754"/><stop offset="1" stop-color="#B26A00"/></linearGradient><linearGradient id="projectChip" x1="78" y1="73" x2="178" y2="181" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DFF3F2"/></linearGradient></defs><rect x="18" y="18" width="220" height="220" rx="46" fill="url(#projectShell)"/><path d="M62 89h34M62 166h34M160 62v34M160 160v34M178 128h32" fill="none" stroke="#E8FBF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><g fill="#E8FBF6"><circle cx="62" cy="89" r="13"/><circle cx="62" cy="166" r="13"/><circle cx="160" cy="62" r="13"/><circle cx="160" cy="194" r="13"/><circle cx="210" cy="128" r="13"/></g><rect x="84" y="84" width="88" height="88" rx="22" fill="url(#projectChip)"/><rect x="105" y="105" width="46" height="46" rx="12" fill="#146C78"/><path d="M118 130h16c8 0 13-5 13-13s-5-13-13-13h-16v47M121 130h23" fill="none" stroke="#F7FFFC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      return '<article class="panel setting-operation project-card" data-testid="settings-project"><div class="operation-head"><div class="operation-icon project-logo">' + logo + '</div><div><h2>项目信息</h2><p>GPUFleet 开源仓库</p></div></div><div class="project-meta"><div><span>作者</span><strong>stlin256</strong></div><div><span>仓库</span><strong>GPUFleet</strong></div><div class="project-url"><span>仓库地址</span><a href="https://github.com/stlin256/GPUFleet" target="_blank" rel="noreferrer">https://github.com/stlin256/GPUFleet</a></div></div><a class="secondary action-button" href="https://github.com/stlin256/GPUFleet" target="_blank" rel="noreferrer">打开 GitHub</a></article>';
     }
 
     function gpuHealth(item, device) {

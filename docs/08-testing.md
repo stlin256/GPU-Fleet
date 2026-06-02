@@ -188,20 +188,20 @@ cd ..
 - 磁盘保护状态。
 - 图表密集数据状态。
 
-当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性和移动端无横向溢出。
+当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、品牌 Logo 与仓库署名、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性和移动端无横向溢出。
 
-最新验证使用示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-202606030045-motion-mobile/result.json`：
+最新验证使用示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-202606030135-brand-logo/result.json`：
 
 ```json
 {
   "ok": true,
   "screenshots": {
-    "desktop_overview": "logs\\frontend-verify-202606030045-motion-mobile\\desktop-overview.png",
-    "desktop_overview_dark": "logs\\frontend-verify-202606030045-motion-mobile\\desktop-overview-dark.png",
-    "desktop_devices": "logs\\frontend-verify-202606030045-motion-mobile\\desktop-devices.png",
-    "desktop_settings": "logs\\frontend-verify-202606030045-motion-mobile\\desktop-settings.png",
-    "mobile_overview": "logs\\frontend-verify-202606030045-motion-mobile\\mobile-overview.png",
-    "mobile_gpu": "logs\\frontend-verify-202606030045-motion-mobile\\mobile-gpu.png"
+    "desktop_overview": "logs\\frontend-verify-202606030135-brand-logo\\desktop-overview.png",
+    "desktop_overview_dark": "logs\\frontend-verify-202606030135-brand-logo\\desktop-overview-dark.png",
+    "desktop_devices": "logs\\frontend-verify-202606030135-brand-logo\\desktop-devices.png",
+    "desktop_settings": "logs\\frontend-verify-202606030135-brand-logo\\desktop-settings.png",
+    "mobile_overview": "logs\\frontend-verify-202606030135-brand-logo\\mobile-overview.png",
+    "mobile_gpu": "logs\\frontend-verify-202606030135-brand-logo\\mobile-gpu.png"
   },
   "layout": {
     "width": 394,
@@ -219,14 +219,14 @@ cd ..
     "detailTrendCount": 20,
     "meterCount": 0,
     "settingsStatCount": 4,
-    "settingsOperationCount": 5,
+    "settingsOperationCount": 6,
     "theme": "dark",
     "buttonCount": 7
   }
 }
 ```
 
-该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`，因此同时验证了 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、移动端底部固定导航、GPU 详情页无旧进度条、设置页服务状态和操作入口完整性。
+该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`，因此同时验证了 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、移动端底部固定导航、GPU 详情页无旧进度条、设置页服务状态、操作入口完整性、品牌 Logo 和仓库署名。
 
 当前验证脚本输出：
 
