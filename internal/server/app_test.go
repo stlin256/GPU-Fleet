@@ -164,6 +164,24 @@ func TestLoginRejectsUsernameField(t *testing.T) {
 	}, nil, http.StatusBadRequest, nil)
 }
 
+func TestLoginSessionRemembersBrowserForThirtyDays(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	rec := doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "admin-test"}, nil, http.StatusOK, nil)
+	cookie := sessionCookie(t, rec)
+	if cookie.MaxAge != int(webSessionTTL.Seconds()) {
+		t.Fatalf("expected 30 day session max age, got %d", cookie.MaxAge)
+	}
+	if time.Until(cookie.Expires) < 29*24*time.Hour {
+		t.Fatalf("expected session cookie to expire in about 30 days, got %s", cookie.Expires)
+	}
+
+	restarted := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	restartedHandler := restarted.Handler()
+	responseBodyWithCookie(t, restartedHandler, "/api/v1/overview", cookie, http.StatusOK)
+}
+
 func TestInitialSetupCreatesPasswordCredential(t *testing.T) {
 	root := t.TempDir()
 	app, generated, err := NewApp(Config{
@@ -282,6 +300,11 @@ func newTestApp(t *testing.T, root, webDir string) *App {
 func loginCookie(t *testing.T, handler http.Handler) *http.Cookie {
 	t.Helper()
 	rec := doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "admin-test"}, nil, http.StatusOK, nil)
+	return sessionCookie(t, rec)
+}
+
+func sessionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
+	t.Helper()
 	cookies := rec.Result().Cookies()
 	for _, cookie := range cookies {
 		if cookie.Name == "gpufleet_session" {
@@ -411,6 +434,18 @@ func assertStatusAndBody(t *testing.T, handler http.Handler, path string, wantSt
 func responseBody(t *testing.T, handler http.Handler, path string, wantStatus int) string {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, path, nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != wantStatus {
+		t.Fatalf("%s: expected status %d, got %d with body %q", path, wantStatus, rec.Code, rec.Body.String())
+	}
+	return rec.Body.String()
+}
+
+func responseBodyWithCookie(t *testing.T, handler http.Handler, path string, cookie *http.Cookie, wantStatus int) string {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != wantStatus {

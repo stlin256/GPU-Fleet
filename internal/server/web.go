@@ -679,6 +679,7 @@ const dashboardHTML = `<!doctype html>
         <button class="icon-button" type="button" id="loginTheme" title="切换主题">◐</button>
       </div>
       <h1>登录面板</h1>
+      <p>登录后记住当前设备 30 天</p>
       <label>密码<input name="password" type="password" autocomplete="current-password"></label>
       <button class="primary" type="submit">登录</button>
       <p class="sub error" id="loginError"></p>

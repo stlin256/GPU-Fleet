@@ -387,6 +387,7 @@ function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; the
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
         <h1>登录面板</h1>
+        <p>登录后记住当前设备 30 天</p>
         <label>
           密码
           <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" />

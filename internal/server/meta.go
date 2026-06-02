@@ -26,13 +26,14 @@ type MetadataStore struct {
 }
 
 type metadataFile struct {
-	CreatedAt      time.Time            `json:"created_at"`
-	SetupComplete  *bool                `json:"setup_complete,omitempty"`
-	Admin          AdminAccount         `json:"admin"`
-	Service        ServiceConfig        `json:"service"`
-	Devices        map[string]*Device   `json:"devices"`
-	AuditEvents    []AuditEvent         `json:"audit_events"`
-	LastProcessSet map[string]time.Time `json:"last_process_set,omitempty"`
+	CreatedAt      time.Time             `json:"created_at"`
+	SetupComplete  *bool                 `json:"setup_complete,omitempty"`
+	Admin          AdminAccount          `json:"admin"`
+	Service        ServiceConfig         `json:"service"`
+	Devices        map[string]*Device    `json:"devices"`
+	WebSessions    map[string]WebSession `json:"web_sessions,omitempty"`
+	AuditEvents    []AuditEvent          `json:"audit_events"`
+	LastProcessSet map[string]time.Time  `json:"last_process_set,omitempty"`
 }
 
 type AdminAccount struct {
@@ -70,6 +71,12 @@ type Device struct {
 	LastRemoteAddr string    `json:"last_remote_addr,omitempty"`
 }
 
+type WebSession struct {
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
 type AuditEvent struct {
 	At      time.Time `json:"at"`
 	Type    string    `json:"type"`
@@ -89,11 +96,15 @@ func OpenMetadataStore(path string, adminPassword string, bootstrapDeviceID stri
 		store.data = metadataFile{
 			CreatedAt:      time.Now().UTC(),
 			Devices:        map[string]*Device{},
+			WebSessions:    map[string]WebSession{},
 			LastProcessSet: map[string]time.Time{},
 		}
 	}
 	if store.data.Devices == nil {
 		store.data.Devices = map[string]*Device{}
+	}
+	if store.data.WebSessions == nil {
+		store.data.WebSessions = map[string]WebSession{}
 	}
 	if store.data.LastProcessSet == nil {
 		store.data.LastProcessSet = map[string]time.Time{}
@@ -406,6 +417,54 @@ func (s *MetadataStore) saveLocked() error {
 		return err
 	}
 	return os.Rename(tmp, s.path)
+}
+
+func (s *MetadataStore) SaveWebSession(tokenHash string, createdAt, expiresAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pruneWebSessionsLocked(time.Now().UTC())
+	s.data.WebSessions[tokenHash] = WebSession{
+		CreatedAt:  createdAt.UTC(),
+		LastSeenAt: createdAt.UTC(),
+		ExpiresAt:  expiresAt.UTC(),
+	}
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) WebSession(tokenHash string, now time.Time) (WebSession, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.data.WebSessions[tokenHash]
+	if !ok {
+		return WebSession{}, false
+	}
+	if !now.UTC().Before(session.ExpiresAt) {
+		delete(s.data.WebSessions, tokenHash)
+		_ = s.saveLocked()
+		return WebSession{}, false
+	}
+	session.LastSeenAt = now.UTC()
+	s.data.WebSessions[tokenHash] = session
+	_ = s.saveLocked()
+	return session, true
+}
+
+func (s *MetadataStore) DeleteWebSession(tokenHash string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.data.WebSessions[tokenHash]; !ok {
+		return nil
+	}
+	delete(s.data.WebSessions, tokenHash)
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) pruneWebSessionsLocked(now time.Time) {
+	for tokenHash, session := range s.data.WebSessions {
+		if !now.Before(session.ExpiresAt) {
+			delete(s.data.WebSessions, tokenHash)
+		}
+	}
 }
 
 func (s *MetadataStore) DeviceSecret(deviceID string) (string, bool, bool) {

@@ -47,6 +47,8 @@ type App struct {
 	scheme    string
 }
 
+const webSessionTTL = 30 * 24 * time.Hour
+
 func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	if config.Addr == "" {
 		config.Addr = "127.0.0.1:8080"
@@ -108,7 +110,7 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		metrics:   metrics,
 		processes: processes,
 		nonces:    NewNonceStore(10 * time.Minute),
-		sessions:  NewSessionStore(12 * time.Hour),
+		sessions:  NewSessionStore(webSessionTTL, meta),
 		loginRate: NewRateLimiter(10, time.Minute),
 		agentRate: NewRateLimiter(240, time.Minute),
 		logger:    logger,
