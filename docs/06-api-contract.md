@@ -201,6 +201,21 @@ GET  /api/v1/alerts
 
 登录只使用密码作为凭据，不需要账户名。登录成功后服务端签发记住当前浏览器设备的 Cookie，会话 30 天后过期；服务端重启后仍可识别未过期会话。管理接口只影响服务端记录和认证状态，不修改客户端本地配置。
 
+登录接口防爆破：
+
+- 同一客户端 IP 仍保留 10 次/分钟的短时限流。
+- 同一客户端 IP 连续 5 次密码错误后进入递进锁定，初始 5 分钟，重复触发最高 60 分钟。
+- 锁定响应使用 `429 Too Many Requests`，并返回 `Retry-After` 响应头和 JSON 字段 `retry_after_seconds`。
+
+示例：
+
+```json
+{
+  "error": "too many login attempts; retry later",
+  "retry_after_seconds": 300
+}
+```
+
 ### 首次配置和服务设置
 
 ```text

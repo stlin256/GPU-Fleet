@@ -81,5 +81,6 @@ type ProcessSnapshot struct {
 }
 
 type APIError struct {
-	Error string `json:"error"`
+	Error             string `json:"error"`
+	RetryAfterSeconds int    `json:"retry_after_seconds,omitempty"`
 }

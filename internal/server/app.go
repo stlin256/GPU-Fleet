@@ -35,16 +35,17 @@ type Config struct {
 }
 
 type App struct {
-	config    Config
-	meta      *MetadataStore
-	metrics   *MetricsStore
-	processes *ProcessStore
-	nonces    *NonceStore
-	sessions  *SessionStore
-	loginRate *RateLimiter
-	agentRate *RateLimiter
-	logger    *log.Logger
-	scheme    string
+	config     Config
+	meta       *MetadataStore
+	metrics    *MetricsStore
+	processes  *ProcessStore
+	nonces     *NonceStore
+	sessions   *SessionStore
+	loginRate  *RateLimiter
+	loginGuard *LoginGuard
+	agentRate  *RateLimiter
+	logger     *log.Logger
+	scheme     string
 }
 
 const webSessionTTL = 30 * 24 * time.Hour
@@ -105,16 +106,17 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	}
 
 	return &App{
-		config:    config,
-		meta:      meta,
-		metrics:   metrics,
-		processes: processes,
-		nonces:    NewNonceStore(10 * time.Minute),
-		sessions:  NewSessionStore(webSessionTTL, meta),
-		loginRate: NewRateLimiter(10, time.Minute),
-		agentRate: NewRateLimiter(240, time.Minute),
-		logger:    logger,
-		scheme:    scheme,
+		config:     config,
+		meta:       meta,
+		metrics:    metrics,
+		processes:  processes,
+		nonces:     NewNonceStore(10 * time.Minute),
+		sessions:   NewSessionStore(webSessionTTL, meta),
+		loginRate:  NewRateLimiter(10, time.Minute),
+		loginGuard: NewLoginGuard(5, 30*time.Minute, 5*time.Minute, time.Hour),
+		agentRate:  NewRateLimiter(240, time.Minute),
+		logger:     logger,
+		scheme:     scheme,
 	}, generatedPassword, nil
 }
 
@@ -228,8 +230,15 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	if !a.loginRate.Allow(clientIP(r), time.Now()) {
-		writeError(w, http.StatusTooManyRequests, "too many login attempts")
+	now := time.Now()
+	loginKey := clientIP(r)
+	if locked := a.loginGuard.Check(loginKey, now); locked.Locked {
+		_ = a.meta.AddAudit("login_lockout_blocked", "blocked login while source is locked")
+		writeRetryAfterError(w, http.StatusTooManyRequests, "too many login attempts; retry later", locked.RetryFor)
+		return
+	}
+	if allowed, retryFor := a.loginRate.AllowWithRetry(loginKey, now); !allowed {
+		writeRetryAfterError(w, http.StatusTooManyRequests, "too many login attempts; retry later", retryFor)
 		return
 	}
 	var body struct {
@@ -241,9 +250,15 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !a.meta.VerifyAdmin(body.Password) {
 		_ = a.meta.AddAudit("login_failed", "admin login failed")
+		if result := a.loginGuard.RecordFailure(loginKey, now); result.Locked {
+			_ = a.meta.AddAudit("login_lockout_started", fmt.Sprintf("locked login source after repeated failures; level %d", result.LockLevel))
+			writeRetryAfterError(w, http.StatusTooManyRequests, "too many login attempts; retry later", result.RetryFor)
+			return
+		}
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
+	a.loginGuard.RecordSuccess(loginKey)
 	if err := a.sessions.Create(w, r.TLS != nil); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -866,6 +881,14 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, model.APIError{Error: message})
+}
+
+func writeRetryAfterError(w http.ResponseWriter, status int, message string, retryAfter time.Duration) {
+	seconds := retryAfterSeconds(retryAfter)
+	if seconds > 0 {
+		w.Header().Set("Retry-After", strconv.Itoa(seconds))
+	}
+	writeJSON(w, status, model.APIError{Error: message, RetryAfterSeconds: seconds})
 }
 
 func securityHeaders(next http.Handler) http.Handler {

@@ -145,15 +145,48 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	assertSignedHeartbeat(t, handler, created.Device.ID, rotated.Secret, http.StatusAccepted)
 }
 
-func TestLoginRateLimit(t *testing.T) {
+func TestLoginRateLimitShortWindow(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	app.loginGuard = NewLoginGuard(100, 30*time.Minute, 5*time.Minute, time.Hour)
 	handler := app.Handler()
 
 	for i := 0; i < 10; i++ {
 		doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusUnauthorized, nil)
 	}
-	doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusTooManyRequests, nil)
+	rec := doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusTooManyRequests, nil)
+	assertRetryAfter(t, rec)
+}
+
+func TestLoginBruteForceLockout(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	app.loginRate = NewRateLimiter(100, time.Minute)
+	handler := app.Handler()
+
+	for i := 0; i < 4; i++ {
+		doJSONFrom(t, handler, "203.0.113.10:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusUnauthorized, nil)
+	}
+	rec := doJSONFrom(t, handler, "203.0.113.10:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusTooManyRequests, nil)
+	assertRetryAfter(t, rec)
+
+	doJSONFrom(t, handler, "203.0.113.10:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "admin-test"}, nil, http.StatusTooManyRequests, nil)
+	doJSONFrom(t, handler, "203.0.113.11:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "admin-test"}, nil, http.StatusOK, nil)
+}
+
+func TestLoginSuccessClearsFailureState(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	app.loginRate = NewRateLimiter(100, time.Minute)
+	handler := app.Handler()
+
+	for i := 0; i < 4; i++ {
+		doJSONFrom(t, handler, "203.0.113.12:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusUnauthorized, nil)
+	}
+	doJSONFrom(t, handler, "203.0.113.12:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "admin-test"}, nil, http.StatusOK, nil)
+	for i := 0; i < 4; i++ {
+		doJSONFrom(t, handler, "203.0.113.12:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusUnauthorized, nil)
+	}
 }
 
 func TestLoginRejectsUsernameField(t *testing.T) {
@@ -375,6 +408,11 @@ func sameSecond(left, right time.Time) bool {
 
 func doJSON(t *testing.T, handler http.Handler, method, path string, body any, cookie *http.Cookie, wantStatus int, out any) *httptest.ResponseRecorder {
 	t.Helper()
+	return doJSONFrom(t, handler, "", method, path, body, cookie, wantStatus, out)
+}
+
+func doJSONFrom(t *testing.T, handler http.Handler, remoteAddr, method, path string, body any, cookie *http.Cookie, wantStatus int, out any) *httptest.ResponseRecorder {
+	t.Helper()
 	raw := []byte("{}")
 	if body != nil {
 		var err error
@@ -384,6 +422,9 @@ func doJSON(t *testing.T, handler http.Handler, method, path string, body any, c
 		}
 	}
 	req := httptest.NewRequest(method, path, bytes.NewReader(raw))
+	if remoteAddr != "" {
+		req.RemoteAddr = remoteAddr
+	}
 	req.Header.Set("Content-Type", "application/json")
 	if cookie != nil {
 		req.AddCookie(cookie)
@@ -399,6 +440,20 @@ func doJSON(t *testing.T, handler http.Handler, method, path string, body any, c
 		}
 	}
 	return rec
+}
+
+func assertRetryAfter(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	if rec.Header().Get("Retry-After") == "" {
+		t.Fatalf("expected Retry-After header, got headers %+v", rec.Header())
+	}
+	var body model.APIError
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode retry body: %v", err)
+	}
+	if body.RetryAfterSeconds <= 0 {
+		t.Fatalf("expected retry_after_seconds > 0, got %+v", body)
+	}
 }
 
 func assertSignedHeartbeat(t *testing.T, handler http.Handler, deviceID, secret string, wantStatus int) {

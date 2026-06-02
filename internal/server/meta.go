@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/hex"
@@ -619,7 +620,8 @@ func NewAdminAccount(username, password string) (AdminAccount, error) {
 }
 
 func verifyPassword(password string, account AdminAccount) bool {
-	return derivePassword(password, account.Salt, account.Iterations) == account.PasswordHash
+	derived := derivePassword(password, account.Salt, account.Iterations)
+	return subtle.ConstantTimeCompare([]byte(derived), []byte(account.PasswordHash)) == 1
 }
 
 func derivePassword(password, salt string, iterations int) string {

@@ -835,9 +835,18 @@ const dashboardHTML = `<!doctype html>
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
+        if (typeof body.retry_after_seconds === 'number' && body.retry_after_seconds > 0) {
+          throw new Error('请求过于频繁，请等待 ' + fmtRetryAfter(body.retry_after_seconds) + '后再试');
+        }
         throw new Error(body.error || res.statusText);
       }
       return res.json();
+    }
+    function fmtRetryAfter(seconds) {
+      const rounded = Math.max(1, Math.ceil(seconds));
+      if (rounded >= 3600) return Math.ceil(rounded / 3600) + ' 小时';
+      if (rounded >= 60) return Math.ceil(rounded / 60) + ' 分钟';
+      return rounded + ' 秒';
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (event) => {

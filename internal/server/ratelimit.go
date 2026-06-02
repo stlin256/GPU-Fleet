@@ -32,6 +32,11 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 }
 
 func (l *RateLimiter) Allow(key string, now time.Time) bool {
+	allowed, _ := l.AllowWithRetry(key, now)
+	return allowed
+}
+
+func (l *RateLimiter) AllowWithRetry(key string, now time.Time) (bool, time.Duration) {
 	if key == "" {
 		key = "unknown"
 	}
@@ -46,11 +51,11 @@ func (l *RateLimiter) Allow(key string, now time.Time) bool {
 	entry := l.clients[key]
 	if entry == nil || now.After(entry.ExpiresAt) {
 		l.clients[key] = &rateEntry{Count: 1, ExpiresAt: now.Add(l.window)}
-		return true
+		return true, 0
 	}
 	if entry.Count >= l.limit {
-		return false
+		return false, retryAfterDuration(entry.ExpiresAt, now)
 	}
 	entry.Count++
-	return true
+	return true, 0
 }
