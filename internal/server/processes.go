@@ -89,6 +89,17 @@ func (s *ProcessStore) Latest(deviceID, gpuID string) []StoredProcessSnapshot {
 	return out
 }
 
+func (s *ProcessStore) RemoveDevice(deviceID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, snapshot := range s.latest {
+		if snapshot.DeviceID == deviceID {
+			delete(s.latest, key)
+		}
+	}
+	return s.saveLocked()
+}
+
 func (s *ProcessStore) load() error {
 	raw, err := os.ReadFile(s.path)
 	if err != nil {

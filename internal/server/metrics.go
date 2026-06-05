@@ -142,6 +142,16 @@ func (s *MetricsStore) Latest() []StoredGPU {
 	return out
 }
 
+func (s *MetricsStore) RemoveDevice(deviceID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, gpu := range s.latest {
+		if gpu.DeviceID == deviceID {
+			delete(s.latest, key)
+		}
+	}
+}
+
 func (s *MetricsStore) Series(deviceID, gpuID string, since time.Time) ([]SeriesPoint, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

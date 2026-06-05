@@ -507,13 +507,14 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	devices := a.meta.ListDevices()
-	latest := a.metrics.Latest()
 	diskStatus, _ := a.metrics.DiskStatus()
 
 	deviceViews := make([]deviceView, 0, len(devices))
+	deviceIDs := make(map[string]bool, len(devices))
 	now := time.Now().UTC()
 	online := 0
 	for _, device := range devices {
+		deviceIDs[device.ID] = true
 		status := "offline"
 		if device.Enabled && !device.LastSeenAt.IsZero() && now.Sub(device.LastSeenAt) <= 45*time.Second {
 			status = "online"
@@ -536,12 +537,18 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(deviceViews, func(i, j int) bool { return deviceViews[i].Alias < deviceViews[j].Alias })
 
+	latest := a.metrics.Latest()
+	filteredLatest := make([]StoredGPU, 0, len(latest))
 	totalUtil := 0.0
 	utilCount := 0
 	usedMem := uint64(0)
 	totalMem := uint64(0)
 	hot := 0
 	for _, item := range latest {
+		if !deviceIDs[item.DeviceID] {
+			continue
+		}
+		filteredLatest = append(filteredLatest, item)
 		if item.GPU.UtilizationGPUPercent != nil {
 			totalUtil += *item.GPU.UtilizationGPUPercent
 			utilCount++
@@ -561,15 +568,15 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		ServerTime:         now,
 		DeviceCount:        len(devices),
 		OnlineDeviceCount:  online,
-		GPUCount:           len(latest),
+		GPUCount:           len(filteredLatest),
 		AverageUtilization: avgUtil,
 		MemoryUsedBytes:    usedMem,
 		MemoryTotalBytes:   totalMem,
 		HotGPUCount:        hot,
 		Disk:               diskStatus,
 		Devices:            deviceViews,
-		LatestGPUs:         latest,
-		LatestProcesses:    a.processes.Latest("", ""),
+		LatestGPUs:         filteredLatest,
+		LatestProcesses:    filterProcessesByDevices(a.processes.Latest("", ""), deviceIDs),
 		RetentionHours:     int(a.config.Retention.Hours()),
 		MinFreeSpaceBytes:  a.config.MinFreeBytes,
 		SetupComplete:      a.meta.SetupComplete(),
@@ -622,11 +629,29 @@ func (a *App) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleAdminDeviceAction(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/devices/"), "/")
+	if r.Method == http.MethodDelete {
+		if len(parts) != 1 || parts[0] == "" {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		device, err := a.meta.DeleteDevice(parts[0])
+		if err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		a.metrics.RemoveDevice(device.ID)
+		if err := a.processes.RemoveDevice(device.ID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/admin/devices/"), "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		writeError(w, http.StatusNotFound, "not found")
 		return
@@ -689,6 +714,9 @@ func (a *App) handleGPUStats(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if r.URL.Query().Get("device_id") == "" {
+		stats = filterStatsByDevices(stats, a.deviceIDSet())
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"hours": hours,
@@ -939,6 +967,35 @@ func parseHours(r *http.Request, fallback int) int {
 		}
 	}
 	return hours
+}
+
+func (a *App) deviceIDSet() map[string]bool {
+	devices := a.meta.ListDevices()
+	out := make(map[string]bool, len(devices))
+	for _, device := range devices {
+		out[device.ID] = true
+	}
+	return out
+}
+
+func filterProcessesByDevices(items []StoredProcessSnapshot, deviceIDs map[string]bool) []StoredProcessSnapshot {
+	out := make([]StoredProcessSnapshot, 0, len(items))
+	for _, item := range items {
+		if deviceIDs[item.DeviceID] {
+			out = append(out, item)
+		}
+	}
+	return out
+}
+
+func filterStatsByDevices(items []GPUStats, deviceIDs map[string]bool) []GPUStats {
+	out := make([]GPUStats, 0, len(items))
+	for _, item := range items {
+		if deviceIDs[item.DeviceID] {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func (a *App) setupStatus(r *http.Request) setupStatusResponse {

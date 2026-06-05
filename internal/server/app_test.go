@@ -258,6 +258,55 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	}
 	assertSignedHeartbeat(t, handler, created.Device.ID, created.Secret, http.StatusUnauthorized)
 	assertSignedHeartbeat(t, handler, created.Device.ID, rotated.Secret, http.StatusAccepted)
+
+	util := 55.0
+	if err := app.metrics.AppendBatch(model.SampleBatch{
+		DeviceID:     created.Device.ID,
+		AgentVersion: model.AgentVersion,
+		Samples: []model.GPUSample{{
+			Timestamp: time.Now().UTC(),
+			GPUs: []model.GPUStatus{{
+				GPUID:                 "0",
+				Name:                  "NVIDIA Test GPU",
+				MemoryTotalBytes:      16 * 1024 * 1024 * 1024,
+				MemoryUsedBytes:       4 * 1024 * 1024 * 1024,
+				UtilizationGPUPercent: &util,
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.processes.Replace(model.ProcessBatch{
+		DeviceID:  created.Device.ID,
+		Timestamp: time.Now().UTC(),
+		Processes: []model.ProcessSnapshot{{
+			GPUID:           "0",
+			PID:             1234,
+			ProcessName:     "test.exe",
+			UsedMemoryBytes: 1024,
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var beforeDelete overviewResponse
+	doJSON(t, handler, http.MethodGet, "/api/v1/overview", nil, cookie, http.StatusOK, &beforeDelete)
+	if beforeDelete.GPUCount != 1 || len(beforeDelete.LatestProcesses) != 1 {
+		t.Fatalf("expected created device snapshots before delete, got %+v", beforeDelete)
+	}
+
+	var deleted struct {
+		Device deviceView `json:"device"`
+	}
+	doJSON(t, handler, http.MethodDelete, "/api/v1/admin/devices/"+created.Device.ID, nil, cookie, http.StatusOK, &deleted)
+	if deleted.Device.ID != created.Device.ID {
+		t.Fatalf("unexpected deleted device response: %+v", deleted)
+	}
+	assertSignedHeartbeat(t, handler, created.Device.ID, rotated.Secret, http.StatusUnauthorized)
+	var afterDelete overviewResponse
+	doJSON(t, handler, http.MethodGet, "/api/v1/overview", nil, cookie, http.StatusOK, &afterDelete)
+	if afterDelete.DeviceCount != 1 || afterDelete.GPUCount != 0 || len(afterDelete.LatestProcesses) != 0 {
+		t.Fatalf("expected deleted device to be removed from overview, got %+v", afterDelete)
+	}
 }
 
 func TestLoginRateLimitShortWindow(t *testing.T) {

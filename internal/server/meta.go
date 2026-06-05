@@ -561,6 +561,20 @@ func (s *MetadataStore) SetDeviceEnabled(deviceID string, enabled bool) (Device,
 	return *device, s.saveLocked()
 }
 
+func (s *MetadataStore) DeleteDevice(deviceID string) (Device, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	device, ok := s.data.Devices[deviceID]
+	if !ok {
+		return Device{}, errors.New("device not found")
+	}
+	deleted := *device
+	delete(s.data.Devices, deviceID)
+	delete(s.data.LastProcessSet, deviceID)
+	s.addAuditLocked("device_deleted", fmt.Sprintf("deleted device %s", deviceID))
+	return deleted, s.saveLocked()
+}
+
 func (s *MetadataStore) RotateDeviceSecret(deviceID string) (Device, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

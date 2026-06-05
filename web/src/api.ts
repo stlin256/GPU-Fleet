@@ -308,6 +308,12 @@ export function setDeviceEnabled(deviceId: string, enabled: boolean) {
   });
 }
 
+export function deleteDevice(deviceId: string) {
+  return request<DeviceResponse>(`/api/v1/admin/devices/${encodeURIComponent(deviceId)}`, {
+    method: 'DELETE'
+  });
+}
+
 export function rotateDeviceSecret(deviceId: string) {
   return request<DeviceSecretResponse>(`/api/v1/admin/devices/${encodeURIComponent(deviceId)}/rotate-secret`, {
     method: 'POST'
