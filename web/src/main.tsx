@@ -586,6 +586,7 @@ function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; the
 }
 
 function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: () => void; theme: Theme; onToggleTheme: () => void }) {
+  const query = useQueryClient();
   const [view, setView] = useState<View>('overview');
   const overview = useQuery({
     queryKey: ['overview'],
@@ -606,6 +607,21 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
       onUnauthorized();
     }
   }, [overview.error, onUnauthorized]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUpdateStatus()
+      .then((status) => {
+        if (!cancelled) {
+          storeCachedUpdateStatus(status);
+          query.setQueryData(['update-status'], status);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [query]);
 
   const data = overview.data;
   const statRows = stats.data?.stats ?? [];
