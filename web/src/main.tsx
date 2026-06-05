@@ -739,7 +739,7 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
       </section>
 
       <section className="overview-secondary">
-        <ProcessPanel items={data?.latest_processes ?? []} />
+        <ProcessPanel items={data?.latest_processes ?? []} devices={devices} />
         <StatsPanel statRows={statRows} />
       </section>
     </>
@@ -770,7 +770,7 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
         </div>
         <div className="stack">
           <DevicePanel data={data} />
-          <ProcessPanel items={data?.latest_processes ?? []} />
+          <ProcessPanel items={data?.latest_processes ?? []} devices={data?.devices ?? []} />
         </div>
       </section>
 
@@ -1443,7 +1443,8 @@ function SecretBox({ title, deviceId, value }: { title: string; deviceId: string
   );
 }
 
-function ProcessPanel({ items }: { items: StoredProcess[] }) {
+function ProcessPanel({ items, devices }: { items: StoredProcess[]; devices: Device[] }) {
+  const deviceByID = new Map(devices.map((device) => [device.id, device]));
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1454,7 +1455,7 @@ function ProcessPanel({ items }: { items: StoredProcess[] }) {
         <div className="list-row" key={`${item.device_id}-${item.process.gpu_id}-${item.process.pid}`}>
           <div>
             <strong>{item.process.process_name || 'unknown'}</strong>
-            <p>PID {item.process.pid} · {item.device_id} · {item.process.gpu_id || '-'}</p>
+            <p>{deviceName(deviceByID.get(item.device_id), item.device_id)} · PID {item.process.pid} · {item.process.gpu_id || '-'}</p>
           </div>
           <span className="pill">{fmtBytes(item.process.used_memory_bytes)}</span>
         </div>

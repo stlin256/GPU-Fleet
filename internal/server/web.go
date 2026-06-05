@@ -1416,7 +1416,7 @@ const dashboardHTML = `<!doctype html>
         '</section>' +
         '<section class="overview-layout">' +
           '<section class="fleet-board panel" data-testid="fleet-board"><div class="panel-head"><div><h2>GPU Fleet</h2><p>卡片化查看多设备 GPU 运行状态</p></div><span>' + gpus.length + ' GPUs</span></div><div class="fleet-card-grid">' + renderFleetCards(gpus, devices) + '</div></section>' +
-          '<div class="stack">' + renderDeviceList(data) + renderProcessList(data.latest_processes || []) + '</div>' +
+          '<div class="stack">' + renderDeviceList(data) + renderProcessList(data.latest_processes || [], data.devices || []) + '</div>' +
         '</section>' +
         '<section class="overview-secondary">' + renderStatsTable(state.stats) + '</section>';
     }
@@ -1615,7 +1615,7 @@ const dashboardHTML = `<!doctype html>
           metric('总显存用量', fmtMemoryG(data.memory_used_bytes, data.memory_total_bytes)) +
           metric('总功耗', watts(data.power_draw_watts || 0)) +
         '</section>' +
-        '<section class="main-grid"><div class="panel"><div class="panel-head"><h2>GPU 详细状态</h2><span>' + gpus.length + '</span></div><div class="gpu-grid">' + renderGPUCards(gpus) + '</div></div><div class="stack">' + renderDeviceList(data) + renderProcessList(data.latest_processes || []) + '</div></section>' +
+        '<section class="main-grid"><div class="panel"><div class="panel-head"><h2>GPU 详细状态</h2><span>' + gpus.length + '</span></div><div class="gpu-grid">' + renderGPUCards(gpus) + '</div></div><div class="stack">' + renderDeviceList(data) + renderProcessList(data.latest_processes || [], data.devices || []) + '</div></section>' +
         renderStatsTable(state.stats);
     }
     function metric(label, value) {
@@ -1705,9 +1705,10 @@ const dashboardHTML = `<!doctype html>
         devices.map((device) => '<div class="list-row"><div><strong>' + esc(device.alias || device.id) + '</strong><p>' + esc([device.hostname, device.os, device.agent_version].filter(Boolean).join(' · ') || device.id) + '</p></div><span class="pill ' + (device.enabled ? (device.status || 'offline') : 'disabled') + '">' + esc(device.enabled ? (device.status || 'offline') : 'disabled') + '</span></div>').join('') +
         (devices.length ? '' : '<p class="empty">暂无设备</p>') + '</section>';
     }
-    function renderProcessList(items) {
+    function renderProcessList(items, devices) {
+      const deviceMap = new Map((devices || []).map((device) => [device.id, device]));
       return '<section class="panel"><div class="panel-head"><h2>GPU 进程</h2><span>' + items.length + '</span></div>' +
-        items.slice(0, 32).map((item) => '<div class="list-row"><div><strong>' + esc((item.process || {}).process_name || 'unknown') + '</strong><p>PID ' + esc((item.process || {}).pid || '-') + ' · ' + esc(item.device_id || '-') + ' · ' + esc((item.process || {}).gpu_id || '-') + '</p></div><span class="pill">' + fmtBytes((item.process || {}).used_memory_bytes) + '</span></div>').join('') +
+        items.slice(0, 32).map((item) => '<div class="list-row"><div><strong>' + esc((item.process || {}).process_name || 'unknown') + '</strong><p>' + esc(deviceName(deviceMap.get(item.device_id), item.device_id || '-')) + ' · PID ' + esc((item.process || {}).pid || '-') + ' · ' + esc((item.process || {}).gpu_id || '-') + '</p></div><span class="pill">' + fmtBytes((item.process || {}).used_memory_bytes) + '</span></div>').join('') +
         (items.length ? '' : '<p class="empty">暂无 GPU 进程快照</p>') + '</section>';
     }
     function renderStatsTable(rows) {

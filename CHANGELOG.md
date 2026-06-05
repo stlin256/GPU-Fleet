@@ -18,6 +18,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - Trend card primary values now prefer single-line display so power, memory, and similar metrics do not wrap while space is still available.
 - 趋势卡片主数值改为占满整行，并保护数值与单位不被拆开，避免右侧仍有空间时显示省略号。
 - Trend card primary values now span the full row and keep values with their units together, avoiding ellipses while horizontal space remains available.
+- GPU 进程列表元信息改为显示设备名称、PID 和 GPU，优先使用设备别名或主机名替代设备 ID。
+- GPU process list metadata now shows device name, PID, and GPU, preferring device aliases or hostnames over device IDs.
 
 ### Fixed / 修复
 
