@@ -845,6 +845,16 @@ input:focus-visible {
   align-items: start;
 }
 
+.gpu-stats-follow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr);
+  gap: 14px;
+}
+
+.gpu-stats-follow > .panel {
+  grid-column: 1;
+}
+
 .gpu-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
@@ -1026,6 +1036,55 @@ input:focus-visible {
 .table-row {
   display: grid;
   grid-template-columns: minmax(190px, 1fr) repeat(4, minmax(72px, auto));
+}
+
+.stats-expand-row {
+  display: grid;
+}
+
+.stats-row-trigger {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stats-row-trigger:hover,
+.stats-row-trigger.active {
+  background: color-mix(in srgb, var(--accent-soft) 34%, transparent);
+}
+
+.stats-trend-card {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0 14px;
+  animation: slide-down var(--motion-base) var(--ease) both;
+}
+
+.stats-trend-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.stats-trend-head p {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.stats-trend-head span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.stats-trend-grid {
+  margin-top: 0;
 }
 
 .empty { padding: 12px 0; }
@@ -2044,8 +2103,11 @@ input[type="file"] {
     background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(16px);
   }
-  .stat-grid, .main-grid {
+  .stat-grid, .main-grid, .gpu-stats-follow {
     grid-template-columns: 1fr 1fr;
+  }
+  .gpu-stats-follow > .panel {
+    grid-column: 1 / -1;
   }
   .content {
     padding: 16px 16px calc(92px + env(safe-area-inset-bottom));

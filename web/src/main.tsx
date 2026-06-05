@@ -784,7 +784,9 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
         </div>
       </section>
 
-      <StatsPanel statRows={statRows} devices={data?.devices ?? []} />
+      <div className="gpu-stats-follow">
+        <StatsPanel statRows={statRows} devices={data?.devices ?? []} />
+      </div>
     </>
   );
 }
@@ -1549,6 +1551,7 @@ function ProcessPanel({ items, devices }: { items: StoredProcess[]; devices: Dev
 
 function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Device[] }) {
   const deviceByID = new Map(devices.map((device) => [device.id, device]));
+  const [expanded, setExpanded] = useState<string>();
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1556,20 +1559,56 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
         <span>{statRows.length}</span>
       </div>
       <div className="stats-table">
-        {statRows.map((row) => (
-          <div className="table-row" key={`${row.device_id}-${row.gpu_id}`}>
-            <div>
-              <strong>{row.gpu_name || row.gpu_id}</strong>
-              <p>{deviceName(deviceByID.get(row.device_id), row.device_id)} · {row.gpu_id} · {row.sample_count} samples</p>
+        {statRows.map((row) => {
+          const key = `${row.device_id}-${row.gpu_id}`;
+          const open = expanded === key;
+          return (
+            <div className="stats-expand-row" key={key}>
+              <button className={`table-row stats-row-trigger ${open ? 'active' : ''}`} type="button" onClick={() => setExpanded(open ? undefined : key)} aria-expanded={open}>
+                <div>
+                  <strong>{row.gpu_name || row.gpu_id}</strong>
+                  <p>{deviceName(deviceByID.get(row.device_id), row.device_id)} · {row.gpu_id} · {row.sample_count} samples</p>
+                </div>
+                <span>{pct(row.average_utilization_percent)}</span>
+                <span>{pct(row.idle_sample_percent)} idle</span>
+                <span>{row.peak_temperature_celsius ? `${Math.round(row.peak_temperature_celsius)}°C` : '-'}</span>
+                <span>{row.peak_power_draw_watts ? `${row.peak_power_draw_watts.toFixed(1)} W` : '-'}</span>
+              </button>
+              {open && <StatsTrendCard row={row} />}
             </div>
-            <span>{pct(row.average_utilization_percent)}</span>
-            <span>{pct(row.idle_sample_percent)} idle</span>
-            <span>{row.peak_temperature_celsius ? `${Math.round(row.peak_temperature_celsius)}°C` : '-'}</span>
-            <span>{row.peak_power_draw_watts ? `${row.peak_power_draw_watts.toFixed(1)} W` : '-'}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
+  );
+}
+
+function StatsTrendCard({ row }: { row: GPUStats }) {
+  const series = useQuery({
+    queryKey: ['gpu-series-24h', row.device_id, row.gpu_id],
+    queryFn: () => getGPUSeries(row.device_id, row.gpu_id, 24),
+    staleTime: 30_000,
+    retry: false
+  });
+  const points = series.data ?? [];
+  const memoryValues = points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined);
+  return (
+    <div className="stats-trend-card">
+      <div className="stats-trend-head">
+        <div>
+          <strong>过去 24H 曲线</strong>
+          <p>{row.gpu_name || row.gpu_id}</p>
+        </div>
+        <span>{series.isLoading ? '加载中' : `${points.length} samples`}</span>
+      </div>
+      <div className="gpu-detail-trend-grid stats-trend-grid">
+        <TrendTile label="利用率" value={pct(row.average_utilization_percent)} caption="平均" values={points.map((point) => point.utilization_gpu_percent)} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(row.average_utilization_percent, 70, 92)} formatValue={pct} />
+        <TrendTile label="显存" value={fmtMemoryG(row.peak_memory_used_bytes, row.memory_total_bytes)} caption="峰值" values={memoryValues} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(maxSeries(memoryValues, 0), 75, 92)} formatValue={pct} />
+        <TrendTile label="温度" value={row.peak_temperature_celsius ? `${Math.round(row.peak_temperature_celsius)}°C` : '-'} caption="峰值" values={points.map((point) => point.temperature_celsius)} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(row.peak_temperature_celsius, 80, 88)} formatValue={temp} />
+        <TrendTile label="功耗" value={watts(row.peak_power_draw_watts)} caption="峰值" values={points.map((point) => point.power_draw_watts)} timestamps={points.map((point) => point.timestamp)} max={maxSeries(points.map((point) => point.power_draw_watts), Math.max(row.peak_power_draw_watts ?? 1, 1))} tone={metricTone(row.peak_power_draw_watts, 240, 300)} formatValue={watts} />
+      </div>
+      {series.error instanceof Error && <p className="error">{series.error.message}</p>}
+    </div>
   );
 }
 
