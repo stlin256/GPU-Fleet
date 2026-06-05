@@ -1285,27 +1285,44 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
         </div>
       </section>
 
-      <section className="settings-actions-grid">
-        <PasswordSettings onDone={refreshOverview} />
-        <PortSettings service={service} onDone={refreshOverview} />
-        <CertificateSettings service={service} onDone={refreshOverview} />
-        <DatabaseSettings data={data} />
-        <UpdateSettings />
-        <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
-        <article className="panel setting-operation">
-          <div className="operation-head">
-            <div className="operation-icon"><Settings size={18} /></div>
+      <section className="settings-workbench">
+        <div className="settings-column">
+          <div className="settings-section-head">
             <div>
-              <h2>配置引导</h2>
-              <p>重新打开端口、密码和证书配置流程</p>
+              <h2>访问与安全</h2>
+              <p>凭据、端口和 HTTPS 证书</p>
             </div>
           </div>
-          <button className="secondary action-button" type="button" onClick={openWizard}>
-            <Settings size={16} />
-            打开引导
-          </button>
-          {message && <p className="error">{message}</p>}
-        </article>
+          <PasswordSettings onDone={refreshOverview} />
+          <PortSettings service={service} onDone={refreshOverview} />
+          <CertificateSettings service={service} onDone={refreshOverview} />
+          <article className="panel setting-operation">
+            <div className="operation-head">
+              <div className="operation-icon"><Settings size={18} /></div>
+              <div>
+                <h2>配置引导</h2>
+                <p>重新打开端口、密码和证书配置流程</p>
+              </div>
+            </div>
+            <button className="secondary action-button" type="button" onClick={openWizard}>
+              <Settings size={16} />
+              打开引导
+            </button>
+            {message && <p className="error">{message}</p>}
+          </article>
+        </div>
+
+        <div className="settings-column settings-column-operations">
+          <div className="settings-section-head">
+            <div>
+              <h2>维护与发布</h2>
+              <p>数据库、在线更新和版本信息</p>
+            </div>
+          </div>
+          <DatabaseSettings data={data} />
+          <UpdateSettings />
+          <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
+        </div>
       </section>
 
       {wizardOpen && (

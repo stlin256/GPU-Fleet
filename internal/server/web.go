@@ -703,17 +703,46 @@ const dashboardHTML = `<!doctype html>
       line-height: 1.12;
       overflow-wrap: anywhere;
     }
-    .settings-actions-grid {
+    .settings-workbench {
       display: grid;
-      grid-template-columns: repeat(2, minmax(280px, 1fr));
-      gap: 14px;
+      grid-template-columns: minmax(320px, .9fr) minmax(390px, 1.1fr);
+      gap: 16px;
       align-items: start;
+    }
+    .settings-column {
+      min-width: 0;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .settings-section-head {
+      min-width: 0;
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 2px 2px 0;
+    }
+    .settings-section-head h2 {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    .settings-section-head p {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
     }
     .operation-head {
       display: grid;
       grid-template-columns: auto minmax(0, 1fr);
       gap: 10px;
       align-items: center;
+    }
+    .operation-head > div:nth-child(2) {
+      min-width: 0;
     }
     .operation-icon {
       width: 34px;
@@ -895,7 +924,7 @@ const dashboardHTML = `<!doctype html>
       }
       nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       nav button { justify-content: center; font-size: 13px; }
-      .metric-grid, .main-grid, .settings-actions-grid { grid-template-columns: 1fr 1fr; }
+      .metric-grid, .main-grid { grid-template-columns: 1fr 1fr; }
       .content { padding: 16px; }
       .table-row { grid-template-columns: 1fr 1fr; align-items: start; }
     }
@@ -907,7 +936,7 @@ const dashboardHTML = `<!doctype html>
       nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       h1 { font-size: 24px; }
       .fleet-command h2 { font-size: 25px; }
-      .gpu-detail-grid, .device-form, .device-row, .secret-box, .settings-actions-grid, .settings-kpi-grid, .project-meta, .update-compare, .update-meta { grid-template-columns: 1fr; }
+      .gpu-detail-grid, .device-form, .device-row, .secret-box, .settings-workbench, .settings-kpi-grid, .project-meta, .update-compare, .update-meta { grid-template-columns: 1fr; }
       .row-actions { justify-content: flex-start; }
     }
     @media (max-width: 430px) {
@@ -1543,15 +1572,24 @@ const dashboardHTML = `<!doctype html>
             settingStat('证书到期', service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置', service.https_enabled ? 'HTTPS 下次启动生效' : 'HTTP 模式') +
             settingStat('磁盘预留', fmtBytes(min), '空闲 ' + fmtBytes(disk.free_bytes)) +
           '</div></section>' +
-          '<section class="settings-actions-grid">' +
-            operationPanel('密码更改', '仅使用密码作为 Web 凭据', 'PW', '<button class="secondary action-button" type="button">更新密码</button>', 'settings-password') +
-            operationPanel('端口配置', service.current_addr || '当前监听端口', '◎', '<button class="secondary action-button" type="button">保存端口</button>', 'settings-port') +
-            operationPanel('HTTPS 证书', '到期 ' + (service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置'), 'TLS', '<button class="secondary action-button" type="button">上传证书</button>', 'settings-certificate') +
-            operationPanel('数据库下载', fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
-            updatePanel() +
-            projectPanel() +
-            operationPanel('配置引导', '重新打开端口、密码和证书配置流程', 'CFG', '<button class="secondary action-button" type="button">打开引导</button>', '') +
+          '<section class="settings-workbench">' +
+            '<div class="settings-column">' +
+              settingsSectionHead('访问与安全', '凭据、端口和 HTTPS 证书') +
+              operationPanel('密码更改', '仅使用密码作为 Web 凭据', 'PW', '<button class="secondary action-button" type="button">更新密码</button>', 'settings-password') +
+              operationPanel('端口配置', service.current_addr || '当前监听端口', '◎', '<button class="secondary action-button" type="button">保存端口</button>', 'settings-port') +
+              operationPanel('HTTPS 证书', '到期 ' + (service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置'), 'TLS', '<button class="secondary action-button" type="button">上传证书</button>', 'settings-certificate') +
+              operationPanel('配置引导', '重新打开端口、密码和证书配置流程', 'CFG', '<button class="secondary action-button" type="button">打开引导</button>', '') +
+            '</div>' +
+            '<div class="settings-column settings-column-operations">' +
+              settingsSectionHead('维护与发布', '数据库、在线更新和版本信息') +
+              operationPanel('数据库下载', fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
+              updatePanel() +
+              projectPanel() +
+            '</div>' +
           '</section></div>';
+    }
+    function settingsSectionHead(title, caption) {
+      return '<div class="settings-section-head"><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>';
     }
     function settingStat(label, value, caption) {
       return '<div class="setting-stat" data-testid="setting-stat"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong><p>' + esc(caption) + '</p></div>';
