@@ -1063,6 +1063,9 @@ const dashboardHTML = `<!doctype html>
         '保存代理': 'Save proxy',
         '当前提交': 'Current commit',
         '远端提交': 'Remote commit',
+        '运行版本': 'Running version',
+        '仓库版本': 'Repository version',
+        '运行提交': 'Running commit',
         '落后': 'Behind',
         '超前': 'Ahead',
         '远端': 'Remote',
@@ -1755,7 +1758,7 @@ const dashboardHTML = `<!doctype html>
     }
     function updatePanel() {
       const service = state.data && state.data.service || {};
-      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div><div><span>超前</span><strong id="updateAhead">0</strong></div></div><div class="update-meta"><div><span>远端</span><strong id="updateRemoteURL">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><form class="settings-form inline update-proxy-form" onsubmit="saveUpdateProxy(event)"><label>更新代理<input id="updateProxyInput" value="' + esc(service.update_proxy || '') + '" placeholder="http://127.0.0.1:7890"></label><button class="secondary" type="submit">保存代理</button></form><p class="update-note" id="updateProxyMessage"></p><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>拉取并重启</button></div><div class="update-progress hidden" id="updateProgress"></div><p class="update-note" id="updateMessage">服务端会先检查依赖，再拉取、构建并自动重启。</p></article>';
+      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div><div><span>超前</span><strong id="updateAhead">0</strong></div></div><div class="update-meta"><div><span>运行版本</span><strong id="updateRunningVersion">-</strong></div><div><span>仓库版本</span><strong id="updateRepoVersion">-</strong></div><div><span>运行提交</span><strong id="updateRunningCommit">-</strong></div><div><span>远端</span><strong id="updateRemoteURL">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><form class="settings-form inline update-proxy-form" onsubmit="saveUpdateProxy(event)"><label>更新代理<input id="updateProxyInput" value="' + esc(service.update_proxy || '') + '" placeholder="http://127.0.0.1:7890"></label><button class="secondary" type="submit">保存代理</button></form><p class="update-note" id="updateProxyMessage"></p><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>拉取并重启</button></div><div class="update-progress hidden" id="updateProgress"></div><p class="update-note" id="updateMessage">服务端会先检查依赖，再拉取、构建并自动重启。</p></article>';
     }
     async function saveUpdateProxy(event) {
       event.preventDefault();
@@ -1854,10 +1857,16 @@ const dashboardHTML = `<!doctype html>
       const ahead = document.getElementById('updateAhead');
       const remoteURL = document.getElementById('updateRemoteURL');
       const checked = document.getElementById('updateChecked');
+      const runningVersion = document.getElementById('updateRunningVersion');
+      const repoVersion = document.getElementById('updateRepoVersion');
+      const runningCommit = document.getElementById('updateRunningCommit');
       if (local) local.textContent = shortHash(status.local_commit);
       if (remote) remote.textContent = shortHash(status.remote_commit);
       if (behind) behind.textContent = String(status.behind || 0);
       if (ahead) ahead.textContent = String(status.ahead || 0);
+      if (runningVersion) runningVersion.textContent = status.running_version ? 'v' + status.running_version : '-';
+      if (repoVersion) repoVersion.textContent = status.repo_version ? 'v' + status.repo_version : '-';
+      if (runningCommit) runningCommit.textContent = shortHash(status.running_commit);
       if (remoteURL) remoteURL.textContent = status.remote || '-';
       if (checked) checked.textContent = status.checked_at ? new Date(status.checked_at).toLocaleString() : '-';
       const state = updateState(status);
@@ -1873,7 +1882,8 @@ const dashboardHTML = `<!doctype html>
         message.textContent = state.message;
       }
       if (button) {
-        button.disabled = !(status.supported && status.upstream && status.available && !status.dirty && !status.ahead);
+        button.disabled = !(status.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && !status.ahead);
+        button.textContent = status.binary_outdated && !status.available ? '重建并重启' : '拉取并重启';
       }
     }
     function renderUpdateError(message) {
@@ -1897,6 +1907,7 @@ const dashboardHTML = `<!doctype html>
       if (status.ahead > 0 && status.behind > 0) return {label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward'};
       if (status.ahead > 0) return {label: '本地超前', tone: 'warn', message: '本地提交超前上游，面板不会执行拉取'};
       if (status.available) return {label: '有新版本', tone: 'good', message: String(status.behind || 0) + ' 个提交可拉取、构建并自动重启'};
+      if (status.binary_outdated) return {label: '需重建', tone: 'warn', message: '运行中的服务端二进制与当前仓库不一致，可重建并自动重启'};
       return {label: '最新', tone: 'good', message: status.message || '已经是最新版本'};
     }
     function shortHash(value) {

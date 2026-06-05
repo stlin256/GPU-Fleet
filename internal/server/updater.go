@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gpufleet/internal/version"
 )
 
 const (
@@ -27,18 +29,23 @@ const (
 )
 
 type updateStatus struct {
-	Available    bool      `json:"available"`
-	Supported    bool      `json:"supported"`
-	Dirty        bool      `json:"dirty"`
-	Branch       string    `json:"branch,omitempty"`
-	Remote       string    `json:"remote,omitempty"`
-	Upstream     string    `json:"upstream,omitempty"`
-	LocalCommit  string    `json:"local_commit,omitempty"`
-	RemoteCommit string    `json:"remote_commit,omitempty"`
-	Behind       int       `json:"behind"`
-	Ahead        int       `json:"ahead"`
-	CheckedAt    time.Time `json:"checked_at"`
-	Message      string    `json:"message,omitempty"`
+	Available      bool      `json:"available"`
+	Supported      bool      `json:"supported"`
+	Dirty          bool      `json:"dirty"`
+	Branch         string    `json:"branch,omitempty"`
+	Remote         string    `json:"remote,omitempty"`
+	Upstream       string    `json:"upstream,omitempty"`
+	LocalCommit    string    `json:"local_commit,omitempty"`
+	RemoteCommit   string    `json:"remote_commit,omitempty"`
+	RunningVersion string    `json:"running_version,omitempty"`
+	RunningCommit  string    `json:"running_commit,omitempty"`
+	RunningBuild   string    `json:"running_build_time,omitempty"`
+	RepoVersion    string    `json:"repo_version,omitempty"`
+	BinaryOutdated bool      `json:"binary_outdated"`
+	Behind         int       `json:"behind"`
+	Ahead          int       `json:"ahead"`
+	CheckedAt      time.Time `json:"checked_at"`
+	Message        string    `json:"message,omitempty"`
 }
 
 type updateDependencyStatus struct {
@@ -124,7 +131,7 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "local branch is ahead of upstream; fast-forward update is not available")
 		return
 	}
-	if !status.Available {
+	if !status.Available && !status.BinaryOutdated {
 		writeJSON(w, http.StatusOK, updateApplyResponse{OK: true, Status: status, RestartRequired: false})
 		return
 	}
@@ -146,9 +153,13 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	_ = os.Remove(nextPath)
 
 	buildCtx, buildCancel := context.WithTimeout(r.Context(), updateBuildTimeout)
+	targetCommit := status.RemoteCommit
+	if !status.Available && status.BinaryOutdated {
+		targetCommit = status.LocalCommit
+	}
 	buildResult, err := a.updateBuildServer(buildCtx, updateBuildRequest{
 		RepoDir:      a.config.RepoDir,
-		RemoteCommit: status.RemoteCommit,
+		RemoteCommit: targetCommit,
 		OutputPath:   nextPath,
 		ProxyURL:     a.meta.ServiceConfig().UpdateProxy,
 	})
@@ -161,20 +172,23 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	}
 
 	before := status.LocalCommit
-	pullCtx, pullCancel := context.WithTimeout(r.Context(), updatePullTimeout)
-	output, err := a.runGit(pullCtx, "pull", "--ff-only")
-	pullCancel()
-	if err != nil {
-		_ = os.Remove(buildResult.OutputPath)
-		_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
-		writeError(w, http.StatusInternalServerError, fmt.Sprintf("git pull failed: %s", limitText(err.Error(), 500)))
-		return
+	output := ""
+	if status.Available {
+		pullCtx, pullCancel := context.WithTimeout(r.Context(), updatePullTimeout)
+		output, err = a.runGit(pullCtx, "pull", "--ff-only")
+		pullCancel()
+		if err != nil {
+			_ = os.Remove(buildResult.OutputPath)
+			_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("git pull failed: %s", limitText(err.Error(), 500)))
+			return
+		}
 	}
 
 	finalCtx, finalCancel := context.WithTimeout(r.Context(), updateCheckTimeout)
 	finalStatus := a.gitUpdateStatus(finalCtx)
 	finalCancel()
-	restartRequired := before != "" && finalStatus.LocalCommit != "" && before != finalStatus.LocalCommit
+	restartRequired := status.BinaryOutdated || (before != "" && finalStatus.LocalCommit != "" && before != finalStatus.LocalCommit)
 	if restartRequired {
 		restartAt := time.Now().UTC().Add(updateRestartDelay)
 		restartReq := updateRestartRequest{
@@ -192,7 +206,11 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500)))
 			return
 		}
-		_ = a.meta.AddAudit("server_update_scheduled", fmt.Sprintf("pulled %s -> %s and scheduled automatic restart", shortCommit(before), shortCommit(finalStatus.LocalCommit)))
+		if status.BinaryOutdated && !status.Available {
+			_ = a.meta.AddAudit("server_update_scheduled", fmt.Sprintf("rebuilt %s from repository commit %s and scheduled automatic restart", version.String(), shortCommit(targetCommit)))
+		} else {
+			_ = a.meta.AddAudit("server_update_scheduled", fmt.Sprintf("pulled %s -> %s and scheduled automatic restart", shortCommit(before), shortCommit(finalStatus.LocalCommit)))
+		}
 		go func() {
 			time.Sleep(updateRestartDelay)
 			if a.updateExit != nil {
@@ -228,8 +246,11 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) gitUpdateStatus(ctx context.Context) updateStatus {
 	status := updateStatus{
-		CheckedAt: time.Now().UTC(),
-		Message:   "checking repository",
+		CheckedAt:      time.Now().UTC(),
+		Message:        "checking repository",
+		RunningVersion: version.Version,
+		RunningCommit:  version.Commit,
+		RunningBuild:   version.BuildTime,
 	}
 	if _, err := a.repoDir(); err != nil {
 		status.Message = err.Error()
@@ -252,6 +273,9 @@ func (a *App) gitUpdateStatus(ctx context.Context) updateStatus {
 	if local, err := a.runGit(ctx, "rev-parse", "HEAD"); err == nil {
 		status.LocalCommit = strings.TrimSpace(local)
 	}
+	if repoVersion, err := a.repoVersionAt(ctx, "HEAD"); err == nil {
+		status.RepoVersion = repoVersion
+	}
 	status.Dirty = a.workingTreeDirty(ctx)
 
 	upstream, err := a.runGit(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
@@ -272,8 +296,42 @@ func (a *App) gitUpdateStatus(ctx context.Context) updateStatus {
 		status.Ahead, status.Behind = parseAheadBehind(counts)
 	}
 	status.Available = status.Behind > 0
+	status.BinaryOutdated = binaryOutdated(status)
 	status.Message = updateMessage(status)
 	return status
+}
+
+func (a *App) repoVersionAt(ctx context.Context, rev string) (string, error) {
+	raw, err := a.runGit(ctx, "show", rev+":internal/version/version.go")
+	if err != nil {
+		return "", err
+	}
+	return parseVersionGo(raw), nil
+}
+
+func parseVersionGo(raw string) string {
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Version") || !strings.Contains(line, "=") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		return strings.Trim(strings.TrimSpace(parts[1]), `"`)
+	}
+	return ""
+}
+
+func binaryOutdated(status updateStatus) bool {
+	if status.LocalCommit == "" {
+		return false
+	}
+	if status.RunningCommit != "" && status.RunningCommit != "dev" && status.RunningCommit != status.LocalCommit {
+		return true
+	}
+	if status.RepoVersion != "" && status.RunningVersion != "" && status.RunningVersion != status.RepoVersion {
+		return true
+	}
+	return false
 }
 
 func (a *App) workingTreeDirty(ctx context.Context) bool {
@@ -358,7 +416,9 @@ func defaultBuildServerForUpdate(ctx context.Context, req updateBuildRequest) (u
 		_, _ = runGitInDir(cleanupCtx, repoDir, req.ProxyURL, "worktree", "remove", "--force", worktreeDir)
 	}()
 
-	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", req.OutputPath, updateSourceEntry)
+	buildTime := time.Now().UTC().Format(time.RFC3339)
+	ldflags := fmt.Sprintf("-X gpufleet/internal/version.Commit=%s -X gpufleet/internal/version.BuildTime=%s", req.RemoteCommit, buildTime)
+	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-ldflags", ldflags, "-o", req.OutputPath, updateSourceEntry)
 	cmd.Dir = worktreeDir
 	cmd.Env = updateProxyEnv(append(os.Environ(), "GOWORK=off"), req.ProxyURL)
 	var stdout bytes.Buffer
@@ -647,6 +707,8 @@ func updateMessage(status updateStatus) string {
 		return "local branch is ahead of upstream"
 	case status.Available:
 		return "update available"
+	case status.BinaryOutdated:
+		return "running server binary was not built from the current repository checkout"
 	default:
 		return "already up to date"
 	}

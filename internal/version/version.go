@@ -3,7 +3,7 @@ package version
 import "fmt"
 
 var (
-	Version   = "0.1.5"
+	Version   = "0.1.6"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -60,6 +60,34 @@ func String() string {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.6",
+			Date:    "2026-06-05",
+			Title:   "自动更新二进制一致性检测",
+			TitleEN: "Automatic update binary consistency detection",
+			Added: []string{
+				"在线更新状态新增运行版本、运行提交、仓库版本和二进制过期状态，用于区分 Git 工作区提交和当前运行的服务端二进制。",
+				"当 Git 仓库已经是最新但运行二进制仍是旧版本时，更新面板会显示“需重建”，并允许执行重建并重启。",
+			},
+			AddedEN: []string{
+				"Online update status now reports running version, running commit, repository version, and binary-outdated state to distinguish the Git checkout from the running server binary.",
+				"When the Git repository is already current but the running binary is stale, the update panel shows a rebuild-needed state and allows rebuild-and-restart.",
+			},
+			Changed: []string{
+				"自动更新构建服务端时写入 version.Commit 和 version.BuildTime，后续版本检查可准确判断当前运行二进制来源。",
+				"无远端新提交但二进制过期时，服务端会从当前仓库提交构建新的二进制并自动重启，不再误判为已经是最新版本。",
+			},
+			ChangedEN: []string{
+				"Automatic server builds now stamp version.Commit and version.BuildTime so later checks can identify the running binary source accurately.",
+				"When no remote commit is pending but the binary is stale, the server rebuilds from the current repository commit and restarts automatically instead of reporting already up to date.",
+			},
+			Fixed: []string{
+				"修复仓库已拉到最新但 /opt/gpufleet/gpufleet-server 仍是旧二进制时，在线更新页面显示“最新”且无法触发重建的问题。",
+			},
+			FixedEN: []string{
+				"Fixed the update panel showing latest and blocking rebuild when the repository was current but /opt/gpufleet/gpufleet-server was still an old binary.",
+			},
+		},
 		{
 			Version: "0.1.5",
 			Date:    "2026-06-05",

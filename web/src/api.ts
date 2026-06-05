@@ -172,6 +172,11 @@ export type UpdateStatus = {
   upstream?: string;
   local_commit?: string;
   remote_commit?: string;
+  running_version?: string;
+  running_commit?: string;
+  running_build_time?: string;
+  repo_version?: string;
+  binary_outdated: boolean;
   behind: number;
   ahead: number;
   checked_at: string;

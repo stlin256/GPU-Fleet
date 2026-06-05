@@ -250,6 +250,77 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusConflict, nil)
 }
 
+func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git executable is not available")
+	}
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote.git")
+	source := filepath.Join(root, "source")
+	local := filepath.Join(root, "local")
+
+	git(t, root, "init", "--bare", remote)
+	if err := os.MkdirAll(filepath.Join(source, "cmd", "gpufleet-server"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(source, "internal", "version"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "init")
+	git(t, source, "checkout", "-b", "main")
+	git(t, source, "config", "user.email", "test@example.com")
+	git(t, source, "config", "user.name", "GPUFleet Test")
+	if err := os.WriteFile(filepath.Join(source, "cmd", "gpufleet-server", "main.go"), []byte("package main\nfunc main() {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "internal", "version", "version.go"), []byte("package version\n\nvar (\n\tVersion = \"9.9.9\"\n)\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "add", "cmd/gpufleet-server/main.go", "internal/version/version.go")
+	git(t, source, "commit", "-m", "initial")
+	git(t, source, "remote", "add", "origin", remote)
+	git(t, source, "push", "-u", "origin", "main")
+	git(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+	git(t, root, "clone", remote, local)
+
+	app := newTestAppWithRepo(t, root, filepath.Join(root, "missing-web"), local)
+	var buildReq updateBuildRequest
+	var restartReq updateRestartRequest
+	app.updateBuildServer = func(ctx context.Context, req updateBuildRequest) (updateBuildResult, error) {
+		buildReq = req
+		if err := os.WriteFile(req.OutputPath, []byte("rebuilt binary"), 0700); err != nil {
+			return updateBuildResult{}, err
+		}
+		return updateBuildResult{OutputPath: req.OutputPath, Output: "rebuild ok"}, nil
+	}
+	app.updateScheduleRestart = func(req updateRestartRequest) error {
+		restartReq = req
+		_ = os.Remove(req.NextExe)
+		return nil
+	}
+	app.updateExit = func() {}
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	var status updateStatus
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/update/status", nil, cookie, http.StatusOK, &status)
+	if !status.Supported || status.Available || !status.BinaryOutdated || status.RepoVersion != "9.9.9" {
+		t.Fatalf("expected outdated binary status without remote update, got %+v", status)
+	}
+
+	var applied updateApplyResponse
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusOK, &applied)
+	if !applied.OK || !applied.RestartRequired || !applied.Restarting || applied.RestartAt.IsZero() {
+		t.Fatalf("expected rebuild restart response, got %+v", applied)
+	}
+	if buildReq.RemoteCommit != status.LocalCommit {
+		t.Fatalf("expected rebuild from local commit %q, got %+v", status.LocalCommit, buildReq)
+	}
+	if restartReq.CurrentExe == "" || restartReq.NextExe == "" || restartReq.PID <= 0 || !restartReq.ReplaceExecutable {
+		t.Fatalf("expected executable replacement restart, got %+v", restartReq)
+	}
+}
+
 func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))

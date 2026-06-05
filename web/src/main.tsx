@@ -1607,7 +1607,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   });
   const status = update.data;
   const state = updateState(status, update.isLoading, update.error instanceof Error ? update.error.message : '');
-  const canApply = Boolean(status?.supported && status.upstream && status.available && !status.dirty && status.ahead === 0 && !busy);
+  const canApply = Boolean(status?.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && status.ahead === 0 && !busy);
 
   useEffect(() => {
     setProxyURL(service?.update_proxy || '');
@@ -1721,6 +1721,18 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
 
       <div className="update-meta">
         <div>
+          <span>运行版本</span>
+          <strong>{status?.running_version ? `v${status.running_version}` : '-'}</strong>
+        </div>
+        <div>
+          <span>仓库版本</span>
+          <strong>{status?.repo_version ? `v${status.repo_version}` : '-'}</strong>
+        </div>
+        <div>
+          <span>运行提交</span>
+          <strong title={status?.running_commit}>{shortHash(status?.running_commit)}</strong>
+        </div>
+        <div>
           <span>远端</span>
           <strong title={status?.remote}>{status?.remote || '-'}</strong>
         </div>
@@ -1749,7 +1761,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
         </button>
         <button className="primary compact" type="button" onClick={pull} disabled={!canApply}>
           <Download size={16} />
-          {busy ? '更新中' : '拉取并重启'}
+          {busy ? '更新中' : status?.binary_outdated && !status.available ? '重建并重启' : '拉取并重启'}
         </button>
       </div>
       {progressStep > 0 && <UpdateProgress step={progressStep} />}
@@ -1788,6 +1800,7 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
   if (status.ahead > 0 && status.behind > 0) return { label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward' };
   if (status.ahead > 0) return { label: '本地超前', tone: 'warn', message: '本地提交超前上游，面板不会执行拉取' };
   if (status.available) return { label: '有新版本', tone: 'good', message: `${status.behind} 个提交可拉取、构建并自动重启` };
+  if (status.binary_outdated) return { label: '需重建', tone: 'warn', message: '运行中的服务端二进制与当前仓库不一致，可重建并自动重启' };
   return { label: '最新', tone: 'good', message: status.message || '已经是最新版本' };
 }
 
