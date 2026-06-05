@@ -713,8 +713,8 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
   const busyText = data ? String(busyCount) : '-';
   const hotText = data ? String(hotCount) : '-';
   const powerValue = data?.power_draw_watts;
-  const memorySpark = aggregateSeries.memory.length ? aggregateSeries.memory : gpus.map((item) => ({ value: item.gpu.memory_used_bytes ?? 0, timestamp: item.timestamp }));
-  const powerSpark = aggregateSeries.power.length ? aggregateSeries.power : gpus.map((item) => ({ value: item.gpu.power_draw_watts ?? 0, timestamp: item.timestamp }));
+  const memorySpark = aggregateSeries.ready ? aggregateSeries.memory : [];
+  const powerSpark = aggregateSeries.ready ? aggregateSeries.power : [];
 
   return (
     <>
@@ -754,9 +754,9 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
   const gpus = data?.latest_gpus ?? [];
   const aggregateSeries = useAggregateSeries(gpus);
   const powerValue = data?.power_draw_watts;
-  const utilizationSpark = aggregateSeries.utilization.length ? aggregateSeries.utilization : gpus.map((item) => ({ value: item.gpu.utilization_gpu_percent ?? 0, timestamp: item.timestamp }));
-  const memorySpark = aggregateSeries.memory.length ? aggregateSeries.memory : gpus.map((item) => ({ value: item.gpu.memory_used_bytes ?? 0, timestamp: item.timestamp }));
-  const powerSpark = aggregateSeries.power.length ? aggregateSeries.power : gpus.map((item) => ({ value: item.gpu.power_draw_watts ?? 0, timestamp: item.timestamp }));
+  const utilizationSpark = aggregateSeries.ready ? aggregateSeries.utilization : [];
+  const memorySpark = aggregateSeries.ready ? aggregateSeries.memory : [];
+  const powerSpark = aggregateSeries.ready ? aggregateSeries.power : [];
 
   return (
     <>
@@ -961,10 +961,14 @@ function maxSeries(values: Array<number | undefined>, fallback: number) {
   return clean.length ? Math.max(fallback, ...clean) : fallback;
 }
 
-type AggregateSeries = {
+type AggregateSeriesData = {
   utilization: Array<{ value: number; timestamp?: string }>;
   memory: Array<{ value: number; timestamp?: string }>;
   power: Array<{ value: number; timestamp?: string }>;
+};
+
+type AggregateSeries = AggregateSeriesData & {
+  ready: boolean;
 };
 
 function useAggregateSeries(items: StoredGPU[]): AggregateSeries {
@@ -982,19 +986,13 @@ function useAggregateSeries(items: StoredGPU[]): AggregateSeries {
     refetchInterval: 30000,
     retry: false
   });
-  return series.data ?? { utilization: [], memory: [], power: [] };
+  return series.data ? { ...series.data, ready: true } : { utilization: [], memory: [], power: [], ready: false };
 }
 
-function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeries {
+function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeriesData {
   const buckets = new Map<number, { timestamp?: string; utilizationTotal: number; utilizationCount: number; memory: number; power: number }>();
-  for (const { item, points } of batches) {
-    const source: GPUSeriesPoint[] = points.length ? points : [{
-      timestamp: item.timestamp,
-      utilization_gpu_percent: item.gpu.utilization_gpu_percent,
-      memory_used_bytes: item.gpu.memory_used_bytes,
-      memory_total_bytes: item.gpu.memory_total_bytes,
-      power_draw_watts: item.gpu.power_draw_watts
-    }];
+  for (const { points } of batches) {
+    const source: GPUSeriesPoint[] = points;
     for (const [index, point] of source.entries()) {
       const time = new Date(point.timestamp).getTime();
       if (!Number.isFinite(time)) continue;
@@ -1028,7 +1026,8 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
   const width = 180;
   const height = 58;
   const pad = 4;
-  const clean = samples.length > 0 ? samples : [{ value: 0 }];
+  const clean = samples;
+  const hasLine = clean.length >= 2;
   const cappedMax = Math.max(1, max);
   const pointData = clean.map((sample, index) => {
     const x = clean.length === 1 ? width - pad : pad + (index / (clean.length - 1)) * (width - pad * 2);
@@ -1038,9 +1037,10 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
   const points = pointData.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`);
   const line = points.join(' ');
   const area = `${pad},${height - pad} ${line} ${width - pad},${height - pad}`;
-  const active = hoverIndex === null ? undefined : pointData[hoverIndex];
+  const active = hasLine && hoverIndex !== null ? pointData[hoverIndex] : undefined;
 
   function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!hasLine) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 1;
     const index = Math.max(0, Math.min(clean.length - 1, Math.round(ratio * (clean.length - 1))));
@@ -1051,8 +1051,12 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
     <div className={`sparkline-wrap ${className}`} onPointerMove={onPointerMove} onPointerLeave={() => setHoverIndex(null)}>
       <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label} 历史趋势图`} preserveAspectRatio="none">
         <polyline className="spark-grid" points={`${pad},${height - pad} ${width - pad},${height - pad}`} />
-        <polygon className="spark-area" points={area} />
-        <polyline className="spark-line" points={line} />
+        {hasLine && (
+          <>
+            <polygon className="spark-area" points={area} />
+            <polyline className="spark-line" points={line} />
+          </>
+        )}
         {active && (
           <>
             <line className="spark-cursor" x1={active.x} x2={active.x} y1={pad} y2={height - pad} />

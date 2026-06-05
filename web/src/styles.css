@@ -296,11 +296,15 @@ input:focus-visible {
 }
 
 .fleet-kpi {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel-soft) 82%, var(--panel));
   padding: 12px;
   min-width: 0;
+  min-height: 80px;
   transition: transform var(--motion-base) var(--ease), border-color var(--motion-base) var(--ease), background var(--motion-base) var(--ease), box-shadow var(--motion-base) var(--ease);
 }
 
