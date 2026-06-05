@@ -984,7 +984,6 @@ function useAggregateSeries(items: StoredGPU[]): AggregateSeries {
 
 function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeries {
   const buckets = new Map<number, { utilizationTotal: number; utilizationCount: number; memory: number; power: number }>();
-  const bucketMs = 60_000;
   for (const { item, points } of batches) {
     const source = points.length ? points : [{
       timestamp: item.timestamp,
@@ -996,8 +995,7 @@ function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSerie
     for (const point of source) {
       const time = new Date(point.timestamp).getTime();
       if (!Number.isFinite(time)) continue;
-      const bucket = Math.floor(time / bucketMs) * bucketMs;
-      const row = buckets.get(bucket) ?? { utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
+      const row = buckets.get(time) ?? { utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
       if (typeof point.utilization_gpu_percent === 'number' && Number.isFinite(point.utilization_gpu_percent)) {
         row.utilizationTotal += point.utilization_gpu_percent;
         row.utilizationCount += 1;
@@ -1008,10 +1006,10 @@ function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSerie
       if (typeof point.power_draw_watts === 'number' && Number.isFinite(point.power_draw_watts)) {
         row.power += point.power_draw_watts;
       }
-      buckets.set(bucket, row);
+      buckets.set(time, row);
     }
   }
-  const rows = Array.from(buckets.entries()).sort(([left], [right]) => left - right).slice(-60);
+  const rows = Array.from(buckets.entries()).sort(([left], [right]) => left - right);
   return {
     utilization: rows.map(([time, row]) => ({ value: row.utilizationCount ? row.utilizationTotal / row.utilizationCount : 0, timestamp: new Date(time).toISOString() })),
     memory: rows.map(([time, row]) => ({ value: row.memory, timestamp: new Date(time).toISOString() })),
