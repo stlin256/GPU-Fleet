@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as echarts from 'echarts/core';
@@ -1933,12 +1934,13 @@ function UpdateProgress({ step }: { step: number }) {
     '等待服务端恢复，恢复后自动刷新'
   ];
   const activeLabel = stages[Math.max(0, Math.min(stages.length - 1, step - 1))];
-  const percent = Math.round((Math.max(1, Math.min(step, stages.length)) / stages.length) * 100);
-  return (
+  const rawPercent = Math.round((Math.max(1, Math.min(step, stages.length)) / stages.length) * 100);
+  const percent = step >= 4 ? 99 : rawPercent;
+  return createPortal(
     <div className="modal-backdrop update-progress-backdrop" role="presentation" data-testid="update-progress">
       <section className="confirm-dialog update-progress-dialog" role="status" aria-live="polite">
         <div className="update-progress-head">
-          <div className="confirm-icon update-progress-spinner"><Download size={18} /></div>
+          <div className="confirm-icon"><Download size={18} /></div>
           <div className="confirm-copy">
             <span>在线更新</span>
             <h2>正在拉取并重启</h2>
@@ -1956,7 +1958,8 @@ function UpdateProgress({ step }: { step: number }) {
           ))}
         </div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -2034,6 +2037,9 @@ function ChangelogEntryView({ entry, language }: { entry: NonNullable<ReleaseInf
   const changed = language === 'en-US' ? entry.changed_en || entry.changed : entry.changed;
   const security = language === 'en-US' ? entry.security_en || entry.security : entry.security;
   const fixed = language === 'en-US' ? entry.fixed_en || entry.fixed : entry.fixed;
+  const labels = language === 'en-US'
+    ? { added: 'Added', changed: 'Changed', security: 'Security', fixed: 'Fixed' }
+    : { added: '新增', changed: '变更', security: '安全', fixed: '修复' };
   return (
     <div className="changelog-entry">
       <div>
@@ -2041,10 +2047,10 @@ function ChangelogEntryView({ entry, language }: { entry: NonNullable<ReleaseInf
         <span>{entry.date}</span>
       </div>
       <p>{title}</p>
-      <ChangelogList label="新增" items={added} />
-      <ChangelogList label="变更" items={changed} />
-      <ChangelogList label="安全" items={security} />
-      <ChangelogList label="修复" items={fixed} />
+      <ChangelogList label={labels.added} items={added} />
+      <ChangelogList label={labels.changed} items={changed} />
+      <ChangelogList label={labels.security} items={security} />
+      <ChangelogList label={labels.fixed} items={fixed} />
     </div>
   );
 }

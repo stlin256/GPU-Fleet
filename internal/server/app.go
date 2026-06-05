@@ -303,7 +303,7 @@ func (a *App) handleVersion(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	writeJSON(w, http.StatusOK, version.Current())
+	writeJSON(w, http.StatusOK, version.CurrentFromChangelog(filepath.Join(a.config.RepoDir, "CHANGELOG.md")))
 }
 
 func (a *App) handleSetupApply(w http.ResponseWriter, r *http.Request) {

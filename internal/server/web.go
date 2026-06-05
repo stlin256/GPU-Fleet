@@ -1748,6 +1748,7 @@ const dashboardHTML = `<!doctype html>
             '</div>' +
           '</section></div>';
       hydrateUpdatePanel();
+      hydrateProjectPanel();
     }
     function settingsSectionHead(title, caption) {
       return '<div class="settings-section-head"><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>';
@@ -1918,7 +1919,47 @@ const dashboardHTML = `<!doctype html>
     }
     function projectPanel() {
       const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="projectShell" x1="28" y1="24" x2="222" y2="228" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#146C78"/><stop offset=".58" stop-color="#198754"/><stop offset="1" stop-color="#B26A00"/></linearGradient><linearGradient id="projectChip" x1="78" y1="73" x2="178" y2="181" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DFF3F2"/></linearGradient></defs><rect x="18" y="18" width="220" height="220" rx="46" fill="url(#projectShell)"/><path d="M62 89h34M62 166h34M160 62v34M160 160v34M178 128h32" fill="none" stroke="#E8FBF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><g fill="#E8FBF6"><circle cx="62" cy="89" r="13"/><circle cx="62" cy="166" r="13"/><circle cx="160" cy="62" r="13"/><circle cx="160" cy="194" r="13"/><circle cx="210" cy="128" r="13"/></g><rect x="84" y="84" width="88" height="88" rx="22" fill="url(#projectChip)"/><rect x="105" y="105" width="46" height="46" rx="12" fill="#146C78"/><path d="M118 130h16c8 0 13-5 13-13s-5-13-13-13h-16v47M121 130h23" fill="none" stroke="#F7FFFC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-      return '<article class="panel setting-operation project-card release-card" data-testid="settings-project"><div class="operation-head"><div class="operation-icon project-logo">' + logo + '</div><div><h2>版本与变更</h2><p>GPUFleet v0.1.1</p></div></div><div class="project-meta"><div><span>作者</span><strong>stlin256</strong></div><div><span>版本</span><strong>v0.1.1</strong></div><div><span>提交</span><strong>dev</strong></div><div><span>构建时间</span><strong>-</strong></div><div class="project-url"><span>仓库地址</span><a href="https://github.com/stlin256/GPU-Fleet" target="_blank" rel="noreferrer">https://github.com/stlin256/GPU-Fleet</a></div></div><div class="changelog-panel" data-testid="settings-changelog"><div class="changelog-head"><span>最近变更</span></div><div class="changelog-entry"><div><strong>v0.1.1</strong><span>2026-06-05</span></div><p>设备管理与移动端体验增强</p><div class="changelog-group"><span>新增</span><ul><li>设备管理支持改名和删除，删除后清理最新 GPU 与进程快照。</li><li>总览新增总功耗，并以 GiB 展示全局总显存用量。</li><li>移动端 GPU 趋势图在小屏继续保持 2x2 布局。</li></ul></div><div class="changelog-group"><span>变更</span><ul><li>设备禁用、启用、删除和密钥轮换统一使用应用内确认弹窗。</li><li>设置页按访问与安全、维护与发布重新分组。</li></ul></div></div></div><a class="secondary action-button" href="https://github.com/stlin256/GPU-Fleet" target="_blank" rel="noreferrer">打开 GitHub</a></article>';
+      return '<article class="panel setting-operation project-card release-card" data-testid="settings-project"><div class="operation-head"><div class="operation-icon project-logo">' + logo + '</div><div><h2>版本与变更</h2><p id="releaseSummary">GPUFleet 发布信息</p></div></div><div class="project-meta"><div><span>作者</span><strong id="releaseAuthor">stlin256</strong></div><div><span>版本</span><strong id="releaseVersion">-</strong></div><div><span>提交</span><strong id="releaseCommit">dev</strong></div><div><span>构建时间</span><strong id="releaseBuild">-</strong></div><div class="project-url"><span>仓库地址</span><a id="releaseRepository" href="https://github.com/stlin256/GPU-Fleet" target="_blank" rel="noreferrer">https://github.com/stlin256/GPU-Fleet</a></div></div><div class="changelog-panel" data-testid="settings-changelog"><div class="changelog-head"><span>最近变更</span></div><div id="releaseChangelog"><p>正在读取版本信息</p></div></div><a class="secondary action-button" id="releaseRepositoryButton" href="https://github.com/stlin256/GPU-Fleet" target="_blank" rel="noreferrer">打开 GitHub</a></article>';
+    }
+    async function hydrateProjectPanel() {
+      try {
+        renderProjectInfo(await api('/api/v1/version'));
+      } catch (err) {
+        const root = document.getElementById('releaseChangelog');
+        if (root) root.innerHTML = '<p>' + esc(err.message || '读取版本信息失败') + '</p>';
+      }
+    }
+    function renderProjectInfo(release) {
+      const versionText = release && release.version ? 'v' + release.version : '-';
+      const repository = release && release.repository || 'https://github.com/stlin256/GPU-Fleet';
+      const summary = document.getElementById('releaseSummary');
+      const author = document.getElementById('releaseAuthor');
+      const version = document.getElementById('releaseVersion');
+      const commit = document.getElementById('releaseCommit');
+      const build = document.getElementById('releaseBuild');
+      const repositoryLink = document.getElementById('releaseRepository');
+      const repositoryButton = document.getElementById('releaseRepositoryButton');
+      if (summary) summary.textContent = (release && release.product || 'GPUFleet') + ' ' + versionText;
+      if (author) author.textContent = release && release.author || 'stlin256';
+      if (version) version.textContent = versionText;
+      if (commit) commit.textContent = release && release.commit && release.commit !== 'dev' ? release.commit : 'dev';
+      if (build) build.textContent = release && release.build_time ? new Date(release.build_time).toLocaleString() : '-';
+      if (repositoryLink) {
+        repositoryLink.href = repository;
+        repositoryLink.textContent = repository;
+      }
+      if (repositoryButton) repositoryButton.href = repository;
+      const root = document.getElementById('releaseChangelog');
+      if (!root) return;
+      const latest = release && release.changelog && release.changelog[0];
+      root.innerHTML = latest ? renderChangelogEntry(latest) : '<p>暂无变更记录</p>';
+    }
+    function renderChangelogEntry(entry) {
+      return '<div class="changelog-entry"><div><strong>v' + esc(entry.version || '-') + '</strong><span>' + esc(entry.date || '-') + '</span></div><p>' + esc(entry.title || entry.title_en || '-') + '</p>' + renderChangelogList('新增', entry.added) + renderChangelogList('变更', entry.changed) + renderChangelogList('安全', entry.security) + renderChangelogList('修复', entry.fixed) + '</div>';
+    }
+    function renderChangelogList(label, items) {
+      if (!items || !items.length) return '';
+      return '<div class="changelog-group"><span>' + esc(label) + '</span><ul>' + items.map((item) => '<li>' + esc(item) + '</li>').join('') + '</ul></div>';
     }
 
     function gpuHealth(item, device) {

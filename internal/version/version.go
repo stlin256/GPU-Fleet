@@ -1,6 +1,11 @@
 package version
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"regexp"
+	"strings"
+)
 
 var (
 	Version   = "0.1.7"
@@ -51,11 +56,153 @@ func Current() ReleaseInfo {
 	}
 }
 
+func CurrentFromChangelog(path string) ReleaseInfo {
+	info := Current()
+	if entries, err := ChangelogFromFile(path); err == nil && len(entries) > 0 {
+		info.Changelog = entries
+	}
+	return info
+}
+
 func String() string {
 	if Commit == "" || Commit == "dev" {
 		return fmt.Sprintf("%s %s", Product, Version)
 	}
 	return fmt.Sprintf("%s %s (%s)", Product, Version, Commit)
+}
+
+func ChangelogFromFile(path string) ([]ChangelogEntry, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	entries := parseChangelogMarkdown(string(raw))
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("no changelog entries found in %s", path)
+	}
+	return entries, nil
+}
+
+var changelogVersionHeading = regexp.MustCompile(`^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - ([0-9]{4}-[0-9]{2}-[0-9]{2})$`)
+
+func parseChangelogMarkdown(raw string) []ChangelogEntry {
+	var entries []ChangelogEntry
+	var current *ChangelogEntry
+	section := ""
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if match := changelogVersionHeading.FindStringSubmatch(line); match != nil {
+			if current != nil {
+				entries = append(entries, *current)
+			}
+			current = &ChangelogEntry{Version: match[1], Date: match[2]}
+			section = ""
+			continue
+		}
+		if current == nil {
+			continue
+		}
+		if strings.HasPrefix(line, "### ") {
+			section = normalizeChangelogSection(strings.TrimSpace(strings.TrimPrefix(line, "### ")))
+			continue
+		}
+		if !strings.HasPrefix(line, "- ") {
+			continue
+		}
+		lang, text := parseLocalizedBullet(strings.TrimSpace(strings.TrimPrefix(line, "- ")))
+		appendChangelogText(current, section, lang, text)
+	}
+	if current != nil {
+		entries = append(entries, *current)
+	}
+	return entries
+}
+
+func normalizeChangelogSection(section string) string {
+	lower := strings.ToLower(section)
+	switch {
+	case strings.Contains(lower, "title"), strings.Contains(section, "标题"):
+		return "title"
+	case strings.Contains(lower, "added"), strings.Contains(section, "新增"):
+		return "added"
+	case strings.Contains(lower, "changed"), strings.Contains(section, "变更"):
+		return "changed"
+	case strings.Contains(lower, "security"), strings.Contains(section, "安全"):
+		return "security"
+	case strings.Contains(lower, "fixed"), strings.Contains(section, "修复"):
+		return "fixed"
+	default:
+		return ""
+	}
+}
+
+func parseLocalizedBullet(raw string) (string, string) {
+	for _, prefix := range []string{"zh-CN:", "zh:", "中文:"} {
+		if strings.HasPrefix(raw, prefix) {
+			return "zh-CN", strings.TrimSpace(strings.TrimPrefix(raw, prefix))
+		}
+	}
+	for _, prefix := range []string{"en-US:", "en:", "English:"} {
+		if strings.HasPrefix(raw, prefix) {
+			return "en-US", strings.TrimSpace(strings.TrimPrefix(raw, prefix))
+		}
+	}
+	if containsCJK(raw) {
+		return "zh-CN", raw
+	}
+	return "en-US", raw
+}
+
+func appendChangelogText(entry *ChangelogEntry, section, lang, text string) {
+	if text == "" {
+		return
+	}
+	if section == "title" {
+		if lang == "en-US" {
+			entry.TitleEN = text
+		} else {
+			entry.Title = text
+		}
+		return
+	}
+	switch section {
+	case "added":
+		if lang == "en-US" {
+			entry.AddedEN = append(entry.AddedEN, text)
+		} else {
+			entry.Added = append(entry.Added, text)
+		}
+	case "changed":
+		if lang == "en-US" {
+			entry.ChangedEN = append(entry.ChangedEN, text)
+		} else {
+			entry.Changed = append(entry.Changed, text)
+		}
+	case "security":
+		if lang == "en-US" {
+			entry.SecurityEN = append(entry.SecurityEN, text)
+		} else {
+			entry.Security = append(entry.Security, text)
+		}
+	case "fixed":
+		if lang == "en-US" {
+			entry.FixedEN = append(entry.FixedEN, text)
+		} else {
+			entry.Fixed = append(entry.Fixed, text)
+		}
+	}
+}
+
+func containsCJK(value string) bool {
+	for _, r := range value {
+		if (r >= '\u4e00' && r <= '\u9fff') || (r >= '\u3400' && r <= '\u4dbf') {
+			return true
+		}
+	}
+	return false
 }
 
 func Changelog() []ChangelogEntry {
@@ -68,10 +215,24 @@ func Changelog() []ChangelogEntry {
 			Changed: []string{
 				"Linux 自动更新重启脚本改为先将新二进制原子替换到当前路径，再等待旧进程退出，避免 systemd 在替换前抢先拉起旧二进制。",
 				"重启脚本会检测当前二进制路径是否已被其他进程启动，避免 systemd 场景下重复拉起两个服务端进程。",
+				"GPU 详情和总览卡片布局进一步压缩，长型号、趋势标题、功耗/显存说明和 Compute 信息不再挤压卡片内容。",
+				"趋势卡片主数值优先保持单行显示并占满整行，避免功耗、显存等指标在仍有空间时被拆成多行或显示省略号。",
+				"GPU 进程和 24 小时统计列表元信息优先显示设备名称，减少直接展示设备 ID。",
+				"总览和 GPU 监控页的汇总指标卡新增右侧迷你曲线，用于展示各 GPU 当前利用率、显存和功耗分布。",
+				"在线更新进度改为背景模糊加前景进度面板展示，并加入百分比、进度条和阶段动画以提升更新体验。",
+				"24 小时统计列表支持点击 GPU 展开过去 24H 的利用率、显存、温度和功耗曲线，GPU 监控页统计面板宽度与详情卡片主列对齐。",
+				"版本 API 和设置页 Changelog 改为优先读取仓库中的 CHANGELOG.md，并规范化中英文条目格式。",
 			},
 			ChangedEN: []string{
 				"Linux update restart helpers now move the new binary into the active path before waiting for the old process to exit, preventing systemd from restarting the old binary first.",
 				"The restart helper detects whether another process is already running the target binary path to avoid starting a duplicate server under systemd.",
+				"GPU detail and overview card layouts are more compact so long model names, trend labels, power/memory captions, and Compute metadata no longer crowd the card contents.",
+				"Trend card primary values now prefer single-line display and span the full row, avoiding wraps or ellipses while horizontal space remains available.",
+				"GPU process and 24-hour stats metadata now prefer device names, reducing direct device ID display.",
+				"Overview and GPU monitoring aggregate metric cards now include right-side sparklines for current per-GPU utilization, memory, and power distribution.",
+				"Online update progress now uses a blurred backdrop with a foreground progress panel, percentage, progress bar, and staged animation for a clearer update experience.",
+				"24-hour stats rows can now expand per GPU to show 24-hour utilization, memory, temperature, and power charts, with the GPU monitoring stats panel aligned to the detail-card column width.",
+				"Version API and settings changelog now prefer reading CHANGELOG.md from the repository, with normalized bilingual entry formatting.",
 			},
 			Fixed: []string{
 				"修复 0.1.5 到后续版本自动更新时，Git 仓库已更新但 systemd 仍可能继续运行旧服务端二进制的问题。",
