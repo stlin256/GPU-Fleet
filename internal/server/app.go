@@ -648,6 +648,26 @@ func (a *App) handleAdminDeviceAction(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
 		return
 	}
+	if r.Method == http.MethodPatch {
+		if len(parts) != 1 || parts[0] == "" {
+			writeError(w, http.StatusNotFound, "not found")
+			return
+		}
+		var body struct {
+			Alias string `json:"alias"`
+		}
+		if err := decodeJSON(r, &body, 1<<20); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		device, err := a.meta.RenameDevice(parts[0], body.Alias)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
+		return
+	}
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return

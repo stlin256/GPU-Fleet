@@ -314,6 +314,13 @@ export function deleteDevice(deviceId: string) {
   });
 }
 
+export function renameDevice(deviceId: string, alias: string) {
+  return request<DeviceResponse>(`/api/v1/admin/devices/${encodeURIComponent(deviceId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ alias })
+  });
+}
+
 export function rotateDeviceSecret(deviceId: string) {
   return request<DeviceSecretResponse>(`/api/v1/admin/devices/${encodeURIComponent(deviceId)}/rotate-secret`, {
     method: 'POST'

@@ -587,6 +587,21 @@ const dashboardHTML = `<!doctype html>
       border-bottom: 1px solid var(--line);
     }
     .device-row:last-child { border-bottom: 0; }
+    .device-name-cell {
+      min-width: 0;
+    }
+    .device-rename-form {
+      display: grid;
+      grid-template-columns: minmax(180px, 1fr) auto auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .device-rename-form input {
+      min-height: 36px;
+    }
+    .device-rename-form .secondary {
+      min-height: 36px;
+    }
     .row-actions {
       display: flex;
       gap: 8px;
@@ -965,6 +980,7 @@ const dashboardHTML = `<!doctype html>
       secret: null,
       pendingConfirm: null,
       confirmBusy: false,
+      editingDevice: null,
       theme: initialTheme()
     };
     const titles = {
@@ -1062,6 +1078,36 @@ const dashboardHTML = `<!doctype html>
       const button = event.target.closest('[data-device-action]');
       if (!button) return;
       openDeviceConfirm(button.dataset.deviceId, button.dataset.deviceAction);
+    });
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-device-edit]');
+      if (!button) return;
+      const device = (state.data && state.data.devices || []).find((item) => item.id === button.dataset.deviceId);
+      if (!device) return;
+      state.editingDevice = {id: device.id, alias: device.alias || device.id};
+      render();
+    });
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-rename-cancel]');
+      if (!button) return;
+      state.editingDevice = null;
+      render();
+    });
+    document.addEventListener('submit', async (event) => {
+      const form = event.target.closest('[data-device-rename-form]');
+      if (!form) return;
+      event.preventDefault();
+      const deviceID = form.dataset.deviceId;
+      const alias = new FormData(form).get('alias');
+      try {
+        const result = await api('/api/v1/admin/devices/' + encodeURIComponent(deviceID), {method: 'PATCH', body: JSON.stringify({alias: String(alias || '').trim()})});
+        state.message = '设备名称已更新为 ' + (result.device.alias || result.device.id);
+        state.editingDevice = null;
+        await refresh();
+      } catch (err) {
+        state.message = err.message;
+        render();
+      }
     });
     document.addEventListener('click', async (event) => {
       const action = event.target.closest('[data-confirm-action]');
@@ -1450,7 +1496,11 @@ const dashboardHTML = `<!doctype html>
     function renderDeviceRow(device) {
       const status = device.enabled ? (device.status || 'offline') : 'disabled';
       const action = device.enabled ? 'disable' : 'enable';
-      return '<div class="device-row"><div><strong>' + esc(device.alias || device.id) + '</strong><p>' + esc(device.id + ' · ' + (device.hostname || '-') + ' · ' + (device.agent_version || '-')) + '</p></div><span class="pill ' + status + '">' + status + '</span><div class="row-actions"><button class="secondary" data-device-action="' + action + '" data-device-id="' + esc(device.id) + '">' + (device.enabled ? '禁用' : '启用') + '</button><button class="secondary" data-device-action="rotate" data-device-id="' + esc(device.id) + '">轮换</button><button class="secondary danger-action" data-device-action="delete" data-device-id="' + esc(device.id) + '">删除</button></div></div>';
+      const editing = state.editingDevice && state.editingDevice.id === device.id;
+      const nameCell = editing
+        ? '<form class="device-rename-form" data-device-rename-form data-device-id="' + esc(device.id) + '"><input name="alias" value="' + esc(state.editingDevice.alias) + '" aria-label="设备名称"><button class="secondary" type="submit">保存</button><button class="secondary" type="button" data-rename-cancel>取消</button></form>'
+        : '<strong>' + esc(device.alias || device.id) + '</strong><p>' + esc(device.id + ' · ' + (device.hostname || '-') + ' · ' + (device.agent_version || '-')) + '</p>';
+      return '<div class="device-row"><div class="device-name-cell">' + nameCell + '</div><span class="pill ' + status + '">' + status + '</span><div class="row-actions"><button class="secondary" data-device-edit data-device-id="' + esc(device.id) + '"' + (state.editingDevice ? ' disabled' : '') + '>改名</button><button class="secondary" data-device-action="' + action + '" data-device-id="' + esc(device.id) + '"' + (state.editingDevice ? ' disabled' : '') + '>' + (device.enabled ? '禁用' : '启用') + '</button><button class="secondary" data-device-action="rotate" data-device-id="' + esc(device.id) + '"' + (state.editingDevice ? ' disabled' : '') + '>轮换</button><button class="secondary danger-action" data-device-action="delete" data-device-id="' + esc(device.id) + '"' + (state.editingDevice ? ' disabled' : '') + '>删除</button></div></div>';
     }
     function escJS(value) {
       return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");

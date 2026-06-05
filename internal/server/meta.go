@@ -561,6 +561,25 @@ func (s *MetadataStore) SetDeviceEnabled(deviceID string, enabled bool) (Device,
 	return *device, s.saveLocked()
 }
 
+func (s *MetadataStore) RenameDevice(deviceID string, alias string) (Device, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	device, ok := s.data.Devices[deviceID]
+	if !ok {
+		return Device{}, errors.New("device not found")
+	}
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		alias = deviceID
+	}
+	if len(alias) > 96 {
+		return Device{}, errors.New("device alias is too long")
+	}
+	device.Alias = alias
+	s.addAuditLocked("device_renamed", fmt.Sprintf("renamed device %s", deviceID))
+	return *device, s.saveLocked()
+}
+
 func (s *MetadataStore) DeleteDevice(deviceID string) (Device, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

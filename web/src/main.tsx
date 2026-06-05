@@ -24,6 +24,7 @@ import {
   MonitorUp,
   Moon,
   Network,
+  PencilLine,
   Plus,
   Power,
   PowerOff,
@@ -57,6 +58,7 @@ import {
   logout,
   Overview,
   ReleaseInfo,
+  renameDevice,
   reopenSetup,
   rotateDeviceSecret,
   ServiceStatus,
@@ -917,6 +919,7 @@ function DeviceAdminPanel({ data }: { data?: Overview }) {
   const [busy, setBusy] = useState('');
   const [secret, setSecret] = useState<{ deviceId: string; value: string; title: string }>();
   const [confirm, setConfirm] = useState<{ kind: DeviceActionKind; device: Device }>();
+  const [editingDevice, setEditingDevice] = useState<{ id: string; alias: string }>();
 
   async function refresh() {
     await query.invalidateQueries({ queryKey: ['overview'] });
@@ -968,6 +971,22 @@ function DeviceAdminPanel({ data }: { data?: Overview }) {
     }
   }
 
+  async function saveDeviceAlias(deviceId: string) {
+    const nextAlias = editingDevice?.alias.trim() ?? '';
+    setBusy(`rename-${deviceId}`);
+    setMessage('');
+    try {
+      const result = await renameDevice(deviceId, nextAlias);
+      setMessage(`设备名称已更新为 ${result.device.alias || result.device.id}`);
+      setEditingDevice(undefined);
+      await refresh();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'device rename failed');
+    } finally {
+      setBusy('');
+    }
+  }
+
   return (
     <div className="device-admin">
       <section className="panel">
@@ -997,21 +1016,46 @@ function DeviceAdminPanel({ data }: { data?: Overview }) {
         <div className="device-table">
           {(data?.devices ?? []).map((device) => (
             <div className="device-row" key={device.id}>
-              <div>
-                <strong>{device.alias || device.id}</strong>
-                <p>{device.id} · {device.hostname || '-'} · {device.agent_version || '-'}</p>
+              <div className="device-name-cell">
+                {editingDevice?.id === device.id ? (
+                  <form className="device-rename-form" onSubmit={(event) => {
+                    event.preventDefault();
+                    void saveDeviceAlias(device.id);
+                  }}>
+                    <input
+                      value={editingDevice.alias}
+                      onChange={(event) => setEditingDevice({ id: device.id, alias: event.target.value })}
+                      aria-label="设备名称"
+                      autoFocus
+                    />
+                    <button className="secondary" type="submit" disabled={busy === `rename-${device.id}`}>
+                      <Save size={16} />
+                      保存
+                    </button>
+                    <button className="secondary" type="button" onClick={() => setEditingDevice(undefined)} disabled={busy === `rename-${device.id}`}>取消</button>
+                  </form>
+                ) : (
+                  <>
+                    <strong>{device.alias || device.id}</strong>
+                    <p>{device.id} · {device.hostname || '-'} · {device.agent_version || '-'}</p>
+                  </>
+                )}
               </div>
               <span className={`pill ${device.enabled ? (device.status ?? 'offline') : 'disabled'}`}>{device.enabled ? (device.status ?? 'offline') : 'disabled'}</span>
               <div className="row-actions">
-                <button className="secondary" onClick={() => setConfirm({ kind: device.enabled ? 'disable' : 'enable', device })} disabled={busy.endsWith(device.id)} title={device.enabled ? '禁用设备' : '启用设备'}>
+                <button className="secondary" onClick={() => setEditingDevice({ id: device.id, alias: device.alias || device.id })} disabled={Boolean(editingDevice) || busy.endsWith(device.id)} title="修改设备名称">
+                  <PencilLine size={16} />
+                  改名
+                </button>
+                <button className="secondary" onClick={() => setConfirm({ kind: device.enabled ? 'disable' : 'enable', device })} disabled={Boolean(editingDevice) || busy.endsWith(device.id)} title={device.enabled ? '禁用设备' : '启用设备'}>
                   {device.enabled ? <PowerOff size={16} /> : <Power size={16} />}
                   {device.enabled ? '禁用' : '启用'}
                 </button>
-                <button className="secondary" onClick={() => setConfirm({ kind: 'rotate', device })} disabled={busy === `rotate-${device.id}`} title="轮换密钥">
+                <button className="secondary" onClick={() => setConfirm({ kind: 'rotate', device })} disabled={Boolean(editingDevice) || busy === `rotate-${device.id}`} title="轮换密钥">
                   <KeyRound size={16} />
                   轮换
                 </button>
-                <button className="secondary danger-action" onClick={() => setConfirm({ kind: 'delete', device })} disabled={busy === `delete-${device.id}`} title="删除设备">
+                <button className="secondary danger-action" onClick={() => setConfirm({ kind: 'delete', device })} disabled={Boolean(editingDevice) || busy === `delete-${device.id}`} title="删除设备">
                   <Trash2 size={16} />
                   删除
                 </button>

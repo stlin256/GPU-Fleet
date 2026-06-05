@@ -996,6 +996,25 @@ input:focus {
   transform: translateX(2px);
 }
 
+.device-name-cell {
+  min-width: 0;
+}
+
+.device-rename-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.device-rename-form input {
+  min-height: 36px;
+}
+
+.device-rename-form .secondary {
+  min-height: 36px;
+}
+
 .row-actions {
   display: flex;
   gap: 8px;

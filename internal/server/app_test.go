@@ -248,6 +248,15 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 		t.Fatal("expected enabled device")
 	}
 
+	var renamed struct {
+		Device deviceView `json:"device"`
+	}
+	doJSON(t, handler, http.MethodPatch, "/api/v1/admin/devices/"+created.Device.ID, map[string]string{"alias": "worker-renamed"}, cookie, http.StatusOK, &renamed)
+	if renamed.Device.Alias != "worker-renamed" {
+		t.Fatalf("expected renamed device alias, got %+v", renamed)
+	}
+	assertSignedHeartbeat(t, handler, created.Device.ID, created.Secret, http.StatusAccepted)
+
 	var rotated struct {
 		Device deviceView `json:"device"`
 		Secret string     `json:"secret"`
