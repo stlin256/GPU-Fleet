@@ -475,7 +475,6 @@ input:focus-visible {
 }
 
 .fleet-device-cell p,
-.trend-head p,
 .setting-stat p,
 .operation-head p {
   white-space: nowrap;
@@ -561,7 +560,7 @@ input:focus-visible {
 .trend-head {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content);
+  grid-template-columns: max-content minmax(0, 1fr);
   align-items: flex-start;
   column-gap: 6px;
   row-gap: 3px;
@@ -601,10 +600,13 @@ input:focus-visible {
 .trend-head p {
   grid-column: 2;
   grid-row: 1;
+  min-width: 0;
   margin-top: 0;
   line-height: 1.25;
   text-align: right;
   font-size: 10.5px;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
