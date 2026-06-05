@@ -711,6 +711,10 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
   const busyText = data ? String(busyCount) : '-';
   const hotText = data ? String(hotCount) : '-';
   const powerValue = data?.power_draw_watts;
+  const memorySpark = gpus.map((item) => ({ value: item.gpu.memory_used_bytes ?? 0, timestamp: item.timestamp }));
+  const memorySparkMax = maxSeries(gpus.map((item) => item.gpu.memory_total_bytes), data?.memory_total_bytes ?? 1);
+  const powerSpark = gpus.map((item) => ({ value: item.gpu.power_draw_watts ?? 0, timestamp: item.timestamp }));
+  const powerSparkMax = maxSeries(gpus.map((item) => item.gpu.power_limit_watts ?? item.gpu.power_enforced_limit_watts ?? item.gpu.power_draw_watts), Math.max(powerValue ?? 1, 1));
 
   return (
     <>
@@ -725,8 +729,8 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
           <FleetKPI label="GPU 总数" value={gpuCountText} />
           <FleetKPI label="忙碌 GPU" value={busyText} tone={busyCount > 0 ? 'accent' : 'good'} />
           <FleetKPI label="高温 GPU" value={hotText} tone={hotCount > 0 ? 'bad' : 'good'} />
-          <FleetKPI label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} />
-          <FleetKPI label="总功耗" value={typeof powerValue === 'number' ? watts(powerValue) : '-'} tone={(powerValue ?? 0) > 0 ? 'accent' : 'good'} />
+          <FleetKPI label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} spark={{ label: '显存分布', samples: memorySpark, max: memorySparkMax, formatValue: fmtBytes, tone: 'good' }} />
+          <FleetKPI label="总功耗" value={typeof powerValue === 'number' ? watts(powerValue) : '-'} tone={(powerValue ?? 0) > 0 ? 'accent' : 'good'} spark={{ label: '功耗分布', samples: powerSpark, max: powerSparkMax, formatValue: watts, tone: 'accent' }} />
         </div>
       </section>
 
@@ -779,11 +783,16 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
   );
 }
 
-function FleetKPI({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' | 'accent' }) {
+function FleetKPI({ label, value, tone, spark }: { label: string; value: string; tone?: 'good' | 'warn' | 'bad' | 'accent'; spark?: { label: string; samples: Array<{ value: number; timestamp?: string }>; max: number; formatValue: (value?: number) => string; tone?: TrendTone } }) {
   return (
-    <div className={`fleet-kpi ${tone ?? ''}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className={`fleet-kpi ${tone ?? ''} ${spark ? 'with-spark' : ''}`}>
+      <div className="fleet-kpi-value">
+        <span>{label}</span>
+        <strong>{value}</strong>
+      </div>
+      {spark && (
+        <Sparkline samples={spark.samples} max={spark.max} label={spark.label} formatValue={spark.formatValue} className={`fleet-kpi-spark ${spark.tone ?? 'accent'}`} />
+      )}
     </div>
   );
 }
@@ -943,7 +952,7 @@ function maxSeries(values: Array<number | undefined>, fallback: number) {
   return clean.length ? Math.max(fallback, ...clean) : fallback;
 }
 
-function Sparkline({ samples, max, label, formatValue }: { samples: Array<{ value: number; timestamp?: string }>; max: number; label: string; formatValue: (value?: number) => string }) {
+function Sparkline({ samples, max, label, formatValue, className = '' }: { samples: Array<{ value: number; timestamp?: string }>; max: number; label: string; formatValue: (value?: number) => string; className?: string }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const width = 180;
   const height = 58;
@@ -968,7 +977,7 @@ function Sparkline({ samples, max, label, formatValue }: { samples: Array<{ valu
   }
 
   return (
-    <div className="sparkline-wrap" onPointerMove={onPointerMove} onPointerLeave={() => setHoverIndex(null)}>
+    <div className={`sparkline-wrap ${className}`} onPointerMove={onPointerMove} onPointerLeave={() => setHoverIndex(null)}>
       <svg className="sparkline" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label} 历史趋势图`} preserveAspectRatio="none">
         <polyline className="spark-grid" points={`${pad},${height - pad} ${width - pad},${height - pad}`} />
         <polygon className="spark-area" points={area} />

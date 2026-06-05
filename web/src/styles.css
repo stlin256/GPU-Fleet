@@ -304,6 +304,17 @@ input:focus-visible {
   transition: transform var(--motion-base) var(--ease), border-color var(--motion-base) var(--ease), background var(--motion-base) var(--ease), box-shadow var(--motion-base) var(--ease);
 }
 
+.fleet-kpi.with-spark {
+  display: grid;
+  grid-template-columns: minmax(118px, max-content) minmax(92px, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.fleet-kpi-value {
+  min-width: 0;
+}
+
 .fleet-kpi:hover {
   transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
@@ -331,6 +342,35 @@ input:focus-visible {
 .fleet-kpi.warn strong { color: var(--warn); }
 .fleet-kpi.bad strong { color: var(--bad); }
 .fleet-kpi.accent strong { color: var(--accent-strong); }
+
+.fleet-kpi-spark {
+  height: 48px;
+  min-width: 0;
+  align-self: center;
+}
+
+.fleet-kpi-spark .spark-tooltip {
+  top: auto;
+  bottom: calc(100% + 5px);
+}
+
+.fleet-kpi-spark.good .spark-line,
+.fleet-kpi-spark.good .spark-point {
+  stroke: var(--good);
+}
+
+.fleet-kpi-spark.good .spark-area {
+  fill: color-mix(in srgb, var(--good) 18%, transparent);
+}
+
+.fleet-kpi-spark.accent .spark-line,
+.fleet-kpi-spark.accent .spark-point {
+  stroke: var(--accent);
+}
+
+.fleet-kpi-spark.accent .spark-area {
+  fill: color-mix(in srgb, var(--accent) 18%, transparent);
+}
 
 .overview-layout {
   display: grid;
