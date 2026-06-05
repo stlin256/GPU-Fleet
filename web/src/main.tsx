@@ -74,7 +74,7 @@ type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
 
 const deviceBorderPalette = ['#146c78', '#6750a4', '#b26a00', '#198754', '#c54040', '#2f6fbd', '#8a5a00', '#00806a'];
 const repositoryOwner = 'stlin256';
-const repositoryName = 'GPUFleet';
+const repositoryName = 'GPU-Fleet';
 const repositoryURL = `https://github.com/${repositoryOwner}/${repositoryName}`;
 
 function initialTheme(): Theme {

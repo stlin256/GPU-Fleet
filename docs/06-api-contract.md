@@ -233,7 +233,7 @@ GET /api/v1/version
   "version": "0.1.0",
   "commit": "dev",
   "author": "stlin256",
-  "repository": "https://github.com/stlin256/GPUFleet",
+  "repository": "https://github.com/stlin256/GPU-Fleet",
   "changelog": [
     {
       "version": "0.1.0",

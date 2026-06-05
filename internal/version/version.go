@@ -11,7 +11,7 @@ var (
 const (
 	Product    = "GPUFleet"
 	Author     = "stlin256"
-	Repository = "https://github.com/stlin256/GPUFleet"
+	Repository = "https://github.com/stlin256/GPU-Fleet"
 )
 
 type ReleaseInfo struct {
