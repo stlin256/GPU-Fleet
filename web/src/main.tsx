@@ -1591,7 +1591,7 @@ function ProcessPanel({ items, devices }: { items: StoredProcess[]; devices: Dev
 function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Device[] }) {
   const query = useQueryClient();
   const deviceByID = new Map(devices.map((device) => [device.id, device]));
-  const [expanded, setExpanded] = useState<string>();
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     const activeRows = statRows.slice(0, 8);
     const timers = activeRows.map((row, index) => window.setTimeout(() => {
@@ -1599,6 +1599,13 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
     }, index * 160));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [query, statRows]);
+  useEffect(() => {
+    const current = new Set(statRows.map((row) => statsRowKey(row)));
+    setExpanded((previous) => {
+      const next = new Set(Array.from(previous).filter((key) => current.has(key)));
+      return next.size === previous.size ? previous : next;
+    });
+  }, [statRows]);
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1607,14 +1614,24 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
       </div>
       <div className="stats-table">
         {statRows.map((row) => {
-          const key = `${row.device_id}-${row.gpu_id}`;
-          const open = expanded === key;
+          const key = statsRowKey(row);
+          const open = expanded.has(key);
           return (
             <div className="stats-expand-row" key={key}>
               <button
                 className={`table-row stats-row-trigger ${open ? 'active' : ''}`}
                 type="button"
-                onClick={() => setExpanded(open ? undefined : key)}
+                onClick={() => {
+                  setExpanded((previous) => {
+                    const next = new Set(previous);
+                    if (next.has(key)) {
+                      next.delete(key);
+                    } else {
+                      next.add(key);
+                    }
+                    return next;
+                  });
+                }}
                 onPointerEnter={() => prefetchStatsSeries(query, row)}
                 aria-expanded={open}
               >
@@ -1634,6 +1651,10 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
       </div>
     </section>
   );
+}
+
+function statsRowKey(row: Pick<GPUStats, 'device_id' | 'gpu_id'>) {
+  return `${row.device_id}-${row.gpu_id}`;
 }
 
 function StatsTrendCard({ row }: { row: GPUStats }) {
