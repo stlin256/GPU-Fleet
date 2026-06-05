@@ -769,25 +769,24 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
       </section>
 
       <section className="main-grid">
-        <div className="panel">
-          <div className="panel-head">
-            <h2>GPU 详细状态</h2>
-            <span>{data?.latest_gpus.length ?? 0}</span>
+        <div className="gpu-main-column">
+          <div className="panel">
+            <div className="panel-head">
+              <h2>GPU 详细状态</h2>
+              <span>{data?.latest_gpus.length ?? 0}</span>
+            </div>
+            <div className="gpu-grid">
+              {(data?.latest_gpus ?? []).map((item) => <GPUCard key={`${item.device_id}-${item.gpu.gpu_id}`} item={item} />)}
+            </div>
+            <UtilChart items={data?.latest_gpus ?? []} theme={theme} />
           </div>
-          <div className="gpu-grid">
-            {(data?.latest_gpus ?? []).map((item) => <GPUCard key={`${item.device_id}-${item.gpu.gpu_id}`} item={item} />)}
-          </div>
-          <UtilChart items={data?.latest_gpus ?? []} theme={theme} />
+          <StatsPanel statRows={statRows} devices={data?.devices ?? []} />
         </div>
         <div className="stack">
           <DevicePanel data={data} />
           <ProcessPanel items={data?.latest_processes ?? []} devices={data?.devices ?? []} />
         </div>
       </section>
-
-      <div className="gpu-stats-follow">
-        <StatsPanel statRows={statRows} devices={data?.devices ?? []} />
-      </div>
     </>
   );
 }

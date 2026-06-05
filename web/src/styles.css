@@ -849,14 +849,9 @@ input:focus-visible {
   align-items: start;
 }
 
-.gpu-stats-follow {
+.gpu-main-column {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr);
   gap: 14px;
-}
-
-.gpu-stats-follow > .panel {
-  grid-column: 1;
 }
 
 .gpu-grid {
@@ -2098,10 +2093,10 @@ input[type="file"] {
     background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(16px);
   }
-  .stat-grid, .main-grid, .gpu-stats-follow {
+  .stat-grid, .main-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .gpu-stats-follow > .panel {
+  .gpu-main-column {
     grid-column: 1 / -1;
   }
   .content {
