@@ -746,14 +746,14 @@ input:focus-visible {
 
 .gpu-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  gap: 10px;
 }
 
 .gpu-card {
   border: 2px solid var(--device-color, var(--line));
   border-radius: 8px;
-  padding: 14px;
+  padding: 12px;
   background: var(--panel-soft);
   animation: card-enter var(--motion-slow) var(--ease) both;
   transition: transform var(--motion-base) var(--ease), box-shadow var(--motion-base) var(--ease), border-color var(--motion-base) var(--ease), background var(--motion-base) var(--ease);
@@ -767,18 +767,84 @@ input:focus-visible {
 .card-title {
   display: flex;
   justify-content: space-between;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.card-title > div {
+  min-width: 0;
+}
+
+.card-title h3 {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: clamp(14px, 1.05vw, 16px);
+  line-height: 1.18;
+}
+
+.card-title p {
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-title > span {
+  flex: 0 0 auto;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .gpu-detail-trend-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
+  gap: 7px;
+  margin-top: 10px;
 }
 
 .gpu-detail-trend-grid .trend-tile {
-  min-height: 132px;
+  min-height: 126px;
+  padding: 8px;
+  grid-template-rows: auto minmax(52px, 1fr);
+  gap: 6px;
+}
+
+.gpu-detail-trend-grid .trend-head {
+  gap: 6px;
+}
+
+.gpu-detail-trend-grid .trend-head span {
+  max-width: 68px;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gpu-detail-trend-grid .trend-head strong {
+  margin-top: 4px;
+  font-size: 15px;
+  line-height: 1.12;
+}
+
+.gpu-detail-trend-grid .trend-head p {
+  max-width: 58px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gpu-detail-trend-grid .sparkline-wrap {
+  height: 68px;
 }
 
 .kv, .list-row, .table-row {
@@ -802,15 +868,15 @@ input:focus-visible {
 .gpu-detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
+  gap: 7px;
+  margin-top: 10px;
 }
 
 .gpu-detail-grid div {
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 8px;
+  padding: 7px;
   background: var(--panel);
   transition: transform var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
 }
@@ -822,16 +888,19 @@ input:focus-visible {
 
 .gpu-detail-grid span {
   display: block;
+  overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .gpu-detail-grid strong {
   display: block;
-  margin-top: 4px;
+  margin-top: 3px;
   font-size: 12px;
-  line-height: 1.3;
+  line-height: 1.22;
   overflow-wrap: anywhere;
 }
 
