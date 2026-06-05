@@ -14,6 +14,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - The restart helper detects whether another process is already running the target binary path to avoid starting a duplicate server under systemd.
 - GPU 详情和总览卡片布局进一步压缩，长型号、趋势标题、功耗/显存说明和 Compute 信息不再挤压卡片内容。
 - GPU detail and overview card layouts are more compact so long model names, trend labels, power/memory captions, and Compute metadata no longer crowd the card contents.
+- 趋势卡片主数值优先保持单行显示，避免功耗、显存等指标在仍有空间时被拆成多行。
+- Trend card primary values now prefer single-line display so power, memory, and similar metrics do not wrap while space is still available.
 
 ### Fixed / 修复
 

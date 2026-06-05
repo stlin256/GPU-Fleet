@@ -587,7 +587,9 @@ input:focus-visible {
   font-size: 16px;
   line-height: 1.2;
   max-width: 100%;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .trend-head p {
