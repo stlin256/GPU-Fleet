@@ -561,13 +561,14 @@ input:focus-visible {
 .trend-head {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) max-content;
   align-items: flex-start;
-  gap: 8px;
+  column-gap: 6px;
+  row-gap: 3px;
 }
 
 .trend-head > div {
-  min-width: 0;
+  display: contents;
 }
 
 .trend-head span {
@@ -583,12 +584,14 @@ input:focus-visible {
 
 .trend-head strong {
   display: block;
-  margin-top: 6px;
-  font-size: 16px;
-  line-height: 1.2;
+  grid-column: 1 / -1;
+  margin-top: 0;
+  font-size: 15px;
+  line-height: 1.12;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  overflow-wrap: normal;
   white-space: nowrap;
 }
 
@@ -596,8 +599,8 @@ input:focus-visible {
   margin-top: 0;
   line-height: 1.25;
   text-align: right;
-  max-width: 74px;
-  font-size: 11px;
+  max-width: 64px;
+  font-size: 10.5px;
 }
 
 .sparkline-wrap {

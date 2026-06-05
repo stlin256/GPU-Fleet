@@ -864,13 +864,15 @@ function GPUTrendGrid({ item, points, className = 'gpu-trend-grid' }: { item: St
   const powerLimit = gpu.power_limit_watts ?? gpu.power_enforced_limit_watts;
   const timestamps = points.map((point) => point.timestamp);
   const compact = className.includes('detail');
+  const memValue = `${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes).replace(' ', '\u00a0')}`;
+  const powerValue = watts(gpu.power_draw_watts).replace(' ', '\u00a0');
 
   return (
     <div className={className}>
       <TrendTile label="GPU 利用率" value={pct(util)} caption={compact && gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz).replace(' MHz', '') : gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz) : '最近 1 小时'} values={points.map((point) => point.utilization_gpu_percent)} timestamps={timestamps} max={100} tone={metricTone(util, 70, 92)} formatValue={pct} />
-      <TrendTile label="显存" value={`${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes)}`} caption={compact ? fmtBytes(gpu.memory_total_bytes) : `总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} timestamps={timestamps} max={100} tone={metricTone(mem, 75, 92)} formatValue={pct} />
+      <TrendTile label="显存" value={memValue} caption={compact ? fmtBytes(gpu.memory_total_bytes) : `总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} timestamps={timestamps} max={100} tone={metricTone(mem, 75, 92)} formatValue={pct} />
       <TrendTile label="温度" value={temp(gpu.temperature_celsius)} caption={tempToneText(gpu.temperature_celsius)} values={points.map((point) => point.temperature_celsius)} timestamps={timestamps} max={100} tone={metricTone(gpu.temperature_celsius, 80, 88)} formatValue={temp} />
-      <TrendTile label="功耗" value={watts(gpu.power_draw_watts)} caption={powerLimit ? (compact ? watts(powerLimit) : `上限 ${watts(powerLimit)}`) : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} timestamps={timestamps} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} formatValue={watts} />
+      <TrendTile label="功耗" value={powerValue} caption={powerLimit ? (compact ? watts(powerLimit) : `上限 ${watts(powerLimit)}`) : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} timestamps={timestamps} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} formatValue={watts} />
     </div>
   );
 }
