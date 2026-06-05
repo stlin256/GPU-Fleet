@@ -3,6 +3,8 @@
   GPUFleet
 </h1>
 
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/8-glossary)
+
 GPUFleet is a lightweight NVIDIA GPU fleet monitoring system. It combines a public server and Windows/Linux Agents to collect GPU runtime data from machines across different networks, then presents current status, history, statistics, device management, database download, and operations controls in a responsive web dashboard.
 
 Chinese documentation: [README.md](README.md)

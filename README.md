@@ -3,6 +3,8 @@
   GPUFleet
 </h1>
 
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/8-glossary)
+
 GPUFleet 是一个依赖尽量简单的 NVIDIA GPU 多设备监控系统。它由公网服务端和多台 Windows/Linux 客户端 Agent 组成，用于聚合不同网络环境中多台机器的 GPU 运行信息，并在一个支持深浅主题和移动端适配的 Web 面板中展示、统计和下载数据。
 
 English documentation: [README-en.md](README-en.md)<br>
