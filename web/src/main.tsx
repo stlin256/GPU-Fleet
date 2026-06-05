@@ -16,7 +16,6 @@ import {
   FileKey2,
   Gauge,
   Github,
-  HardDrive,
   KeyRound,
   LockKeyhole,
   LogIn,
@@ -566,7 +565,7 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
         <Metric icon={<Cpu />} label="GPU 数量" value={String(data?.gpu_count ?? 0)} />
         <Metric icon={<Gauge />} label="平均利用率" value={pct(data?.average_utilization ?? 0)} />
         <Metric icon={<Database />} label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} />
-        <Metric icon={<HardDrive />} label="磁盘保护" value={(data?.disk.status ?? 'ok').toUpperCase()} tone={data?.disk.status} />
+        <Metric icon={<Power />} label="总功耗" value={watts(data?.power_draw_watts ?? 0)} tone={(data?.power_draw_watts ?? 0) > 0 ? 'accent' : 'good'} />
       </section>
 
       <section className="main-grid">

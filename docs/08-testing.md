@@ -54,7 +54,7 @@ cd ..
 - `internal/server` 已有静态面板路由测试，覆盖 React 入口、静态资源、SPA fallback、API 404 和目录越界防护。
 - `internal/server` 已有内置 fallback 面板测试，覆盖服务设置入口、密码更改、端口配置、HTTPS 证书、数据库下载、在线更新、配置引导、GPU 趋势图、离线蒙版，并禁止旧进度条 UI 回归。
 - `internal/server` 覆盖登录短时限流和爆破锁定：连续错误触发 `429`、返回 `Retry-After`、锁定期间正确密码也不能从同源登录、其他来源不受影响、成功登录会清理失败计数。
-- `internal/server` 已有设备生命周期和登录限流测试，覆盖创建设备、禁用、启用、轮换密钥、旧密钥失效和新密钥生效。
+- `internal/server` 已有设备生命周期和登录限流测试，覆盖创建设备、改名、禁用、启用、轮换密钥、删除、旧密钥失效和新密钥生效。
 - `internal/server` 已有在线更新测试，覆盖未登录拒绝、非 Git 目录不可用、临时本地 bare upstream 的 fast-forward 拉取和 dirty 工作区阻止更新。
 
 ### 本机采集验证
@@ -173,7 +173,7 @@ cd ..
 - gzip 请求体解压后大小限制。
 - 当前 MVP 压缩分段文件保留清理：写入前执行。
 - 静态面板目录越界防护：已用单元测试覆盖。
-- 设备创建、禁用、启用和密钥轮换：已用单元测试覆盖。
+- 设备创建、改名、禁用、启用、删除和密钥轮换：已用单元测试覆盖。
 - 登录限流：已用单元测试覆盖。
 - 后续 VictoriaMetrics 不可用时返回可诊断错误。
 - 后续 SQLite 锁等待和恢复。
@@ -192,18 +192,18 @@ cd ..
 
 当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、在线更新入口、品牌 Logo、仓库署名、版本号、Changelog、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性和移动端无横向溢出。
 
-最新验证使用重新编译后的示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-202606030145-version-changelog/result.json`：
+最新验证使用重新编译后的示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-20260605-final/result.json`：
 
 ```json
 {
   "ok": true,
   "screenshots": {
-    "desktop_overview": "logs\\frontend-verify-202606030145-version-changelog\\desktop-overview.png",
-    "desktop_overview_dark": "logs\\frontend-verify-202606030145-version-changelog\\desktop-overview-dark.png",
-    "desktop_devices": "logs\\frontend-verify-202606030145-version-changelog\\desktop-devices.png",
-    "desktop_settings": "logs\\frontend-verify-202606030145-version-changelog\\desktop-settings.png",
-    "mobile_overview": "logs\\frontend-verify-202606030145-version-changelog\\mobile-overview.png",
-    "mobile_gpu": "logs\\frontend-verify-202606030145-version-changelog\\mobile-gpu.png"
+    "desktop_overview": "logs\\frontend-verify-20260605-final\\desktop-overview.png",
+    "desktop_overview_dark": "logs\\frontend-verify-20260605-final\\desktop-overview-dark.png",
+    "desktop_devices": "logs\\frontend-verify-20260605-final\\desktop-devices.png",
+    "desktop_settings": "logs\\frontend-verify-20260605-final\\desktop-settings.png",
+    "mobile_overview": "logs\\frontend-verify-20260605-final\\mobile-overview.png",
+    "mobile_gpu": "logs\\frontend-verify-20260605-final\\mobile-gpu.png"
   },
   "layout": {
     "width": 394,

@@ -100,7 +100,7 @@ async function main() {
 
       logStep('checking settings view');
       await clickButton(cdp, text('settings'));
-      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('online update'), text('setup wizard'), text('release info'), text('latest changelog'), 'v0.1.0', 'stlin256', 'https://github.com/stlin256/GPU-Fleet'], 5000);
+      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('online update'), text('setup wizard'), text('release info'), text('latest changelog'), 'v0.1.1', 'stlin256', 'https://github.com/stlin256/GPU-Fleet'], 5000);
       const settingsLayout = await evaluate(cdp, () => ({
         statCount: document.querySelectorAll('[data-testid="setting-stat"]').length,
         operationCount: document.querySelectorAll('.setting-operation').length,
@@ -123,7 +123,7 @@ async function main() {
       if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.databasePanel || !settingsLayout.updatePanel || !settingsLayout.projectPanel || !settingsLayout.changelogPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPU-Fleet') {
         throw new Error(`settings page does not expose operational controls: ${JSON.stringify(settingsLayout)}`);
       }
-      if (settingsLayout.brandLogoCount < 1 || !settingsLayout.bodyText.includes('版本与变更') || !settingsLayout.bodyText.includes('最近变更') || !settingsLayout.bodyText.includes('v0.1.0') || !settingsLayout.bodyText.includes('stlin256')) {
+      if (settingsLayout.brandLogoCount < 1 || !settingsLayout.bodyText.includes('版本与变更') || !settingsLayout.bodyText.includes('最近变更') || !settingsLayout.bodyText.includes('v0.1.1') || !settingsLayout.bodyText.includes('stlin256')) {
         throw new Error(`release, brand, or repository attribution is missing: ${JSON.stringify(settingsLayout)}`);
       }
       await screenshot(cdp, path.join(outDir, 'desktop-settings.png'));

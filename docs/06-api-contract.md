@@ -28,7 +28,7 @@ POST /api/v1/agent/heartbeat
 
 ```json
 {
-  "agent_version": "0.1.0",
+  "agent_version": "0.1.1",
   "hostname": "workstation-01",
   "os": "windows",
   "os_version": "Windows 11",
@@ -58,7 +58,7 @@ POST /api/v1/agent/samples
 ```json
 {
   "device_id": "device_01H...",
-  "agent_version": "0.1.0",
+  "agent_version": "0.1.1",
   "samples": [
     {
       "timestamp": "2026-06-01T12:00:00Z",
@@ -188,6 +188,8 @@ GET  /api/v1/admin/database/download
 GET  /api/v1/admin/update/status
 POST /api/v1/admin/update/apply
 POST /api/v1/admin/devices
+PATCH /api/v1/admin/devices/{device_id}
+DELETE /api/v1/admin/devices/{device_id}
 POST /api/v1/admin/devices/{device_id}/enable
 POST /api/v1/admin/devices/{device_id}/disable
 POST /api/v1/admin/devices/{device_id}/rotate-secret
@@ -232,20 +234,20 @@ GET /api/v1/version
 ```json
 {
   "product": "GPUFleet",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "commit": "dev",
   "author": "stlin256",
   "repository": "https://github.com/stlin256/GPU-Fleet",
   "changelog": [
     {
-      "version": "0.1.0",
-      "date": "2026-06-03",
-      "title": "MVP 预览版：安全的多设备 GPU 可观测面板",
+      "version": "0.1.1",
+      "date": "2026-06-05",
+      "title": "设备管理与移动端体验增强",
       "added": [
-        "支持 Windows 和 Linux NVIDIA GPU 设备的客户端-服务端架构。"
+        "设备管理支持改名和删除，删除后会清理该设备的最新 GPU 与进程快照。"
       ],
-      "security": [
-        "Agent 上报使用 HMAC 签名并带 nonce 重放保护。"
+      "changed": [
+        "设备页中的禁用、启用、删除和密钥轮换统一使用应用内确认弹窗。"
       ]
     }
   ]
@@ -352,16 +354,20 @@ POST /api/v1/admin/devices
 
 设备密钥只在创建或轮换接口响应中返回一次。服务端保存密钥用于校验 Agent HMAC，上报响应不会返回任何命令、配置或可执行动作。
 
-### 启用、禁用和轮换密钥
+### 修改、删除、启用、禁用和轮换密钥
 
 ```text
+PATCH  /api/v1/admin/devices/{device_id}
+DELETE /api/v1/admin/devices/{device_id}
 POST /api/v1/admin/devices/{device_id}/enable
 POST /api/v1/admin/devices/{device_id}/disable
 POST /api/v1/admin/devices/{device_id}/rotate-secret
 ```
 
+- `PATCH`：修改设备别名；空别名会回退为设备 ID，最长 96 个字符。
+- `DELETE`：删除服务端设备记录，并清理该设备的最新 GPU 缓存和最新进程快照；删除后原密钥立即失效。
 - `enable`：允许该设备继续通过现有密钥上报。
 - `disable`：服务端拒绝该设备后续上报，返回 `403`。
 - `rotate-secret`：生成新密钥；旧密钥立即失效。
 
-这些操作只改变服务端认证记录。Agent 仍由本机管理员维护配置，服务端不会远程改写 Agent 配置。
+这些操作只改变服务端记录和认证状态。Agent 仍由本机管理员维护配置，服务端不会远程改写 Agent 配置。

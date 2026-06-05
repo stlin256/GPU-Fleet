@@ -3,7 +3,7 @@ package version
 import "fmt"
 
 var (
-	Version   = "0.1.0"
+	Version   = "0.1.1"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -55,6 +55,27 @@ func String() string {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.1",
+			Date:    "2026-06-05",
+			Title:   "设备管理与移动端体验增强",
+			Added: []string{
+				"设备管理支持改名和删除，删除后会清理该设备的最新 GPU 与进程快照。",
+				"总览新增总功耗指标，并以 GiB 展示全局总显存用量。",
+				"移动端 GPU 趋势图在小屏继续保持 2x2 布局，并压缩图表尺寸以减少滚动。",
+			},
+			Changed: []string{
+				"设备页中的禁用、启用、删除和密钥轮换统一使用应用内确认弹窗。",
+				"导航顺序调整为总览、GPU、设备、设置，优先进入多卡监控视角。",
+				"设置页按访问与安全、维护与发布重新分组，保留密码、端口、证书、数据库、在线更新、配置引导和版本信息。",
+			},
+			Security: []string{
+				"高风险设备操作需要二次确认，降低误禁用、误删除和误轮换密钥风险。",
+			},
+			Fixed: []string{
+				"修复服务设置页视觉混排和旧式指标文案导致的信息不清晰问题。",
+			},
+		},
 		{
 			Version: "0.1.0",
 			Date:    "2026-06-03",

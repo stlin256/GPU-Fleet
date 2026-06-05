@@ -80,9 +80,9 @@ func TestBuiltInDashboardFallback(t *testing.T) {
 		"在线更新",
 		"settings-update",
 		"版本与变更",
-		"v0.1.0",
+		"v0.1.1",
 		"最近变更",
-		"MVP 预览版",
+		"设备管理与移动端体验增强",
 		"stlin256",
 		"https://github.com/stlin256/GPU-Fleet",
 		"配置引导",
@@ -116,7 +116,7 @@ func TestVersionAPIRequiresSession(t *testing.T) {
 
 	var info version.ReleaseInfo
 	doJSON(t, handler, http.MethodGet, "/api/v1/version", nil, loginCookie(t, handler), http.StatusOK, &info)
-	if info.Product != version.Product || info.Version != "0.1.0" || info.Author != "stlin256" || info.Repository != "https://github.com/stlin256/GPU-Fleet" {
+	if info.Product != version.Product || info.Version != "0.1.1" || info.Author != "stlin256" || info.Repository != "https://github.com/stlin256/GPU-Fleet" {
 		t.Fatalf("unexpected version response: %+v", info)
 	}
 	if len(info.Changelog) == 0 || info.Changelog[0].Version != info.Version || info.Changelog[0].Title == "" {

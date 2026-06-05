@@ -39,7 +39,7 @@ async function main() {
       enabled: true,
       created_at: new Date(now - 2 * 60 * 60_000).toISOString(),
       last_seen_at: seenAt,
-      agent_version: '0.1.0-demo',
+      agent_version: '0.1.1-demo',
       hostname: device.hostname,
       os: device.id === 'rig-train' ? 'linux' : 'windows',
       os_version: device.id === 'rig-train' ? 'Ubuntu 24.04' : 'Windows 11',
@@ -59,7 +59,7 @@ async function main() {
       const timestamp = new Date(now - i * 2 * 60_000 - (device.online ? 0 : 20 * 60_000));
       const sample = {
         device_id: device.id,
-        agent_version: '0.1.0-demo',
+        agent_version: '0.1.1-demo',
         timestamp: timestamp.toISOString(),
         gpus: device.gpus.map((gpuID) => gpuSample(device, gpuID, i))
       };
