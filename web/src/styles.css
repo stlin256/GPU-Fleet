@@ -1291,6 +1291,79 @@ input:focus {
   line-height: 1.35;
 }
 
+.update-card {
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+}
+
+.update-card.good {
+  border-color: color-mix(in srgb, var(--good) 32%, var(--line));
+}
+
+.update-card.warn {
+  border-color: color-mix(in srgb, var(--warn) 36%, var(--line));
+}
+
+.update-card.bad {
+  border-color: color-mix(in srgb, var(--bad) 38%, var(--line));
+}
+
+.update-card .operation-head {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.update-compare,
+.update-meta {
+  display: grid;
+  gap: 8px;
+}
+
+.update-compare {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.update-meta {
+  grid-template-columns: minmax(0, 1.25fr) minmax(150px, .75fr);
+}
+
+.update-compare div,
+.update-meta div {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 9px;
+}
+
+.update-compare span,
+.update-meta span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.update-compare strong,
+.update-meta strong {
+  display: block;
+  margin-top: 6px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-button-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.update-note {
+  margin-top: -4px;
+}
+
 .settings-form {
   display: grid;
   gap: 10px;
@@ -1502,6 +1575,8 @@ input[type="file"] {
   .setup-file-row,
   .settings-actions-grid,
   .settings-form.inline,
+  .update-compare,
+  .update-meta,
   .device-form,
   .device-row,
   .secret-box,
@@ -1538,6 +1613,13 @@ input[type="file"] {
   }
   .trend-tile {
     min-height: 138px;
+  }
+  .update-card .operation-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .update-card .operation-head .pill {
+    grid-column: 1 / -1;
+    width: fit-content;
   }
   .settings-form label,
   .setup-grid label,

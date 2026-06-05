@@ -52,9 +52,10 @@ cd ..
 - `gpufleet-agent.exe` 构建成功。
 - `npm run build` 通过，Vite 仅提示 JS chunk 大于 500kB。
 - `internal/server` 已有静态面板路由测试，覆盖 React 入口、静态资源、SPA fallback、API 404 和目录越界防护。
-- `internal/server` 已有内置 fallback 面板测试，覆盖服务设置入口、密码更改、端口配置、HTTPS 证书、数据库下载、配置引导、GPU 趋势图、离线蒙版，并禁止旧进度条 UI 回归。
+- `internal/server` 已有内置 fallback 面板测试，覆盖服务设置入口、密码更改、端口配置、HTTPS 证书、数据库下载、在线更新、配置引导、GPU 趋势图、离线蒙版，并禁止旧进度条 UI 回归。
 - `internal/server` 覆盖登录短时限流和爆破锁定：连续错误触发 `429`、返回 `Retry-After`、锁定期间正确密码也不能从同源登录、其他来源不受影响、成功登录会清理失败计数。
 - `internal/server` 已有设备生命周期和登录限流测试，覆盖创建设备、禁用、启用、轮换密钥、旧密钥失效和新密钥生效。
+- `internal/server` 已有在线更新测试，覆盖未登录拒绝、非 Git 目录不可用、临时本地 bare upstream 的 fast-forward 拉取和 dirty 工作区阻止更新。
 
 ### 本机采集验证
 
@@ -189,7 +190,7 @@ cd ..
 - 磁盘保护状态。
 - 图表密集数据状态。
 
-当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、品牌 Logo、仓库署名、版本号、Changelog、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性和移动端无横向溢出。
+当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、在线更新入口、品牌 Logo、仓库署名、版本号、Changelog、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性和移动端无横向溢出。
 
 最新验证使用重新编译后的示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-202606030145-version-changelog/result.json`：
 
@@ -220,15 +221,16 @@ cd ..
     "detailTrendCount": 20,
     "meterCount": 0,
     "settingsStatCount": 4,
-    "settingsOperationCount": 6,
+    "settingsOperationCount": 7,
     "settingsChangelogPanel": true,
+    "settingsUpdatePanel": true,
     "theme": "dark",
     "buttonCount": 7
   }
 }
 ```
 
-该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`，因此同时验证了 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、移动端底部固定导航、GPU 详情页无旧进度条、设置页服务状态、操作入口完整性、品牌 Logo、仓库署名、版本号和 Changelog。
+该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`，因此同时验证了 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、移动端底部固定导航、GPU 详情页无旧进度条、设置页服务状态、操作入口完整性、在线更新入口、品牌 Logo、仓库署名、版本号和 Changelog。
 
 当前验证脚本输出：
 

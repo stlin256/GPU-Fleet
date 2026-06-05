@@ -743,6 +743,50 @@ const dashboardHTML = `<!doctype html>
       font-size: 12px;
       line-height: 1.35;
     }
+    .update-card .operation-head {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+    .update-compare, .update-meta {
+      display: grid;
+      gap: 8px;
+    }
+    .update-compare {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .update-meta {
+      grid-template-columns: minmax(0, 1.25fr) minmax(150px, .75fr);
+    }
+    .update-compare div, .update-meta div {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 9px;
+    }
+    .update-compare span, .update-meta span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    .update-compare strong, .update-meta strong {
+      display: block;
+      margin-top: 6px;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .settings-button-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .update-note {
+      margin-top: -4px;
+    }
     .action-button {
       width: fit-content;
       text-decoration: none;
@@ -774,13 +818,20 @@ const dashboardHTML = `<!doctype html>
       nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       h1 { font-size: 24px; }
       .fleet-command h2 { font-size: 25px; }
-      .gpu-detail-grid, .device-form, .device-row, .secret-box, .settings-actions-grid, .settings-kpi-grid, .project-meta { grid-template-columns: 1fr; }
+      .gpu-detail-grid, .device-form, .device-row, .secret-box, .settings-actions-grid, .settings-kpi-grid, .project-meta, .update-compare, .update-meta { grid-template-columns: 1fr; }
       .row-actions { justify-content: flex-start; }
     }
     @media (max-width: 430px) {
       .content { padding: 12px; }
       .fleet-kpis, .gpu-trend-grid, .gpu-detail-trend-grid { grid-template-columns: 1fr; }
       .top-actions { width: 100%; }
+      .update-card .operation-head {
+        grid-template-columns: auto minmax(0, 1fr);
+      }
+      .update-card .operation-head .pill {
+        grid-column: 1 / -1;
+        width: fit-content;
+      }
     }
   </style>
 </head>
@@ -1269,6 +1320,7 @@ const dashboardHTML = `<!doctype html>
             operationPanel('端口配置', service.current_addr || '当前监听端口', '◎', '<button class="secondary action-button" type="button">保存端口</button>', 'settings-port') +
             operationPanel('HTTPS 证书', '到期 ' + (service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置'), 'TLS', '<button class="secondary action-button" type="button">上传证书</button>', 'settings-certificate') +
             operationPanel('数据库下载', fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
+            updatePanel() +
             projectPanel() +
             operationPanel('配置引导', '重新打开端口、密码和证书配置流程', 'CFG', '<button class="secondary action-button" type="button">打开引导</button>', '') +
           '</section></div>';
@@ -1278,6 +1330,89 @@ const dashboardHTML = `<!doctype html>
     }
     function operationPanel(title, caption, icon, action, testID) {
       return '<article class="panel setting-operation"' + (testID ? ' data-testid="' + esc(testID) + '"' : '') + '><div class="operation-head"><div class="operation-icon">' + esc(icon) + '</div><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>' + action + '</article>';
+    }
+    function updatePanel() {
+      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div><div><span>超前</span><strong id="updateAhead">0</strong></div></div><div class="update-meta"><div><span>远端</span><strong id="updateRemoteURL">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>拉取更新</button></div><p class="update-note" id="updateMessage">服务端只允许 fast-forward 拉取。</p></article>';
+    }
+    async function checkUpdateStatus() {
+      const state = document.getElementById('updateState');
+      const message = document.getElementById('updateMessage');
+      if (state) state.textContent = '检查中';
+      if (message) message.textContent = '正在读取 Git 状态';
+      try {
+        renderUpdateStatus(await api('/api/v1/admin/update/status'));
+      } catch (err) {
+        renderUpdateError(err.message || 'update status failed');
+      }
+    }
+    async function applyUpdate() {
+      const button = document.getElementById('updateApplyButton');
+      const message = document.getElementById('updateMessage');
+      if (button) button.disabled = true;
+      if (message) message.textContent = '正在拉取更新';
+      try {
+        const result = await api('/api/v1/admin/update/apply', {method: 'POST'});
+        renderUpdateStatus(result.status || {});
+        if (message) message.textContent = result.restart_required ? '更新已拉取，重启或重建服务端后生效' : '当前已经是最新版本';
+      } catch (err) {
+        renderUpdateError(err.message || 'update failed');
+      }
+    }
+    function renderUpdateStatus(status) {
+      const local = document.getElementById('updateLocal');
+      const remote = document.getElementById('updateRemote');
+      const behind = document.getElementById('updateBehind');
+      const ahead = document.getElementById('updateAhead');
+      const remoteURL = document.getElementById('updateRemoteURL');
+      const checked = document.getElementById('updateChecked');
+      if (local) local.textContent = shortHash(status.local_commit);
+      if (remote) remote.textContent = shortHash(status.remote_commit);
+      if (behind) behind.textContent = String(status.behind || 0);
+      if (ahead) ahead.textContent = String(status.ahead || 0);
+      if (remoteURL) remoteURL.textContent = status.remote || '-';
+      if (checked) checked.textContent = status.checked_at ? new Date(status.checked_at).toLocaleString() : '-';
+      const state = updateState(status);
+      const stateNode = document.getElementById('updateState');
+      const message = document.getElementById('updateMessage');
+      const button = document.getElementById('updateApplyButton');
+      if (stateNode) {
+        stateNode.className = 'pill ' + state.tone;
+        stateNode.textContent = state.label;
+      }
+      if (message) {
+        message.className = state.tone === 'bad' ? 'error update-note' : 'notice update-note';
+        message.textContent = state.message;
+      }
+      if (button) {
+        button.disabled = !(status.supported && status.upstream && status.available && !status.dirty && !status.ahead);
+      }
+    }
+    function renderUpdateError(message) {
+      const stateNode = document.getElementById('updateState');
+      const messageNode = document.getElementById('updateMessage');
+      const button = document.getElementById('updateApplyButton');
+      if (stateNode) {
+        stateNode.className = 'pill bad';
+        stateNode.textContent = '失败';
+      }
+      if (messageNode) {
+        messageNode.className = 'error update-note';
+        messageNode.textContent = message;
+      }
+      if (button) button.disabled = true;
+    }
+    function updateState(status) {
+      if (!status || !status.supported) return {label: '不可用', tone: 'bad', message: (status && status.message) || '服务端未运行在 Git 工作区'};
+      if (status.dirty) return {label: '已阻止', tone: 'bad', message: '服务端工作区存在未提交改动，已阻止自动拉取'};
+      if (!status.upstream) return {label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream'};
+      if (status.ahead > 0 && status.behind > 0) return {label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward'};
+      if (status.ahead > 0) return {label: '本地超前', tone: 'warn', message: '本地提交超前上游，面板不会执行拉取'};
+      if (status.available) return {label: '有新版本', tone: 'good', message: String(status.behind || 0) + ' 个提交可拉取'};
+      return {label: '最新', tone: 'good', message: status.message || '已经是最新版本'};
+    }
+    function shortHash(value) {
+      value = String(value || '');
+      return value ? value.slice(0, 12) : '-';
     }
     function projectPanel() {
       const logo = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><defs><linearGradient id="projectShell" x1="28" y1="24" x2="222" y2="228" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#146C78"/><stop offset=".58" stop-color="#198754"/><stop offset="1" stop-color="#B26A00"/></linearGradient><linearGradient id="projectChip" x1="78" y1="73" x2="178" y2="181" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#DFF3F2"/></linearGradient></defs><rect x="18" y="18" width="220" height="220" rx="46" fill="url(#projectShell)"/><path d="M62 89h34M62 166h34M160 62v34M160 160v34M178 128h32" fill="none" stroke="#E8FBF6" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/><g fill="#E8FBF6"><circle cx="62" cy="89" r="13"/><circle cx="62" cy="166" r="13"/><circle cx="160" cy="62" r="13"/><circle cx="160" cy="194" r="13"/><circle cx="210" cy="128" r="13"/></g><rect x="84" y="84" width="88" height="88" rx="22" fill="url(#projectChip)"/><rect x="105" y="105" width="46" height="46" rx="12" fill="#146C78"/><path d="M118 130h16c8 0 13-5 13-13s-5-13-13-13h-16v47M121 130h23" fill="none" stroke="#F7FFFC" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>';

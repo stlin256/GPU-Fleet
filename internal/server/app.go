@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"gpufleet/internal/auth"
@@ -33,6 +34,7 @@ type Config struct {
 	BootstrapSecret   string
 	AdminPassword     string
 	WebDir            string
+	RepoDir           string
 }
 
 type App struct {
@@ -45,6 +47,7 @@ type App struct {
 	loginRate  *RateLimiter
 	loginGuard *LoginGuard
 	agentRate  *RateLimiter
+	updateMu   sync.Mutex
 	logger     *log.Logger
 	scheme     string
 }
@@ -66,6 +69,13 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	}
 	if config.WebDir == "" {
 		config.WebDir = "web/dist"
+	}
+	if config.RepoDir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			config.RepoDir = wd
+		} else {
+			config.RepoDir = "."
+		}
 	}
 	if logger == nil {
 		logger = log.Default()
@@ -140,6 +150,8 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/server-config", a.requireSession(a.handleAdminServerConfig))
 	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
 	mux.HandleFunc("/api/v1/admin/database/download", a.requireSession(a.handleDatabaseDownload))
+	mux.HandleFunc("/api/v1/admin/update/status", a.requireSession(a.handleUpdateStatus))
+	mux.HandleFunc("/api/v1/admin/update/apply", a.requireSession(a.handleUpdateApply))
 	mux.HandleFunc("/api/v1/admin/devices", a.requireSession(a.handleCreateDevice))
 	mux.HandleFunc("/api/v1/admin/devices/", a.requireSession(a.handleAdminDeviceAction))
 	mux.HandleFunc("/api/v1/agent/heartbeat", a.handleAgentHeartbeat)

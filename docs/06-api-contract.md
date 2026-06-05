@@ -185,6 +185,8 @@ POST /api/v1/admin/password
 POST /api/v1/admin/server-config
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
+GET  /api/v1/admin/update/status
+POST /api/v1/admin/update/apply
 POST /api/v1/admin/devices
 POST /api/v1/admin/devices/{device_id}/enable
 POST /api/v1/admin/devices/{device_id}/disable
@@ -263,6 +265,8 @@ POST /api/v1/admin/password
 POST /api/v1/admin/server-config
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
+GET  /api/v1/admin/update/status
+POST /api/v1/admin/update/apply
 ```
 
 - `GET /setup/status`：公开状态探测，返回是否需要首次配置、当前监听协议、配置端口、HTTPS 证书状态和是否需要重启。
@@ -272,6 +276,52 @@ GET  /api/v1/admin/database/download
 - `POST /admin/server-config`：保存访问端口；当前进程不会热切换端口，响应会标记是否需要重启。
 - `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，有证书并重启后使用 HTTPS。
 - `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
+- `GET /admin/update/status`：检查服务端自身 Git 工作区和 upstream 状态。
+- `POST /admin/update/apply`：仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时执行 `git pull --ff-only`。
+
+在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。拉取完成后返回 `restart_required`，但不会自动重启服务进程。
+
+更新状态响应示例：
+
+```json
+{
+  "available": true,
+  "supported": true,
+  "dirty": false,
+  "branch": "main",
+  "remote": "https://github.com/stlin256/GPU-Fleet.git",
+  "upstream": "origin/main",
+  "local_commit": "1111111111111111111111111111111111111111",
+  "remote_commit": "2222222222222222222222222222222222222222",
+  "behind": 1,
+  "ahead": 0,
+  "checked_at": "2026-06-05T12:00:00Z",
+  "message": "update available"
+}
+```
+
+应用更新响应示例：
+
+```json
+{
+  "ok": true,
+  "restart_required": true,
+  "output": "Updating 1111111..2222222\nFast-forward",
+  "status": {
+    "available": false,
+    "supported": true,
+    "dirty": false,
+    "branch": "main",
+    "upstream": "origin/main",
+    "local_commit": "2222222222222222222222222222222222222222",
+    "remote_commit": "2222222222222222222222222222222222222222",
+    "behind": 0,
+    "ahead": 0,
+    "checked_at": "2026-06-05T12:00:05Z",
+    "message": "already up to date"
+  }
+}
+```
 
 ### 创建设备
 

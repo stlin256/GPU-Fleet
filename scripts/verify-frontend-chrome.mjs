@@ -64,10 +64,10 @@ async function main() {
         mobile: false
       });
 
-      await waitForLoad(cdp);
+      await waitForLoad(cdp, targetURL);
       await setStoredTheme(cdp, 'light');
       await cdp.send('Page.reload', { ignoreCache: true });
-      await waitForLoad(cdp);
+      await waitForLoad(cdp, targetURL);
       logStep('logging in');
       await login(cdp, password);
       await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board'), text('fleet live')], 12000);
@@ -85,7 +85,7 @@ async function main() {
 
       logStep('checking reload session restore');
       await cdp.send('Page.reload', { ignoreCache: true });
-      await waitForLoad(cdp);
+      await waitForLoad(cdp, targetURL);
       await waitForText(cdp, ['GPUFleet', text('GPU resource overview'), text('fleet board')], 12000);
       const dashboardAfterReload = await visibleText(cdp);
       if (dashboardAfterReload.includes(text('login panel'))) {
@@ -100,7 +100,7 @@ async function main() {
 
       logStep('checking settings view');
       await clickButton(cdp, text('settings'));
-      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('setup wizard'), text('release info'), text('latest changelog'), 'v0.1.0', 'stlin256', 'https://github.com/stlin256/GPU-Fleet'], 5000);
+      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('online update'), text('setup wizard'), text('release info'), text('latest changelog'), 'v0.1.0', 'stlin256', 'https://github.com/stlin256/GPU-Fleet'], 5000);
       const settingsLayout = await evaluate(cdp, () => ({
         statCount: document.querySelectorAll('[data-testid="setting-stat"]').length,
         operationCount: document.querySelectorAll('.setting-operation').length,
@@ -108,6 +108,7 @@ async function main() {
         portPanel: Boolean(document.querySelector('[data-testid="settings-port"]')),
         certPanel: Boolean(document.querySelector('[data-testid="settings-certificate"]')),
         databasePanel: Boolean(document.querySelector('[data-testid="settings-database"]')),
+        updatePanel: Boolean(document.querySelector('[data-testid="settings-update"]')),
         projectPanel: Boolean(document.querySelector('[data-testid="settings-project"]')),
         changelogPanel: Boolean(document.querySelector('[data-testid="settings-changelog"]')),
         brandLogoCount: document.querySelectorAll('.brand-mark').length,
@@ -116,10 +117,10 @@ async function main() {
         hasSettingsPage: Boolean(document.querySelector('[data-testid="settings-page"]')),
         bodyText: document.body.innerText
       }));
-      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.operationCount < 6) {
+      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.operationCount < 7) {
         throw new Error(`settings page is incomplete: ${JSON.stringify(settingsLayout)}`);
       }
-      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.databasePanel || !settingsLayout.projectPanel || !settingsLayout.changelogPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPU-Fleet') {
+      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.databasePanel || !settingsLayout.updatePanel || !settingsLayout.projectPanel || !settingsLayout.changelogPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPU-Fleet') {
         throw new Error(`settings page does not expose operational controls: ${JSON.stringify(settingsLayout)}`);
       }
       if (settingsLayout.brandLogoCount < 1 || !settingsLayout.bodyText.includes('版本与变更') || !settingsLayout.bodyText.includes('最近变更') || !settingsLayout.bodyText.includes('v0.1.0') || !settingsLayout.bodyText.includes('stlin256')) {
@@ -136,7 +137,7 @@ async function main() {
         mobile: true
       });
       await cdp.send('Page.reload', { ignoreCache: true });
-      await waitForLoad(cdp);
+      await waitForLoad(cdp, targetURL);
       await waitForText(cdp, [text('GPU resource overview'), text('fleet board')], 12000);
       await screenshot(cdp, path.join(outDir, 'mobile-overview.png'));
       const mobileOverviewLayout = await evaluate(cdp, () => ({
@@ -228,6 +229,7 @@ async function main() {
           settingsStatCount: settingsLayout.statCount,
           settingsOperationCount: settingsLayout.operationCount,
           settingsChangelogPanel: settingsLayout.changelogPanel,
+          settingsUpdatePanel: settingsLayout.updatePanel,
           theme: layout.theme,
           buttonCount: layout.buttonCount
         }
@@ -274,6 +276,7 @@ function text(id) {
     'port config': '\u7aef\u53e3\u914d\u7f6e',
     'https certificate': '\u0048\u0054\u0054\u0050\u0053 \u8bc1\u4e66',
     'database download': '\u6570\u636e\u5e93\u4e0b\u8f7d',
+    'online update': '\u5728\u7ebf\u66f4\u65b0',
     'setup wizard': '\u914d\u7f6e\u5f15\u5bfc',
     'release info': '\u7248\u672c\u4e0e\u53d8\u66f4',
     'latest changelog': '\u6700\u8fd1\u53d8\u66f4',
@@ -470,9 +473,26 @@ async function waitForText(cdp, expected, timeoutMs) {
   throw new Error(`timed out waiting for text: ${expected.join(', ')}. Current text: ${lastBodyText.slice(0, 800)}`);
 }
 
-async function waitForLoad(cdp) {
-  await cdp.send('Page.getNavigationHistory').catch(() => undefined);
-  await delay(750);
+async function waitForLoad(cdp, expectedURL) {
+  const deadline = Date.now() + 12000;
+  let last = {};
+  while (Date.now() < deadline) {
+    last = await evaluate(cdp, () => ({
+      href: location.href,
+      readyState: document.readyState,
+      hasStorage: location.protocol === 'http:' || location.protocol === 'https:'
+    })).catch((err) => ({ error: err.message }));
+    if (
+      last.hasStorage &&
+      (!expectedURL || String(last.href || '').startsWith(expectedURL)) &&
+      (last.readyState === 'interactive' || last.readyState === 'complete')
+    ) {
+      await delay(300);
+      return;
+    }
+    await delay(120);
+  }
+  throw new Error(`timed out waiting for target page load: ${JSON.stringify(last)}`);
 }
 
 async function assertNoConsoleErrors(cdp) {

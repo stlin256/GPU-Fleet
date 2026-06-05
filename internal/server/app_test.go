@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,6 +77,8 @@ func TestBuiltInDashboardFallback(t *testing.T) {
 		"端口配置",
 		"HTTPS 证书",
 		"数据库下载",
+		"在线更新",
+		"settings-update",
 		"版本与变更",
 		"v0.1.0",
 		"最近变更",
@@ -119,6 +122,97 @@ func TestVersionAPIRequiresSession(t *testing.T) {
 	if len(info.Changelog) == 0 || info.Changelog[0].Version != info.Version || info.Changelog[0].Title == "" {
 		t.Fatalf("expected current changelog entry in version response: %+v", info.Changelog)
 	}
+}
+
+func TestUpdateAPIRequiresSessionAndHandlesUnsupportedRepo(t *testing.T) {
+	root := t.TempDir()
+	app := newTestAppWithRepo(t, root, filepath.Join(root, "missing-web"), filepath.Join(root, "not-a-repo"))
+	handler := app.Handler()
+
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/update/status", nil, nil, http.StatusUnauthorized, nil)
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, nil, http.StatusUnauthorized, nil)
+
+	cookie := loginCookie(t, handler)
+	var status updateStatus
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/update/status", nil, cookie, http.StatusOK, &status)
+	if status.Supported || status.Available || status.Message == "" {
+		t.Fatalf("expected unsupported update status for non-repo dir, got %+v", status)
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusBadRequest, nil)
+}
+
+func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git executable is not available")
+	}
+	root := t.TempDir()
+	remote := filepath.Join(root, "remote.git")
+	source := filepath.Join(root, "source")
+	local := filepath.Join(root, "local")
+
+	git(t, root, "init", "--bare", remote)
+	if err := os.MkdirAll(source, 0755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "init")
+	git(t, source, "checkout", "-b", "main")
+	git(t, source, "config", "user.email", "test@example.com")
+	git(t, source, "config", "user.name", "GPUFleet Test")
+	if err := os.WriteFile(filepath.Join(source, "version.txt"), []byte("v1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "add", "version.txt")
+	git(t, source, "commit", "-m", "initial")
+	git(t, source, "remote", "add", "origin", remote)
+	git(t, source, "push", "-u", "origin", "main")
+	git(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+	git(t, root, "clone", remote, local)
+
+	app := newTestAppWithRepo(t, root, filepath.Join(root, "missing-web"), local)
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	var initial updateStatus
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/update/status", nil, cookie, http.StatusOK, &initial)
+	if !initial.Supported || initial.Available || initial.Dirty || initial.Upstream == "" || initial.LocalCommit == "" || initial.RemoteCommit == "" {
+		t.Fatalf("unexpected initial update status: %+v", initial)
+	}
+
+	if err := os.WriteFile(filepath.Join(source, "version.txt"), []byte("v2"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "add", "version.txt")
+	git(t, source, "commit", "-m", "update version")
+	git(t, source, "push")
+
+	var available updateStatus
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/update/status", nil, cookie, http.StatusOK, &available)
+	if !available.Supported || !available.Available || available.Behind != 1 || available.Ahead != 0 {
+		t.Fatalf("expected one fast-forward update, got %+v", available)
+	}
+
+	var applied updateApplyResponse
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusOK, &applied)
+	if !applied.OK || applied.RestartRequired == false || applied.Status.Available || applied.Status.LocalCommit != applied.Status.RemoteCommit {
+		t.Fatalf("unexpected update apply response: %+v", applied)
+	}
+	raw, err := os.ReadFile(filepath.Join(local, "version.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "v2" {
+		t.Fatalf("expected local checkout to be updated to v2, got %q", raw)
+	}
+
+	if err := os.WriteFile(filepath.Join(local, "dirty.txt"), []byte("dirty"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var dirty updateStatus
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/update/status", nil, cookie, http.StatusOK, &dirty)
+	if !dirty.Dirty {
+		t.Fatalf("expected dirty worktree to be reported, got %+v", dirty)
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusConflict, nil)
 }
 
 func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
@@ -339,9 +433,15 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 
 func newTestApp(t *testing.T, root, webDir string) *App {
 	t.Helper()
+	return newTestAppWithRepo(t, root, webDir, "")
+}
+
+func newTestAppWithRepo(t *testing.T, root, webDir, repoDir string) *App {
+	t.Helper()
 	app, _, err := NewApp(Config{
 		DataDir:           filepath.Join(root, "data"),
 		WebDir:            webDir,
+		RepoDir:           repoDir,
 		MinFreeBytes:      1,
 		Retention:         time.Hour,
 		AdminPassword:     "admin-test",
@@ -352,6 +452,18 @@ func newTestApp(t *testing.T, root, webDir string) *App {
 		t.Fatal(err)
 	}
 	return app
+}
+
+func git(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s in %s failed: %v\n%s", strings.Join(args, " "), dir, err, output)
+	}
+	return string(output)
 }
 
 func loginCookie(t *testing.T, handler http.Handler) *http.Cookie {

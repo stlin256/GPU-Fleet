@@ -153,6 +153,28 @@ export type ReleaseInfo = {
   changelog: ChangelogEntry[];
 };
 
+export type UpdateStatus = {
+  available: boolean;
+  supported: boolean;
+  dirty: boolean;
+  branch?: string;
+  remote?: string;
+  upstream?: string;
+  local_commit?: string;
+  remote_commit?: string;
+  behind: number;
+  ahead: number;
+  checked_at: string;
+  message?: string;
+};
+
+export type UpdateApplyResponse = {
+  ok: boolean;
+  status: UpdateStatus;
+  output?: string;
+  restart_required: boolean;
+};
+
 export type Overview = {
   server_time: string;
   device_count: number;
@@ -253,6 +275,16 @@ export function getOverview() {
 
 export function getVersion() {
   return request<ReleaseInfo>('/api/v1/version');
+}
+
+export function getUpdateStatus() {
+  return request<UpdateStatus>('/api/v1/admin/update/status');
+}
+
+export function applyUpdate() {
+  return request<UpdateApplyResponse>('/api/v1/admin/update/apply', {
+    method: 'POST'
+  });
 }
 
 export function getStats(hours = 24) {

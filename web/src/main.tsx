@@ -35,6 +35,7 @@ import {
   Upload
 } from 'lucide-react';
 import {
+  applyUpdate,
   applyInitialSetup,
   applySetup,
   changePassword,
@@ -45,6 +46,7 @@ import {
   getOverview,
   getSetupStatus,
   getStats,
+  getUpdateStatus,
   getVersion,
   GPUSeriesPoint,
   GPUStats,
@@ -59,6 +61,7 @@ import {
   SetupStatus,
   StoredGPU,
   StoredProcess,
+  UpdateStatus,
   updateServerConfig,
   uploadCertificate
 } from './api';
@@ -127,6 +130,11 @@ function fmtDateTime(value?: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '-';
   return date.toLocaleString();
+}
+
+function shortHash(value?: string) {
+  if (!value) return '-';
+  return value.length > 12 ? value.slice(0, 12) : value;
 }
 
 function portFromLocation() {
@@ -1127,6 +1135,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
         <PortSettings service={service} onDone={refreshOverview} />
         <CertificateSettings service={service} onDone={refreshOverview} />
         <DatabaseSettings data={data} />
+        <UpdateSettings />
         <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
         <article className="panel setting-operation">
           <div className="operation-head">
@@ -1160,6 +1169,109 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
       )}
     </div>
   );
+}
+
+function UpdateSettings() {
+  const query = useQueryClient();
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const update = useQuery({
+    queryKey: ['update-status'],
+    queryFn: getUpdateStatus,
+    staleTime: 60 * 1000,
+    retry: false
+  });
+  const status = update.data;
+  const state = updateState(status, update.isLoading, update.error instanceof Error ? update.error.message : '');
+  const canApply = Boolean(status?.supported && status.upstream && status.available && !status.dirty && status.ahead === 0 && !busy);
+
+  async function check() {
+    setMessage('');
+    await update.refetch();
+  }
+
+  async function pull() {
+    setMessage('');
+    setBusy(true);
+    try {
+      const result = await applyUpdate();
+      setMessage(result.restart_required ? '更新已拉取，重启或重建服务端后生效' : '当前已经是最新版本');
+      await query.invalidateQueries({ queryKey: ['update-status'] });
+      await query.invalidateQueries({ queryKey: ['version'] });
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'update failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className={`panel setting-operation update-card ${state.tone}`} data-testid="settings-update">
+      <div className="operation-head">
+        <div className="operation-icon"><Download size={18} /></div>
+        <div>
+          <h2>在线更新</h2>
+          <p>{status?.branch ? `${status.branch} · ${status.upstream || '未绑定上游'}` : '检查 Git 上游版本'}</p>
+        </div>
+        <span className={`pill ${state.tone}`}>{state.label}</span>
+      </div>
+
+      <div className="update-compare">
+        <div>
+          <span>当前提交</span>
+          <strong title={status?.local_commit}>{shortHash(status?.local_commit)}</strong>
+        </div>
+        <div>
+          <span>远端提交</span>
+          <strong title={status?.remote_commit}>{shortHash(status?.remote_commit)}</strong>
+        </div>
+        <div>
+          <span>落后</span>
+          <strong>{status?.behind ?? 0}</strong>
+        </div>
+        <div>
+          <span>超前</span>
+          <strong>{status?.ahead ?? 0}</strong>
+        </div>
+      </div>
+
+      <div className="update-meta">
+        <div>
+          <span>远端</span>
+          <strong title={status?.remote}>{status?.remote || '-'}</strong>
+        </div>
+        <div>
+          <span>检查时间</span>
+          <strong>{fmtDateTime(status?.checked_at)}</strong>
+        </div>
+      </div>
+
+      <div className="settings-button-row">
+        <button className="secondary" type="button" onClick={check} disabled={update.isFetching || busy}>
+          <RefreshCw size={16} />
+          {update.isFetching ? '检查中' : '检查更新'}
+        </button>
+        <button className="primary compact" type="button" onClick={pull} disabled={!canApply}>
+          <Download size={16} />
+          {busy ? '拉取中' : '拉取更新'}
+        </button>
+      </div>
+      {(message || state.message) && <p className={message.includes('已') || state.tone === 'good' ? 'notice update-note' : 'error update-note'}>{message || state.message}</p>}
+    </article>
+  );
+}
+
+function updateState(status?: UpdateStatus, loading = false, error = '') {
+  if (loading) return { label: '检查中', tone: 'warn', message: '正在读取 Git 状态' };
+  if (error) return { label: '失败', tone: 'bad', message: error };
+  if (!status) return { label: '未知', tone: 'warn', message: '尚未读取更新状态' };
+  if (!status.supported) return { label: '不可用', tone: 'bad', message: status.message || '服务端未运行在 Git 工作区' };
+  if (status.dirty) return { label: '已阻止', tone: 'bad', message: '服务端工作区存在未提交改动，已阻止自动拉取' };
+  if (!status.upstream) return { label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream' };
+  if (status.ahead > 0 && status.behind > 0) return { label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward' };
+  if (status.ahead > 0) return { label: '本地超前', tone: 'warn', message: '本地提交超前上游，面板不会执行拉取' };
+  if (status.available) return { label: '有新版本', tone: 'good', message: `${status.behind} 个提交可拉取` };
+  return { label: '最新', tone: 'good', message: status.message || '已经是最新版本' };
 }
 
 function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInfo; loading: boolean; error: string }) {

@@ -104,12 +104,35 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
   -bootstrap-secret "replace-with-device-secret" `
   -min-free-mb 800 `
   -retention-days 30 `
-  -web-dir web/dist
+  -web-dir web/dist `
+  -repo-dir .
 ```
 
 首次启动按 `-addr` 指定的端口使用 HTTP。浏览器打开 Web 面板后会进入首次配置引导，设置访问密码、下一次启动端口和可选 HTTPS 证书。上传证书后需要重启服务，重启后服务端自身会使用 HTTPS；未配置证书时继续使用 HTTP。
 
 `-admin-password` 仍可用于自动化部署预置初始密码，但普通部署建议留空并使用首次配置引导。生产环境也可以在服务端前面放 Caddy/Nginx/Traefik 终止 HTTPS，再反代到 GPUFleet 的 HTTP 监听地址。
+
+## 服务端在线更新
+
+设置页的“在线更新”用于检查和拉取服务端自身 Git 仓库更新。服务端必须从 Git checkout 启动，并且当前分支需要配置 upstream，例如 `main` 跟踪 `origin/main`。
+
+运行参数：
+
+```powershell
+.\bin\gpufleet-server.exe `
+  -addr 0.0.0.0:8080 `
+  -data-dir data `
+  -web-dir web/dist `
+  -repo-dir F:\project\GPUFleet
+```
+
+规则：
+
+- `-repo-dir` 默认为当前工作目录，也可用 `GPUFLEET_REPO_DIR` 指定。
+- 检查更新会执行固定 Git 状态检查和 `git fetch --quiet --prune`。
+- 点击拉取只会执行 `git pull --ff-only`。
+- 工作区存在未提交改动、没有 upstream、本地超前或与上游分叉时会阻止更新。
+- 拉取更新后不会自动重启服务端；按当前部署方式重新启动或重新构建后生效。
 
 ## 设备注册和密钥轮换
 
@@ -130,5 +153,6 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 
 - Agent 服务只主动访问服务端，不监听端口。
 - 服务端 API 不提供命令下发、配置下发或远程执行。
+- 在线更新只影响服务端自身 Git 工作区，不会升级或修改客户端 Agent。
 - `agent.env` 和 Windows 服务参数包含设备密钥，应限制读取权限。
 - Agent 本地队列只缓存 GPU 指标样本，不回放进程快照。
