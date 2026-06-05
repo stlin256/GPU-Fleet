@@ -1,0 +1,271 @@
+# Installation / 安装指南
+
+This page is the operational installation guide for GPUFleet. It covers the public server and device Agents on Linux, Windows, and WSL2.
+
+本文档是 GPUFleet 的实际安装指南，覆盖公网服务端以及 Linux、Windows、WSL2 设备端 Agent。
+
+## Server On Linux / Linux 服务端
+
+### Quick Install After Clone / Clone 后一键安装
+
+Run these commands on the Linux server. The script builds `gpufleet-server`, writes a systemd unit, enables auto-start, and starts the service.
+
+在 Linux 服务端执行以下命令。脚本会构建 `gpufleet-server`、写入 systemd 服务、开启开机自启动并启动服务。
+
+```sh
+git clone https://github.com/stlin256/GPU-Fleet.git /opt/gpufleet/repo
+cd /opt/gpufleet/repo
+
+ADDR="0.0.0.0:9008" \
+DATA_DIR="/var/lib/gpufleet" \
+INSTALL_DIR="/opt/gpufleet" \
+sh ./scripts/install-server-linux.sh
+```
+
+Open the dashboard:
+
+打开面板：
+
+```text
+http://your-server:9008
+```
+
+First startup opens the setup flow: choose language, set the web password, choose the next startup port, and optionally upload HTTPS certificate files.
+
+首次启动会进入配置引导：选择语言、设置 Web 密码、设置下次启动端口，并可选上传 HTTPS 证书文件。
+
+### Script Options / 脚本参数
+
+The installer is configured with environment variables:
+
+安装脚本通过环境变量配置：
+
+| Variable / 变量 | Default / 默认值 | Description / 说明 |
+| --- | --- | --- |
+| `ADDR` | `0.0.0.0:9008` | Listen address / 监听地址 |
+| `REPO_DIR` | current directory / 当前目录 | Git checkout used by online update / 在线更新使用的 Git 工作区 |
+| `INSTALL_DIR` | `/opt/gpufleet` | Binary directory / 二进制安装目录 |
+| `BIN_PATH` | `$INSTALL_DIR/gpufleet-server` | Server binary path / 服务端二进制路径 |
+| `DATA_DIR` | `/var/lib/gpufleet` | Runtime data directory / 运行数据目录 |
+| `WEB_DIR` | `$REPO_DIR/web/dist` | Dashboard static files / Web 静态文件目录 |
+| `MIN_FREE_MB` | `800` | Minimum reserved free disk space / 最小预留磁盘空间 |
+| `RETENTION_DAYS` | `30` | Metric retention days / 指标保留天数 |
+| `SERVICE_NAME` | `gpufleet-server` | systemd service name / systemd 服务名 |
+| `ADMIN_PASSWORD` | empty / 空 | Optional initial admin password / 可选初始管理员密码 |
+
+Example with HTTPS terminating directly in GPUFleet:
+
+GPUFleet 自身启用 HTTPS 的示例：
+
+```sh
+cd /opt/gpufleet/repo
+ADDR="0.0.0.0:9008" sh ./scripts/install-server-linux.sh
+```
+
+Then upload the full certificate chain and private key from Settings. The server schedules a restart after certificate upload.
+
+然后在设置页上传完整证书链和私钥。证书上传后服务端会调度重启。
+
+### Service Commands / 服务命令
+
+```sh
+systemctl status gpufleet-server --no-pager -l
+journalctl -u gpufleet-server -f
+systemctl restart gpufleet-server
+systemctl stop gpufleet-server
+```
+
+The service environment file is:
+
+服务环境变量文件：
+
+```text
+/etc/gpufleet/server.env
+```
+
+After editing it, reload and restart:
+
+修改后重新加载并重启：
+
+```sh
+systemctl daemon-reload
+systemctl restart gpufleet-server
+```
+
+### Manual Upgrade Of Older Deployments / 旧部署手动升级
+
+If an older deployment was started manually, clone or update the repository, then run the installer once. It will replace the binary, write the service, and make future online updates possible.
+
+如果旧版本是手动启动的，先 clone 或更新仓库，再运行一次安装脚本。它会替换二进制、写入服务，并让后续在线更新可用。
+
+```sh
+cd /opt/gpufleet/repo
+git pull --ff-only
+
+ADDR="0.0.0.0:9008" \
+DATA_DIR="/var/lib/gpufleet" \
+INSTALL_DIR="/opt/gpufleet" \
+sh ./scripts/install-server-linux.sh
+```
+
+Verify the running binary:
+
+验证当前二进制：
+
+```sh
+/opt/gpufleet/gpufleet-server -version
+systemctl status gpufleet-server --no-pager -l
+```
+
+## Device Agent On Linux / Linux 设备端 Agent
+
+Use the Devices page to create a device, then copy the generated `device_id` and secret. Run the installer on the target Linux machine:
+
+先在设备页创建设备，然后复制生成的 `device_id` 和密钥。在目标 Linux 设备上运行：
+
+```sh
+cd /tmp/gpufleet
+
+SERVER_URL="https://your-server:9008" \
+DEVICE_ID="device_xxx" \
+SECRET="replace-with-one-time-secret" \
+INTERVAL="10" \
+QUEUE_MAX_MB="128" \
+sh ./scripts/install-agent-linux.sh
+```
+
+The Linux Agent installer copies `./bin/gpufleet-agent` to `/usr/local/bin/gpufleet-agent`, writes `/etc/gpufleet/agent.env`, enables `gpufleet-agent.service`, and starts it.
+
+Linux Agent 安装脚本会把 `./bin/gpufleet-agent` 复制到 `/usr/local/bin/gpufleet-agent`，写入 `/etc/gpufleet/agent.env`，启用并启动 `gpufleet-agent.service`。
+
+Check logs:
+
+查看日志：
+
+```sh
+systemctl status gpufleet-agent --no-pager -l
+journalctl -u gpufleet-agent -f
+```
+
+Uninstall:
+
+卸载：
+
+```sh
+sh ./scripts/uninstall-agent-linux.sh
+REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
+```
+
+## Device Agent On Windows / Windows 设备端 Agent
+
+Use an elevated PowerShell window. Run from the repository or release directory that contains `bin\gpufleet-agent.exe`.
+
+使用管理员 PowerShell。在包含 `bin\gpufleet-agent.exe` 的仓库或发布目录执行：
+
+```powershell
+.\scripts\install-agent-windows.ps1 `
+  -ServerUrl "https://your-server:9008" `
+  -DeviceId "device_xxx" `
+  -Secret "replace-with-one-time-secret" `
+  -IntervalSeconds 10 `
+  -QueueMaxMB 128
+```
+
+The Windows installer creates an automatic Windows service named `GPUFleetAgent`.
+
+Windows 安装脚本会创建名为 `GPUFleetAgent` 的自动启动服务。
+
+Service commands:
+
+服务命令：
+
+```powershell
+Get-Service GPUFleetAgent
+Start-Service GPUFleetAgent
+Stop-Service GPUFleetAgent
+```
+
+When service startup fails, inspect Windows service events and run the Agent once in the foreground to expose configuration or TLS errors:
+
+如果服务启动失败，查看 Windows 服务事件，并前台运行一次 Agent 以暴露配置或 TLS 错误：
+
+```powershell
+.\bin\gpufleet-agent.exe `
+  -server-url "https://your-server:9008" `
+  -device-id "device_xxx" `
+  -secret "replace-with-one-time-secret" `
+  -once
+```
+
+Uninstall:
+
+卸载：
+
+```powershell
+.\scripts\uninstall-agent-windows.ps1
+.\scripts\uninstall-agent-windows.ps1 -RemoveFiles
+```
+
+## WSL2 Notes / WSL2 说明
+
+For Windows machines, installing the Windows Agent is usually preferred. It starts with Windows and reports the Windows host directly.
+
+Windows 机器通常建议安装 Windows Agent。它会随 Windows 自启动，并直接上报 Windows 主机。
+
+Install inside WSL2 only when the GPU workload runs inside WSL2 and `nvidia-smi` works there:
+
+只有当 GPU 负载运行在 WSL2 内，并且 WSL2 里 `nvidia-smi` 可用时，才建议把 Agent 安装到 WSL2：
+
+```sh
+nvidia-smi
+SERVER_URL="https://your-server:9008" \
+DEVICE_ID="device_xxx" \
+SECRET="replace-with-one-time-secret" \
+sh ./scripts/install-agent-linux.sh
+```
+
+WSL2 systemd must be enabled for the Linux installer to manage services. If systemd is unavailable, run the Agent manually or install the Windows Agent instead.
+
+WSL2 需要启用 systemd，Linux 安装脚本才能管理服务。如果没有 systemd，请手动运行 Agent，或改用 Windows Agent。
+
+## Build Requirements / 构建要求
+
+Server installer requirements:
+
+服务端安装脚本要求：
+
+- Linux with systemd / 带 systemd 的 Linux
+- `git`
+- Go matching `go.mod` / 与 `go.mod` 匹配的 Go
+- committed `web/dist` files, or Node.js + npm to rebuild the frontend / 已提交的 `web/dist`，或 Node.js + npm 用于重建前端
+
+Agent requirements:
+
+设备端 Agent 要求：
+
+- NVIDIA driver / NVIDIA 驱动
+- `nvidia-smi` available in `PATH` / `PATH` 中可执行 `nvidia-smi`
+- outbound network access to the server / 可主动访问服务端
+
+## Connectivity Check / 连通性检查
+
+From a device:
+
+从设备端检查：
+
+```sh
+curl -I https://your-server:9008
+nvidia-smi
+```
+
+Expected Agent logs after successful upload:
+
+成功上报后 Agent 日志中不应持续出现：
+
+```text
+upload failed
+```
+
+If the server uses HTTPS, upload the full certificate chain, not only the leaf certificate.
+
+如果服务端使用 HTTPS，请上传完整证书链，而不是只上传站点证书。

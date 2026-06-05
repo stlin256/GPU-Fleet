@@ -1,5 +1,7 @@
 # 运维与安装
 
+详细的服务端和设备端安装步骤请优先参考双语安装指南：[docs/14-installation.md](14-installation.md)。本页保留构建、服务运行和在线更新等运维细节。
+
 ## 构建
 
 Windows:

@@ -31,6 +31,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: 24-hour stats rows can now expand per GPU to show 24-hour utilization, memory, temperature, and power charts, with the GPU monitoring stats panel aligned to the detail-card column width.
 - zh-CN: 版本 API 和设置页 Changelog 改为优先读取仓库中的 CHANGELOG.md，并规范化中英文条目格式。
 - en-US: Version API and settings changelog now prefer reading CHANGELOG.md from the repository, with normalized bilingual entry formatting.
+- zh-CN: 新增 Linux 服务端一键安装脚本，支持 clone 后构建、写入 systemd 服务、开机自启动并使用当前仓库作为在线更新来源。
+- en-US: Added a one-command Linux server installer that builds after clone, writes a systemd service, enables boot startup, and uses the current checkout as the online-update source.
+- zh-CN: 新增双语安装指南，覆盖 Linux 服务端、旧部署升级、Linux/Windows/WSL2 设备端 Agent、服务命令、卸载和连通性检查。
+- en-US: Added a bilingual installation guide covering Linux server setup, older deployment upgrades, Linux/Windows/WSL2 Agents, service commands, uninstall steps, and connectivity checks.
 
 ### Fixed / 修复
 
@@ -212,4 +216,3 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - zh-CN: 登录入口具备短窗口限流和递进锁定的防爆破保护。
 - zh-CN: 服务端保持只接收数据，不暴露客户端命令或配置下发接口。
 - zh-CN: 在线更新接口只执行固定 Git 参数，拒绝 dirty、无 upstream、本地超前或分叉工作区。
-

@@ -8,6 +8,7 @@
 GPUFleet 是一个依赖尽量简单的 NVIDIA GPU 多设备监控系统。它由公网服务端和多台 Windows/Linux 客户端 Agent 组成，用于聚合不同网络环境中多台机器的 GPU 运行信息，并在一个支持深浅主题和移动端适配的 Web 面板中展示、统计和下载数据。
 
 English documentation: [README-en.md](README-en.md)<br>
+安装指南 / Installation guide: [docs/14-installation.md](docs/14-installation.md)<br>
 当前版本：`0.1.7`<br>
 作者：`stlin256`<br>
 仓库：`https://github.com/stlin256/GPU-Fleet`
@@ -496,3 +497,4 @@ docs/                   设计、API、前端、测试和运维文档
 - [参考资料](docs/10-references.md)
 - [当前实现说明](docs/11-current-implementation.md)
 - [运维与安装](docs/12-operations.md)
+- [安装指南 / Installation](docs/14-installation.md)

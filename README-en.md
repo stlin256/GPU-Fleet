@@ -9,6 +9,8 @@ GPUFleet is a lightweight NVIDIA GPU fleet monitoring system. It combines a publ
 
 Chinese documentation: [README.md](README.md)
 
+Installation guide: [docs/14-installation.md](docs/14-installation.md)
+
 Current version: `0.1.7`<br>
 Author: `stlin256`<br>
 Repository: `https://github.com/stlin256/GPU-Fleet`
@@ -72,6 +74,7 @@ Create devices from the dashboard Devices page, copy each one-time secret, then 
 
 ## Documentation
 
+- Installation: [docs/14-installation.md](docs/14-installation.md)
 - Product: [docs/01-product.md](docs/01-product.md)
 - Architecture: [docs/02-architecture.md](docs/02-architecture.md)
 - Security: [docs/03-security.md](docs/03-security.md)
