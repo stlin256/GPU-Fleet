@@ -104,6 +104,16 @@ function fmtBytes(value?: number) {
   return `${size.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
 }
 
+function fmtMemoryG(used?: number, total?: number) {
+  const usedValid = typeof used === 'number' && Number.isFinite(used);
+  const totalValid = typeof total === 'number' && Number.isFinite(total) && total > 0;
+  const toG = (value: number) => (value / 1024 / 1024 / 1024).toFixed(1);
+  if (usedValid && totalValid) return `${toG(used)}/${toG(total)} G`;
+  if (usedValid) return `${toG(used)} G`;
+  if (totalValid) return `0.0/${toG(total)} G`;
+  return '-';
+}
+
 function pct(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-';
   return `${Math.round(value)}%`;
@@ -437,7 +447,6 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
 
   const data = overview.data;
   const statRows = stats.data?.stats ?? [];
-  const memoryPct = data?.memory_total_bytes ? (data.memory_used_bytes / data.memory_total_bytes) * 100 : 0;
   const titles: Record<View, string> = {
     overview: 'GPU 资源总览',
     devices: '设备管理',
@@ -483,7 +492,7 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
 
         <div className="view-shell" key={view} data-view={view}>
           {view === 'overview' && <OverviewPage data={data} statRows={statRows} theme={theme} />}
-          {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} memoryPct={memoryPct} theme={theme} />}
+          {view === 'gpus' && <GPUDetailPage data={data} statRows={statRows} theme={theme} />}
           {view === 'devices' && <DeviceAdminPanel data={data} />}
           {view === 'settings' && <SettingsPanel data={data} theme={theme} onToggleTheme={onToggleTheme} />}
         </div>
@@ -512,7 +521,6 @@ function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }
 function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
   const gpus = data?.latest_gpus ?? [];
   const devices = data?.devices ?? [];
-  const memoryPct = data?.memory_total_bytes ? (data.memory_used_bytes / data.memory_total_bytes) * 100 : 0;
   const hotCount = gpus.filter((item) => (item.gpu.temperature_celsius ?? 0) >= 80).length;
   const busyCount = gpus.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) >= 80).length;
 
@@ -529,7 +537,7 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
           <FleetKPI label="GPU 总数" value={String(data?.gpu_count ?? 0)} />
           <FleetKPI label="忙碌 GPU" value={String(busyCount)} tone={busyCount > 0 ? 'accent' : 'good'} />
           <FleetKPI label="高温 GPU" value={String(hotCount)} tone={hotCount > 0 ? 'bad' : 'good'} />
-          <FleetKPI label="显存占用" value={pct(memoryPct)} />
+          <FleetKPI label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} />
           <FleetKPI label="总功耗" value={watts(data?.power_draw_watts ?? 0)} tone={(data?.power_draw_watts ?? 0) > 0 ? 'accent' : 'good'} />
         </div>
       </section>
@@ -550,14 +558,14 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
   );
 }
 
-function GPUDetailPage({ data, statRows, memoryPct, theme }: { data?: Overview; statRows: GPUStats[]; memoryPct: number; theme: Theme }) {
+function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
   return (
     <>
       <section className="stat-grid">
         <Metric icon={<MonitorUp />} label="在线设备" value={`${data?.online_device_count ?? 0} / ${data?.device_count ?? 0}`} />
         <Metric icon={<Cpu />} label="GPU 数量" value={String(data?.gpu_count ?? 0)} />
         <Metric icon={<Gauge />} label="平均利用率" value={pct(data?.average_utilization ?? 0)} />
-        <Metric icon={<Database />} label="显存占用" value={pct(memoryPct)} />
+        <Metric icon={<Database />} label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} />
         <Metric icon={<HardDrive />} label="磁盘保护" value={(data?.disk.status ?? 'ok').toUpperCase()} tone={data?.disk.status} />
       </section>
 

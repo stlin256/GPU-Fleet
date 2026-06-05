@@ -1017,6 +1017,15 @@ const dashboardHTML = `<!doctype html>
       while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
       return v.toFixed(i ? 1 : 0) + ' ' + units[i];
     };
+    const fmtMemoryG = (used, total) => {
+      const usedValid = typeof used === 'number' && Number.isFinite(used);
+      const totalValid = typeof total === 'number' && Number.isFinite(total) && total > 0;
+      const toG = (value) => (value / 1024 / 1024 / 1024).toFixed(1);
+      if (usedValid && totalValid) return toG(used) + '/' + toG(total) + ' G';
+      if (usedValid) return toG(used) + ' G';
+      if (totalValid) return '0.0/' + toG(total) + ' G';
+      return '-';
+    };
     const pct = (n) => typeof n === 'number' && Number.isFinite(n) ? Math.round(n) + '%' : '-';
     const watts = (n) => typeof n === 'number' && Number.isFinite(n) ? n.toFixed(1) + ' W' : '-';
     const temp = (n) => typeof n === 'number' && Number.isFinite(n) ? Math.round(n) + '°C' : '-';
@@ -1206,7 +1215,6 @@ const dashboardHTML = `<!doctype html>
     function renderOverview(data) {
       const gpus = data.latest_gpus || [];
       const devices = data.devices || [];
-      const memoryPct = data.memory_total_bytes ? data.memory_used_bytes / data.memory_total_bytes * 100 : 0;
       const hot = gpus.filter((item) => ((item.gpu || {}).temperature_celsius || 0) >= 80).length;
       const busy = gpus.filter((item) => ((item.gpu || {}).utilization_gpu_percent || 0) >= 80).length;
       document.getElementById('overviewView').innerHTML =
@@ -1219,7 +1227,7 @@ const dashboardHTML = `<!doctype html>
             fleetKPI('GPU 总数', String(data.gpu_count || 0), '') +
             fleetKPI('忙碌 GPU', String(busy), busy ? 'accent' : 'good') +
             fleetKPI('高温 GPU', String(hot), hot ? 'bad' : 'good') +
-            fleetKPI('显存占用', pct(memoryPct), '') +
+            fleetKPI('总显存用量', fmtMemoryG(data.memory_used_bytes, data.memory_total_bytes), '') +
             fleetKPI('总功耗', watts(data.power_draw_watts || 0), data.power_draw_watts ? 'accent' : 'good') +
           '</div>' +
         '</section>' +
@@ -1413,13 +1421,12 @@ const dashboardHTML = `<!doctype html>
 
     function renderGPUPage(data) {
       const gpus = data.latest_gpus || [];
-      const mem = data.memory_total_bytes ? data.memory_used_bytes / data.memory_total_bytes * 100 : 0;
       document.getElementById('gpusView').innerHTML =
         '<section class="metric-grid">' +
           metric('在线设备', (data.online_device_count || 0) + ' / ' + (data.device_count || 0)) +
           metric('GPU 数量', String(data.gpu_count || 0)) +
           metric('平均利用率', pct(data.average_utilization || 0)) +
-          metric('显存占用', pct(mem)) +
+          metric('总显存用量', fmtMemoryG(data.memory_used_bytes, data.memory_total_bytes)) +
           metric('磁盘保护', ((data.disk || {}).status || 'ok').toUpperCase()) +
         '</section>' +
         '<section class="main-grid"><div class="panel"><div class="panel-head"><h2>GPU 详细状态</h2><span>' + gpus.length + '</span></div><div class="gpu-grid">' + renderGPUCards(gpus) + '</div></div><div class="stack">' + renderDeviceList(data) + renderProcessList(data.latest_processes || []) + '</div></section>' +
