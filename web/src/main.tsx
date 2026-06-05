@@ -1589,8 +1589,16 @@ function ProcessPanel({ items, devices }: { items: StoredProcess[]; devices: Dev
 }
 
 function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Device[] }) {
+  const query = useQueryClient();
   const deviceByID = new Map(devices.map((device) => [device.id, device]));
   const [expanded, setExpanded] = useState<string>();
+  useEffect(() => {
+    const activeRows = statRows.slice(0, 8);
+    const timers = activeRows.map((row, index) => window.setTimeout(() => {
+      void prefetchStatsSeries(query, row);
+    }, index * 160));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [query, statRows]);
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1603,7 +1611,13 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
           const open = expanded === key;
           return (
             <div className="stats-expand-row" key={key}>
-              <button className={`table-row stats-row-trigger ${open ? 'active' : ''}`} type="button" onClick={() => setExpanded(open ? undefined : key)} aria-expanded={open}>
+              <button
+                className={`table-row stats-row-trigger ${open ? 'active' : ''}`}
+                type="button"
+                onClick={() => setExpanded(open ? undefined : key)}
+                onPointerEnter={() => prefetchStatsSeries(query, row)}
+                aria-expanded={open}
+              >
                 <div>
                   <strong>{row.gpu_name || row.gpu_id}</strong>
                   <p>{deviceName(deviceByID.get(row.device_id), row.device_id)} · {row.gpu_id} · {row.sample_count} samples</p>
@@ -1624,7 +1638,7 @@ function StatsPanel({ statRows, devices }: { statRows: GPUStats[]; devices: Devi
 
 function StatsTrendCard({ row }: { row: GPUStats }) {
   const series = useQuery({
-    queryKey: ['gpu-series-24h', row.device_id, row.gpu_id],
+    queryKey: statsSeriesQueryKey(row),
     queryFn: () => getGPUSeries(row.device_id, row.gpu_id, 24),
     staleTime: 30_000,
     retry: false
@@ -1649,6 +1663,18 @@ function StatsTrendCard({ row }: { row: GPUStats }) {
       {series.error instanceof Error && <p className="error">{series.error.message}</p>}
     </div>
   );
+}
+
+function statsSeriesQueryKey(row: Pick<GPUStats, 'device_id' | 'gpu_id'>) {
+  return ['gpu-series-24h', row.device_id, row.gpu_id] as const;
+}
+
+function prefetchStatsSeries(query: QueryClient, row: Pick<GPUStats, 'device_id' | 'gpu_id'>) {
+  return query.prefetchQuery({
+    queryKey: statsSeriesQueryKey(row),
+    queryFn: () => getGPUSeries(row.device_id, row.gpu_id, 24),
+    staleTime: 30_000
+  });
 }
 
 function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme: Theme; onToggleTheme: () => void }) {
