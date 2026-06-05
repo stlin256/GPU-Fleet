@@ -349,11 +349,6 @@ input:focus-visible {
   align-self: center;
 }
 
-.fleet-kpi-spark .spark-tooltip {
-  top: auto;
-  bottom: calc(100% + 5px);
-}
-
 .fleet-kpi-spark.good .spark-line,
 .fleet-kpi-spark.good .spark-point {
   stroke: var(--good);
@@ -823,11 +818,6 @@ input:focus-visible {
   height: 54px;
   min-width: 0;
   align-self: center;
-}
-
-.metric-spark .spark-tooltip {
-  top: auto;
-  bottom: calc(100% + 5px);
 }
 
 .metric-spark.good .spark-line,

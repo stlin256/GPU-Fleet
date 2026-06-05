@@ -703,6 +703,7 @@ function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }
 
 function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
   const gpus = data?.latest_gpus ?? [];
+  const aggregateSeries = useAggregateSeries(gpus);
   const devices = data?.devices ?? [];
   const hotCount = gpus.filter((item) => (item.gpu.temperature_celsius ?? 0) >= 80).length;
   const busyCount = gpus.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) >= 80).length;
@@ -711,10 +712,8 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
   const busyText = data ? String(busyCount) : '-';
   const hotText = data ? String(hotCount) : '-';
   const powerValue = data?.power_draw_watts;
-  const memorySpark = gpus.map((item) => ({ value: item.gpu.memory_used_bytes ?? 0, timestamp: item.timestamp }));
-  const memorySparkMax = maxSeries(gpus.map((item) => item.gpu.memory_total_bytes), data?.memory_total_bytes ?? 1);
-  const powerSpark = gpus.map((item) => ({ value: item.gpu.power_draw_watts ?? 0, timestamp: item.timestamp }));
-  const powerSparkMax = maxSeries(gpus.map((item) => item.gpu.power_limit_watts ?? item.gpu.power_enforced_limit_watts ?? item.gpu.power_draw_watts), Math.max(powerValue ?? 1, 1));
+  const memorySpark = aggregateSeries.memory.length ? aggregateSeries.memory : gpus.map((item) => ({ value: item.gpu.memory_used_bytes ?? 0, timestamp: item.timestamp }));
+  const powerSpark = aggregateSeries.power.length ? aggregateSeries.power : gpus.map((item) => ({ value: item.gpu.power_draw_watts ?? 0, timestamp: item.timestamp }));
 
   return (
     <>
@@ -729,8 +728,8 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
           <FleetKPI label="GPU 总数" value={gpuCountText} />
           <FleetKPI label="忙碌 GPU" value={busyText} tone={busyCount > 0 ? 'accent' : 'good'} />
           <FleetKPI label="高温 GPU" value={hotText} tone={hotCount > 0 ? 'bad' : 'good'} />
-          <FleetKPI label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} spark={{ label: '显存分布', samples: memorySpark, max: memorySparkMax, formatValue: fmtBytes, tone: 'good' }} />
-          <FleetKPI label="总功耗" value={typeof powerValue === 'number' ? watts(powerValue) : '-'} tone={(powerValue ?? 0) > 0 ? 'accent' : 'good'} spark={{ label: '功耗分布', samples: powerSpark, max: powerSparkMax, formatValue: watts, tone: 'accent' }} />
+          <FleetKPI label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} spark={{ label: '总显存用量', samples: memorySpark, max: data?.memory_total_bytes ?? maxSeries(memorySpark.map((sample) => sample.value), 1), formatValue: fmtBytes, tone: 'good' }} />
+          <FleetKPI label="总功耗" value={typeof powerValue === 'number' ? watts(powerValue) : '-'} tone={(powerValue ?? 0) > 0 ? 'accent' : 'good'} spark={{ label: '总功耗', samples: powerSpark, max: maxSeries(powerSpark.map((sample) => sample.value), Math.max(powerValue ?? 1, 1)), formatValue: watts, tone: 'accent' }} />
         </div>
       </section>
 
@@ -752,21 +751,20 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
 
 function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
   const gpus = data?.latest_gpus ?? [];
+  const aggregateSeries = useAggregateSeries(gpus);
   const powerValue = data?.power_draw_watts;
-  const utilizationSpark = gpus.map((item) => ({ value: item.gpu.utilization_gpu_percent ?? 0, timestamp: item.timestamp }));
-  const memorySpark = gpus.map((item) => ({ value: item.gpu.memory_used_bytes ?? 0, timestamp: item.timestamp }));
-  const memorySparkMax = maxSeries(gpus.map((item) => item.gpu.memory_total_bytes), data?.memory_total_bytes ?? 1);
-  const powerSpark = gpus.map((item) => ({ value: item.gpu.power_draw_watts ?? 0, timestamp: item.timestamp }));
-  const powerSparkMax = maxSeries(gpus.map((item) => item.gpu.power_limit_watts ?? item.gpu.power_enforced_limit_watts ?? item.gpu.power_draw_watts), Math.max(powerValue ?? 1, 1));
+  const utilizationSpark = aggregateSeries.utilization.length ? aggregateSeries.utilization : gpus.map((item) => ({ value: item.gpu.utilization_gpu_percent ?? 0, timestamp: item.timestamp }));
+  const memorySpark = aggregateSeries.memory.length ? aggregateSeries.memory : gpus.map((item) => ({ value: item.gpu.memory_used_bytes ?? 0, timestamp: item.timestamp }));
+  const powerSpark = aggregateSeries.power.length ? aggregateSeries.power : gpus.map((item) => ({ value: item.gpu.power_draw_watts ?? 0, timestamp: item.timestamp }));
 
   return (
     <>
       <section className="stat-grid">
         <Metric icon={<MonitorUp />} label="在线设备" value={`${data?.online_device_count ?? 0} / ${data?.device_count ?? 0}`} />
         <Metric icon={<Cpu />} label="GPU 数量" value={String(data?.gpu_count ?? 0)} />
-        <Metric icon={<Gauge />} label="平均利用率" value={pct(data?.average_utilization ?? 0)} spark={{ label: '利用率分布', samples: utilizationSpark, max: 100, formatValue: pct, tone: 'accent' }} />
-        <Metric icon={<Database />} label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} spark={{ label: '显存分布', samples: memorySpark, max: memorySparkMax, formatValue: fmtBytes, tone: 'good' }} />
-        <Metric icon={<Power />} label="总功耗" value={watts(data?.power_draw_watts ?? 0)} tone={(data?.power_draw_watts ?? 0) > 0 ? 'accent' : 'good'} spark={{ label: '功耗分布', samples: powerSpark, max: powerSparkMax, formatValue: watts, tone: 'accent' }} />
+        <Metric icon={<Gauge />} label="平均利用率" value={pct(data?.average_utilization ?? 0)} spark={{ label: '平均利用率', samples: utilizationSpark, max: 100, formatValue: pct, tone: 'accent' }} />
+        <Metric icon={<Database />} label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} spark={{ label: '总显存用量', samples: memorySpark, max: data?.memory_total_bytes ?? maxSeries(memorySpark.map((sample) => sample.value), 1), formatValue: fmtBytes, tone: 'good' }} />
+        <Metric icon={<Power />} label="总功耗" value={watts(data?.power_draw_watts ?? 0)} tone={(data?.power_draw_watts ?? 0) > 0 ? 'accent' : 'good'} spark={{ label: '总功耗', samples: powerSpark, max: maxSeries(powerSpark.map((sample) => sample.value), Math.max(powerValue ?? 1, 1)), formatValue: watts, tone: 'accent' }} />
       </section>
 
       <section className="main-grid">
@@ -958,6 +956,67 @@ function metricTone(value: number | undefined, warnAt: number, badAt: number): T
 function maxSeries(values: Array<number | undefined>, fallback: number) {
   const clean = values.filter((item): item is number => typeof item === 'number' && Number.isFinite(item));
   return clean.length ? Math.max(fallback, ...clean) : fallback;
+}
+
+type AggregateSeries = {
+  utilization: Array<{ value: number; timestamp?: string }>;
+  memory: Array<{ value: number; timestamp?: string }>;
+  power: Array<{ value: number; timestamp?: string }>;
+};
+
+function useAggregateSeries(items: StoredGPU[]): AggregateSeries {
+  const keys = useMemo(() => items.map((item) => `${item.device_id}/${item.gpu.gpu_id}`).sort(), [items]);
+  const series = useQuery({
+    queryKey: ['aggregate-gpu-series', keys],
+    queryFn: async () => {
+      const batches = await Promise.all(items.map(async (item) => ({
+        item,
+        points: await getGPUSeries(item.device_id, item.gpu.gpu_id, 1)
+      })));
+      return buildAggregateSeries(batches);
+    },
+    enabled: items.length > 0,
+    refetchInterval: 30000,
+    retry: false
+  });
+  return series.data ?? { utilization: [], memory: [], power: [] };
+}
+
+function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeries {
+  const buckets = new Map<number, { utilizationTotal: number; utilizationCount: number; memory: number; power: number }>();
+  const bucketMs = 60_000;
+  for (const { item, points } of batches) {
+    const source = points.length ? points : [{
+      timestamp: item.timestamp,
+      utilization_gpu_percent: item.gpu.utilization_gpu_percent,
+      memory_used_bytes: item.gpu.memory_used_bytes,
+      memory_total_bytes: item.gpu.memory_total_bytes,
+      power_draw_watts: item.gpu.power_draw_watts
+    }];
+    for (const point of source) {
+      const time = new Date(point.timestamp).getTime();
+      if (!Number.isFinite(time)) continue;
+      const bucket = Math.floor(time / bucketMs) * bucketMs;
+      const row = buckets.get(bucket) ?? { utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
+      if (typeof point.utilization_gpu_percent === 'number' && Number.isFinite(point.utilization_gpu_percent)) {
+        row.utilizationTotal += point.utilization_gpu_percent;
+        row.utilizationCount += 1;
+      }
+      if (typeof point.memory_used_bytes === 'number' && Number.isFinite(point.memory_used_bytes)) {
+        row.memory += point.memory_used_bytes;
+      }
+      if (typeof point.power_draw_watts === 'number' && Number.isFinite(point.power_draw_watts)) {
+        row.power += point.power_draw_watts;
+      }
+      buckets.set(bucket, row);
+    }
+  }
+  const rows = Array.from(buckets.entries()).sort(([left], [right]) => left - right).slice(-60);
+  return {
+    utilization: rows.map(([time, row]) => ({ value: row.utilizationCount ? row.utilizationTotal / row.utilizationCount : 0, timestamp: new Date(time).toISOString() })),
+    memory: rows.map(([time, row]) => ({ value: row.memory, timestamp: new Date(time).toISOString() })),
+    power: rows.map(([time, row]) => ({ value: row.power, timestamp: new Date(time).toISOString() }))
+  };
 }
 
 function Sparkline({ samples, max, label, formatValue, className = '' }: { samples: Array<{ value: number; timestamp?: string }>; max: number; label: string; formatValue: (value?: number) => string; className?: string }) {
