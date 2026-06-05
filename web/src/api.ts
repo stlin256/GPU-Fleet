@@ -204,6 +204,7 @@ export type Overview = {
   latest_processes: StoredProcess[];
   retention_hours: number;
   min_free_space_bytes: number;
+  database_size_bytes: number;
   setup_complete: boolean;
   service: ServiceStatus;
 };

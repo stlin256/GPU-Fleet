@@ -334,7 +334,7 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	}
 	var beforeDelete overviewResponse
 	doJSON(t, handler, http.MethodGet, "/api/v1/overview", nil, cookie, http.StatusOK, &beforeDelete)
-	if beforeDelete.GPUCount != 1 || len(beforeDelete.LatestProcesses) != 1 {
+	if beforeDelete.GPUCount != 1 || len(beforeDelete.LatestProcesses) != 1 || beforeDelete.DatabaseSizeBytes == 0 {
 		t.Fatalf("expected created device snapshots before delete, got %+v", beforeDelete)
 	}
 

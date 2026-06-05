@@ -796,19 +796,25 @@ function GPUTrendGrid({ item, points, className = 'gpu-trend-grid' }: { item: St
   const util = gpu.utilization_gpu_percent;
   const mem = memoryUsagePercent(item);
   const powerLimit = gpu.power_limit_watts ?? gpu.power_enforced_limit_watts;
+  const timestamps = points.map((point) => point.timestamp);
 
   return (
     <div className={className}>
-      <TrendTile label="GPU 利用率" value={pct(util)} caption={gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz) : '最近 1 小时'} values={points.map((point) => point.utilization_gpu_percent)} max={100} tone={metricTone(util, 70, 92)} formatValue={pct} />
-      <TrendTile label="显存" value={`${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes)}`} caption={`总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} max={100} tone={metricTone(mem, 75, 92)} formatValue={pct} />
-      <TrendTile label="温度" value={temp(gpu.temperature_celsius)} caption={tempToneText(gpu.temperature_celsius)} values={points.map((point) => point.temperature_celsius)} max={100} tone={metricTone(gpu.temperature_celsius, 80, 88)} formatValue={temp} />
-      <TrendTile label="功耗" value={watts(gpu.power_draw_watts)} caption={powerLimit ? `上限 ${watts(powerLimit)}` : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} formatValue={watts} />
+      <TrendTile label="GPU 利用率" value={pct(util)} caption={gpu.sm_clock_mhz ? mhz(gpu.sm_clock_mhz) : '最近 1 小时'} values={points.map((point) => point.utilization_gpu_percent)} timestamps={timestamps} max={100} tone={metricTone(util, 70, 92)} formatValue={pct} />
+      <TrendTile label="显存" value={`${pct(mem)} · ${fmtBytes(gpu.memory_used_bytes)}`} caption={`总量 ${fmtBytes(gpu.memory_total_bytes)}`} values={points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined)} timestamps={timestamps} max={100} tone={metricTone(mem, 75, 92)} formatValue={pct} />
+      <TrendTile label="温度" value={temp(gpu.temperature_celsius)} caption={tempToneText(gpu.temperature_celsius)} values={points.map((point) => point.temperature_celsius)} timestamps={timestamps} max={100} tone={metricTone(gpu.temperature_celsius, 80, 88)} formatValue={temp} />
+      <TrendTile label="功耗" value={watts(gpu.power_draw_watts)} caption={powerLimit ? `上限 ${watts(powerLimit)}` : gpu.pstate || '-'} values={points.map((point) => point.power_draw_watts)} timestamps={timestamps} max={powerLimit || maxSeries(points.map((point) => point.power_draw_watts), 200)} tone={metricTone(powerLimit && gpu.power_draw_watts ? (gpu.power_draw_watts / powerLimit) * 100 : undefined, 78, 95)} formatValue={watts} />
     </div>
   );
 }
 
-function TrendTile({ label, value, caption, values, max, tone, formatValue }: { label: string; value: string; caption: string; values: Array<number | undefined>; max: number; tone: TrendTone; formatValue: (value?: number) => string }) {
-  const clean = values.filter((item): item is number => typeof item === 'number' && Number.isFinite(item));
+function TrendTile({ label, value, caption, values, timestamps, max, tone, formatValue }: { label: string; value: string; caption: string; values: Array<number | undefined>; timestamps: string[]; max: number; tone: TrendTone; formatValue: (value?: number) => string }) {
+  const clean: Array<{ value: number; timestamp?: string }> = [];
+  values.forEach((item, index) => {
+    if (typeof item === 'number' && Number.isFinite(item)) {
+      clean.push({ value: item, timestamp: timestamps[index] });
+    }
+  });
   return (
     <div className={`trend-tile ${tone}`} data-testid="gpu-trend-tile">
       <div className="trend-head">
@@ -818,7 +824,7 @@ function TrendTile({ label, value, caption, values, max, tone, formatValue }: { 
         </div>
         <p>{caption}</p>
       </div>
-      <Sparkline values={clean} max={max} label={label} formatValue={formatValue} />
+      <Sparkline samples={clean} max={max} label={label} formatValue={formatValue} />
     </div>
   );
 }
@@ -868,17 +874,17 @@ function maxSeries(values: Array<number | undefined>, fallback: number) {
   return clean.length ? Math.max(fallback, ...clean) : fallback;
 }
 
-function Sparkline({ values, max, label, formatValue }: { values: number[]; max: number; label: string; formatValue: (value?: number) => string }) {
+function Sparkline({ samples, max, label, formatValue }: { samples: Array<{ value: number; timestamp?: string }>; max: number; label: string; formatValue: (value?: number) => string }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const width = 180;
   const height = 58;
   const pad = 4;
-  const clean = values.length > 0 ? values : [0];
+  const clean = samples.length > 0 ? samples : [{ value: 0 }];
   const cappedMax = Math.max(1, max);
-  const pointData = clean.map((value, index) => {
+  const pointData = clean.map((sample, index) => {
     const x = clean.length === 1 ? width - pad : pad + (index / (clean.length - 1)) * (width - pad * 2);
-    const y = height - pad - (Math.max(0, Math.min(cappedMax, value)) / cappedMax) * (height - pad * 2);
-    return { value, x, y };
+    const y = height - pad - (Math.max(0, Math.min(cappedMax, sample.value)) / cappedMax) * (height - pad * 2);
+    return { ...sample, x, y };
   });
   const points = pointData.map((point) => `${point.x.toFixed(1)},${point.y.toFixed(1)}`);
   const line = points.join(' ');
@@ -909,7 +915,7 @@ function Sparkline({ values, max, label, formatValue }: { values: number[]; max:
         <div className="spark-tooltip" data-testid="spark-tooltip" style={{ left: `${(active.x / width) * 100}%` }}>
           <span>{label}</span>
           <strong>{formatValue(active.value)}</strong>
-          <small>{hoverIndex! + 1}/{clean.length}</small>
+          <small>{active.timestamp ? fmtDateTime(active.timestamp) : '-'}</small>
         </div>
       )}
     </div>
@@ -1959,7 +1965,7 @@ function DatabaseSettings({ data }: { data?: Overview }) {
         <div className="operation-icon"><Database size={18} /></div>
         <div>
           <h2>数据库下载</h2>
-          <p>{fmtHours(data?.retention_hours ?? 0)} · {fmtBytes(data?.disk.free_bytes)} 空闲</p>
+          <p>数据库大小 {fmtBytes(data?.database_size_bytes)} · {fmtHours(data?.retention_hours ?? 0)} · {fmtBytes(data?.disk.free_bytes)} 空闲</p>
         </div>
       </div>
       <a className="secondary action-button" href={databaseDownloadURL()} download>

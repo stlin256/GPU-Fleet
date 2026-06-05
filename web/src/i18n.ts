@@ -245,6 +245,7 @@ const en: Record<string, string> = {
   '上传中': 'Uploading',
   '上传证书': 'Upload certificate',
   '数据库下载': 'Database Download',
+  '数据库大小': 'Database size',
   '下载数据库': 'Download database',
   '请求过于频繁，请等待 {duration} 后再试': 'Too many requests. Retry after {duration}.',
   'language endpoint not found; rebuild and restart the server binary': 'Language endpoint not found; rebuild and restart the server binary.'
@@ -256,6 +257,7 @@ const enPatterns: Array<[RegExp, string]> = [
   [/^总量 (.+)$/, 'Total $1'],
   [/^上限 (.+)$/, 'Limit $1'],
   [/^峰值 (.+)$/, 'Peak $1'],
+  [/^数据库大小 (.+)$/, 'Database size $1'],
   [/^空闲 (.+)$/, '$1 free'],
   [/^当前证书到期：(.+)$/, 'Current certificate expires: $1'],
   [/^到期 (.+)$/, 'Expires $1'],

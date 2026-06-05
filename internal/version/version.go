@@ -3,7 +3,7 @@ package version
 import "fmt"
 
 var (
-	Version   = "0.1.3"
+	Version   = "0.1.4"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -55,6 +55,18 @@ func String() string {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.4",
+			Date:    "2026-06-05",
+			Title:   "图表悬浮时间与数据库大小",
+			Added: []string{
+				"设置页数据库下载卡片新增数据库大小显示，对应可下载数据库内容的实际文件大小。",
+			},
+			Changed: []string{
+				"GPU 趋势图悬浮提示从采集点序号改为显示采样时间。",
+				"内置 fallback 面板同步显示采样时间和数据库大小，保持缺少 web/dist 时的体验一致。",
+			},
+		},
 		{
 			Version: "0.1.3",
 			Date:    "2026-06-05",

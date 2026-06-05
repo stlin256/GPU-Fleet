@@ -543,6 +543,7 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	devices := a.meta.ListDevices()
 	diskStatus, _ := a.metrics.DiskStatus()
+	databaseSize := databaseSizeBytes(a.config.DataDir)
 
 	deviceViews := make([]deviceView, 0, len(devices))
 	deviceIDs := make(map[string]bool, len(devices))
@@ -619,9 +620,37 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		LatestProcesses:    filterProcessesByDevices(a.processes.Latest("", ""), deviceIDs),
 		RetentionHours:     int(a.config.Retention.Hours()),
 		MinFreeSpaceBytes:  a.config.MinFreeBytes,
+		DatabaseSizeBytes:  databaseSize,
 		SetupComplete:      a.meta.SetupComplete(),
 		Service:            a.serviceStatus(r),
 	})
+}
+
+func databaseSizeBytes(dataDir string) uint64 {
+	dataRoot, err := filepath.Abs(dataDir)
+	if err != nil {
+		return 0
+	}
+	var total uint64
+	_ = filepath.WalkDir(dataRoot, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(dataRoot, path)
+		if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
+			return nil
+		}
+		relSlash := filepath.ToSlash(rel)
+		if relSlash != "metadata.json" && relSlash != "processes.json" && !strings.HasPrefix(relSlash, "metrics/") {
+			return nil
+		}
+		info, err := entry.Info()
+		if err == nil && info.Size() > 0 {
+			total += uint64(info.Size())
+		}
+		return nil
+	})
+	return total
 }
 
 func (a *App) handleDevices(w http.ResponseWriter, r *http.Request) {
@@ -1128,6 +1157,7 @@ type overviewResponse struct {
 	LatestProcesses    []StoredProcessSnapshot `json:"latest_processes"`
 	RetentionHours     int                     `json:"retention_hours"`
 	MinFreeSpaceBytes  uint64                  `json:"min_free_space_bytes"`
+	DatabaseSizeBytes  uint64                  `json:"database_size_bytes"`
 	SetupComplete      bool                    `json:"setup_complete"`
 	Service            serviceStatus           `json:"service"`
 }

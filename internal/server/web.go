@@ -1051,6 +1051,7 @@ const dashboardHTML = `<!doctype html>
         '端口配置': 'Port Configuration',
         'HTTPS 证书': 'HTTPS certificate',
         '数据库下载': 'Database Download',
+        '数据库大小': 'Database size',
         '在线更新': 'Online Update',
         '版本与变更': 'Version & Changes',
         '最近变更': 'Latest changes',
@@ -1108,6 +1109,7 @@ const dashboardHTML = `<!doctype html>
       return String(value)
         .replace(/(\d+) 台设备，(\d+) 块 GPU，按最新上报状态汇总。/, '$1 devices, $2 GPUs, summarized from latest reports.')
         .replace(/服务端时间 (.+)/, 'Server time $1')
+        .replace(/数据库大小 (.+)/, 'Database size $1')
         .replace(/空闲 (.+)/, '$1 free')
         .replace(/当前证书到期：(.+)/, 'Current certificate expires: $1')
         .replace(/已创建设备 (.+)/, 'Created device $1')
@@ -1343,24 +1345,24 @@ const dashboardHTML = `<!doctype html>
         const gpu = item.gpu || {};
         const key = item.device_id + '/' + gpu.gpu_id;
         const mem = gpu.memory_total_bytes ? gpu.memory_used_bytes / gpu.memory_total_bytes * 100 : undefined;
-        pushHistory(key + ':util', gpu.utilization_gpu_percent);
-        pushHistory(key + ':mem', mem);
-        pushHistory(key + ':temp', gpu.temperature_celsius);
-        pushHistory(key + ':power', gpu.power_draw_watts);
+        pushHistory(key + ':util', gpu.utilization_gpu_percent, item.timestamp);
+        pushHistory(key + ':mem', mem, item.timestamp);
+        pushHistory(key + ':temp', gpu.temperature_celsius, item.timestamp);
+        pushHistory(key + ':power', gpu.power_draw_watts, item.timestamp);
       });
     }
-    function pushHistory(key, value) {
+    function pushHistory(key, value, timestamp) {
       if (typeof value !== 'number' || !Number.isFinite(value)) return;
       const values = state.history.get(key) || [];
-      values.push(value);
+      values.push({value, timestamp});
       while (values.length > 24) values.shift();
       state.history.set(key, values);
     }
     function history(key, fallback) {
       const values = state.history.get(key) || [];
       if (values.length >= 2) return values;
-      if (typeof fallback === 'number' && Number.isFinite(fallback)) return [fallback, fallback];
-      return [0, 0];
+      if (typeof fallback === 'number' && Number.isFinite(fallback)) return [{value: fallback}, {value: fallback}];
+      return [{value: 0}, {value: 0}];
     }
 
     function render() {
@@ -1443,14 +1445,16 @@ const dashboardHTML = `<!doctype html>
       const pad = 8;
       const capped = Math.max(max || 100, 1);
       const list = values && values.length ? values : [0, 0];
-      const dataValues = list.map((v) => Number.isFinite(v) ? v : 0).join(',');
-      const points = list.map((v, i) => {
+      const dataValues = list.map((sample) => Number.isFinite(sample.value) ? sample.value : 0).join(',');
+      const dataTimes = list.map((sample) => sample.timestamp || '').join('|');
+      const points = list.map((sample, i) => {
+        const v = sample.value;
         const x = pad + (i / Math.max(1, list.length - 1)) * (width - pad * 2);
         const y = height - pad - (Math.max(0, Math.min(capped, v || 0)) / capped) * (height - pad * 2);
         return x.toFixed(1) + ',' + y.toFixed(1);
       }).join(' ');
       const area = pad + ',' + (height - pad) + ' ' + points + ' ' + (width - pad) + ',' + (height - pad);
-      return '<div class="sparkline-wrap" data-values="' + dataValues + '" data-max="' + capped + '" data-label="' + esc(label) + '" data-unit="' + esc(unit || '') + '">' +
+      return '<div class="sparkline-wrap" data-values="' + dataValues + '" data-times="' + esc(dataTimes) + '" data-max="' + capped + '" data-label="' + esc(label) + '" data-unit="' + esc(unit || '') + '">' +
         '<svg class="sparkline" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="' + esc(label) + ' 历史趋势图" preserveAspectRatio="none"><polyline class="spark-grid" points="' + pad + ',' + (height - pad) + ' ' + (width - pad) + ',' + (height - pad) + '"></polyline><polygon class="spark-area" points="' + area + '"></polygon><polyline class="spark-line" points="' + points + '"></polyline><line class="spark-cursor" x1="' + pad + '" x2="' + pad + '" y1="' + pad + '" y2="' + (height - pad) + '" style="display:none"></line><circle class="spark-point" cx="' + pad + '" cy="' + (height - pad) + '" r="3.2" style="display:none"></circle></svg>' +
         '<div class="spark-tooltip" data-testid="spark-tooltip"><span>' + esc(label) + '</span><strong>-</strong><small>-</small></div></div>';
     }
@@ -1458,6 +1462,7 @@ const dashboardHTML = `<!doctype html>
     function updateSparkHover(wrap, clientX) {
       const values = (wrap.dataset.values || '').split(',').map(Number).filter((value) => Number.isFinite(value));
       if (!values.length) return;
+      const times = (wrap.dataset.times || '').split('|');
       const width = 180;
       const height = 74;
       const pad = 8;
@@ -1479,7 +1484,7 @@ const dashboardHTML = `<!doctype html>
       tooltip.style.left = (x / width * 100).toFixed(1) + '%';
       tooltip.querySelector('span').textContent = wrap.dataset.label || '';
       tooltip.querySelector('strong').textContent = formatSparkValue(values[index], wrap.dataset.unit || '');
-      tooltip.querySelector('small').textContent = (index + 1) + '/' + values.length;
+      tooltip.querySelector('small').textContent = times[index] ? new Date(times[index]).toLocaleString() : '-';
       tooltip.classList.add('show');
     }
 
@@ -1722,7 +1727,7 @@ const dashboardHTML = `<!doctype html>
             '</div>' +
             '<div class="settings-column settings-column-operations">' +
               settingsSectionHead('维护与发布', '数据库、在线更新和版本信息') +
-              operationPanel('数据库下载', fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
+              operationPanel('数据库下载', '数据库大小 ' + fmtBytes(data.database_size_bytes) + ' · ' + fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
               updatePanel() +
               projectPanel() +
             '</div>' +
@@ -1843,7 +1848,7 @@ const dashboardHTML = `<!doctype html>
       return 'good';
     }
     function maxOf(values, fallback) {
-      return Math.max(fallback, ...values.filter((v) => typeof v === 'number' && Number.isFinite(v)));
+      return Math.max(fallback, ...values.map((sample) => sample && sample.value).filter((v) => typeof v === 'number' && Number.isFinite(v)));
     }
     function deviceBorderColor(deviceID) {
       let hash = 0;
