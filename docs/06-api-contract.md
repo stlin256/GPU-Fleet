@@ -183,6 +183,7 @@ POST /api/v1/admin/setup/reopen
 POST /api/v1/admin/setup/apply
 POST /api/v1/admin/password
 POST /api/v1/admin/server-config
+POST /api/v1/admin/language
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
 GET  /api/v1/admin/update/status
@@ -271,11 +272,12 @@ GET  /api/v1/admin/update/status
 POST /api/v1/admin/update/apply
 ```
 
-- `GET /setup/status`：公开状态探测，返回是否需要首次配置、当前监听协议、配置端口、HTTPS 证书状态和是否需要重启。
-- `POST /setup/apply`：仅在尚无密码的首次部署可用，用于设置访问密码、端口和可选证书。
-- `POST /admin/setup/reopen` 与 `/admin/setup/apply`：登录后再次打开并应用配置引导。
+- `GET /setup/status`：公开状态探测，返回是否需要首次配置、当前监听协议、配置端口、界面语言、HTTPS 证书状态和是否需要重启。
+- `POST /setup/apply`：仅在尚无密码的首次部署可用，用于设置访问密码、端口、界面语言和可选证书。
+- `POST /admin/setup/reopen` 与 `/admin/setup/apply`：登录后再次打开并应用配置引导，可集中调整密码、端口、界面语言和证书。
 - `POST /admin/password`：修改 Web 访问密码。
 - `POST /admin/server-config`：保存访问端口；当前进程不会热切换端口，响应会标记是否需要重启。
+- `POST /admin/language`：保存界面语言；当前支持 `zh-CN` 和 `en-US`，即时生效且不需要重启。
 - `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，有证书并重启后使用 HTTPS。
 - `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
 - `GET /admin/update/status`：检查服务端自身 Git 工作区和 upstream 状态。

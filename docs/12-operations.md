@@ -108,9 +108,11 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
   -repo-dir .
 ```
 
-首次启动按 `-addr` 指定的端口使用 HTTP。浏览器打开 Web 面板后会进入首次配置引导，设置访问密码、下一次启动端口和可选 HTTPS 证书。上传证书后需要重启服务，重启后服务端自身会使用 HTTPS；未配置证书时继续使用 HTTP。
+首次启动按 `-addr` 指定的端口使用 HTTP。浏览器打开 Web 面板后会先选择界面语言，再进入首次配置引导，设置访问密码、下一次启动端口和可选 HTTPS 证书。上传证书后需要重启服务，重启后服务端自身会使用 HTTPS；未配置证书时继续使用 HTTP。
 
 `-admin-password` 仍可用于自动化部署预置初始密码，但普通部署建议留空并使用首次配置引导。生产环境也可以在服务端前面放 Caddy/Nginx/Traefik 终止 HTTPS，再反代到 GPUFleet 的 HTTP 监听地址。
+
+界面语言支持 `zh-CN` 和 `en-US`，保存在服务端数据目录的 `metadata.json` 中。登录后可在设置页单独修改语言，语言切换不需要重启服务。
 
 ## 服务端在线更新
 

@@ -48,6 +48,7 @@ type ServiceConfig struct {
 	Addr           string    `json:"addr"`
 	Port           int       `json:"port"`
 	HTTPS          bool      `json:"https"`
+	Language       string    `json:"language,omitempty"`
 	CertPath       string    `json:"cert_path,omitempty"`
 	KeyPath        string    `json:"key_path,omitempty"`
 	CertNotAfter   time.Time `json:"cert_not_after,omitempty"`
@@ -172,6 +173,10 @@ func (s *MetadataStore) ensureServiceConfigLocked(addr string) bool {
 			changed = true
 		}
 	}
+	if s.data.Service.Language == "" {
+		s.data.Service.Language = defaultLanguage
+		changed = true
+	}
 	if s.data.Service.UpdatedAt.IsZero() {
 		s.data.Service.UpdatedAt = time.Now().UTC()
 		changed = true
@@ -211,7 +216,7 @@ func (s *MetadataStore) CertificateFiles() (string, string, bool) {
 	return s.resolveDataPath(config.CertPath), s.resolveDataPath(config.KeyPath), true
 }
 
-func (s *MetadataStore) CompleteInitialSetup(password string, port int, certPEM, keyPEM []byte) (ServiceConfig, error) {
+func (s *MetadataStore) CompleteInitialSetup(password string, port int, language string, certPEM, keyPEM []byte) (ServiceConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.data.Admin.PasswordHash != "" || s.setupCompleteLocked() {
@@ -231,6 +236,9 @@ func (s *MetadataStore) CompleteInitialSetup(password string, port int, certPEM,
 	}
 	s.data.Admin = account
 	s.updatePortLocked(port)
+	if err := s.updateLanguageLocked(language); err != nil {
+		return ServiceConfig{}, err
+	}
 	if len(certPEM) > 0 || len(keyPEM) > 0 {
 		if err := s.saveCertificateLocked(certPEM, keyPEM); err != nil {
 			return ServiceConfig{}, err
@@ -243,7 +251,7 @@ func (s *MetadataStore) CompleteInitialSetup(password string, port int, certPEM,
 	return s.data.Service, s.saveLocked()
 }
 
-func (s *MetadataStore) ReconfigureSetup(password string, port int, certPEM, keyPEM []byte) (ServiceConfig, error) {
+func (s *MetadataStore) ReconfigureSetup(password string, port int, language string, certPEM, keyPEM []byte) (ServiceConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if password != "" {
@@ -262,6 +270,9 @@ func (s *MetadataStore) ReconfigureSetup(password string, port int, certPEM, key
 			return ServiceConfig{}, err
 		}
 		s.updatePortLocked(port)
+	}
+	if err := s.updateLanguageLocked(language); err != nil {
+		return ServiceConfig{}, err
 	}
 	if len(certPEM) > 0 || len(keyPEM) > 0 {
 		if err := s.saveCertificateLocked(certPEM, keyPEM); err != nil {
@@ -326,6 +337,17 @@ func (s *MetadataStore) UpdateServicePort(port int) (ServiceConfig, error) {
 	return s.data.Service, s.saveLocked()
 }
 
+func (s *MetadataStore) UpdateLanguage(language string) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.updateLanguageLocked(language); err != nil {
+		return ServiceConfig{}, err
+	}
+	s.bumpServiceConfigLocked()
+	s.addAuditLocked("service_language_changed", fmt.Sprintf("changed UI language to %s", s.data.Service.Language))
+	return s.data.Service, s.saveLocked()
+}
+
 func (s *MetadataStore) SaveCertificate(certPEM, keyPEM []byte) (ServiceConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -384,6 +406,18 @@ func (s *MetadataStore) updatePortLocked(port int) {
 	}
 	s.data.Service.Port = port
 	s.data.Service.Addr = fmt.Sprintf("%s:%d", host, port)
+}
+
+func (s *MetadataStore) updateLanguageLocked(language string) error {
+	language = normalizeLanguage(language)
+	if language == "" {
+		return nil
+	}
+	if !validLanguage(language) {
+		return fmt.Errorf("unsupported language %q", language)
+	}
+	s.data.Service.Language = language
+	return nil
 }
 
 func (s *MetadataStore) bumpServiceConfigLocked() {
@@ -691,6 +725,31 @@ func validatePort(port int) error {
 		return errors.New("port must be between 1 and 65535")
 	}
 	return nil
+}
+
+const defaultLanguage = "zh-CN"
+
+func normalizeLanguage(language string) string {
+	switch strings.ToLower(strings.TrimSpace(language)) {
+	case "", "zh", "zh-cn", "zh_cn", "cn":
+		if strings.TrimSpace(language) == "" {
+			return ""
+		}
+		return "zh-CN"
+	case "en", "en-us", "en_us":
+		return "en-US"
+	default:
+		return strings.TrimSpace(language)
+	}
+}
+
+func validLanguage(language string) bool {
+	switch language {
+	case "zh-CN", "en-US":
+		return true
+	default:
+		return false
+	}
 }
 
 func portFromAddr(addr string) (int, bool) {

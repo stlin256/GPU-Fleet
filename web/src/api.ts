@@ -106,6 +106,7 @@ export type ServiceStatus = {
   configured_addr: string;
   configured_port: number;
   https_enabled: boolean;
+  language: AppLanguage;
   cert_not_after?: string;
   config_revision: number;
   updated_at?: string;
@@ -123,6 +124,7 @@ export type SetupStatus = {
 export type SetupPayload = {
   password?: string;
   port?: number;
+  language?: AppLanguage;
   certificate_pem?: string;
   private_key_pem?: string;
 };
@@ -220,6 +222,15 @@ export type DeviceResponse = {
   device: Device;
 };
 
+export type AppLanguage = 'zh-CN' | 'en-US';
+
+type ErrorFormatter = (retryAfterSeconds: number) => string;
+let errorFormatter: ErrorFormatter = (seconds) => `Too many requests. Retry after ${fmtRetryAfter(seconds, 'en-US')}.`;
+
+export function setAPIErrorFormatter(formatter: ErrorFormatter) {
+  errorFormatter = formatter;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     credentials: 'same-origin',
@@ -232,18 +243,23 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     if (typeof body.retry_after_seconds === 'number' && body.retry_after_seconds > 0) {
-      throw new Error(`请求过于频繁，请等待 ${fmtRetryAfter(body.retry_after_seconds)}后再试`);
+      throw new Error(errorFormatter(body.retry_after_seconds));
     }
     throw new Error(body.error ?? response.statusText);
   }
   return response.json() as Promise<T>;
 }
 
-function fmtRetryAfter(seconds: number) {
+function fmtRetryAfter(seconds: number, language: AppLanguage) {
   const rounded = Math.max(1, Math.ceil(seconds));
-  if (rounded >= 3600) return `${Math.ceil(rounded / 3600)} 小时`;
-  if (rounded >= 60) return `${Math.ceil(rounded / 60)} 分钟`;
-  return `${rounded} 秒`;
+  if (language === 'zh-CN') {
+    if (rounded >= 3600) return `${Math.ceil(rounded / 3600)} 小时`;
+    if (rounded >= 60) return `${Math.ceil(rounded / 60)} 分钟`;
+    return `${rounded} 秒`;
+  }
+  if (rounded >= 3600) return `${Math.ceil(rounded / 3600)} h`;
+  if (rounded >= 60) return `${Math.ceil(rounded / 60)} min`;
+  return `${rounded} sec`;
 }
 
 export function getSetupStatus() {
@@ -350,6 +366,13 @@ export function updateServerConfig(port: number) {
   return request<ServiceMutationResponse>('/api/v1/admin/server-config', {
     method: 'POST',
     body: JSON.stringify({ port })
+  });
+}
+
+export function updateLanguage(language: AppLanguage) {
+  return request<ServiceMutationResponse>('/api/v1/admin/language', {
+    method: 'POST',
+    body: JSON.stringify({ language })
   });
 }
 

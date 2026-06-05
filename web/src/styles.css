@@ -67,7 +67,7 @@ body {
   letter-spacing: 0;
 }
 
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button { cursor: pointer; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: 30px; line-height: 1.1; }
@@ -907,6 +907,25 @@ input {
   transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
 }
 
+select {
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+
+select:hover {
+  border-color: var(--line-strong);
+}
+
+select:focus {
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--line));
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
 input:hover {
   border-color: var(--line-strong);
 }
@@ -1550,6 +1569,7 @@ input:focus {
 }
 
 .settings-form input,
+.settings-form select,
 .setup-grid input {
   width: 100%;
 }

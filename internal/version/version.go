@@ -3,7 +3,7 @@ package version
 import "fmt"
 
 var (
-	Version   = "0.1.1"
+	Version   = "0.1.2"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -55,6 +55,24 @@ func String() string {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.2",
+			Date:    "2026-06-05",
+			Title:   "服务端国际化框架",
+			Added: []string{
+				"新增服务端语言配置，支持首次配置时选择简体中文或 English，并持久化到 metadata.json。",
+				"新增设置页语言切换能力，语言偏好会同步到服务端并立即影响 Web 面板。",
+				"新增可扩展前端 i18n 词表和动态文案翻译兜底，覆盖 React 面板和内置 fallback 面板的主要用户可见文案。",
+				"新增英文 README 和 i18n 维护文档，API、前端、运维和当前实现文档补充语言配置说明。",
+			},
+			Changed: []string{
+				"首次配置流程扩展为密码、端口、语言和可选 HTTPS 证书的统一配置流程。",
+				"服务状态 API、overview API 和设置相关响应现在返回当前语言字段，便于多浏览器保持一致界面语言。",
+			},
+			Fixed: []string{
+				"补齐设置页、更新页、设备管理、指标卡片和错误提示等界面的中英文文案维护入口，降低后续新增语言时遗漏文案的风险。",
+			},
+		},
 		{
 			Version: "0.1.1",
 			Date:    "2026-06-05",

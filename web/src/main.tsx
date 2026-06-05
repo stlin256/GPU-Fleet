@@ -37,6 +37,7 @@ import {
   Upload
 } from 'lucide-react';
 import {
+  AppLanguage,
   applyUpdate,
   applyInitialSetup,
   applySetup,
@@ -62,13 +63,16 @@ import {
   rotateDeviceSecret,
   ServiceStatus,
   setDeviceEnabled,
+  setAPIErrorFormatter,
   SetupStatus,
   StoredGPU,
   StoredProcess,
   UpdateStatus,
+  updateLanguage,
   updateServerConfig,
   uploadCertificate
 } from './api';
+import { I18nContext, installDOMI18n, languages, makeTranslator, useI18n } from './i18n';
 import './styles.css';
 
 echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer]);
@@ -89,6 +93,12 @@ function initialTheme(): Theme {
   const stored = window.localStorage.getItem('gpufleet-theme');
   if (stored === 'light' || stored === 'dark') return stored;
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function initialLanguage(): AppLanguage {
+  const stored = window.localStorage.getItem('gpufleet-language');
+  if (stored === 'zh-CN' || stored === 'en-US') return stored;
+  return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
 }
 
 function fmtBytes(value?: number) {
@@ -170,6 +180,8 @@ function App() {
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [setupStatus, setSetupStatus] = useState<SetupStatus>();
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [language, setLanguageState] = useState<AppLanguage>(initialLanguage);
+  const t = useMemo(() => makeTranslator(language), [language]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -177,8 +189,19 @@ function App() {
     window.localStorage.setItem('gpufleet-theme', theme);
   }, [theme]);
 
+  useEffect(() => {
+    document.documentElement.lang = language === 'zh-CN' ? 'zh-CN' : 'en';
+    window.localStorage.setItem('gpufleet-language', language);
+    setAPIErrorFormatter((seconds) => t('请求过于频繁，请等待 {duration} 后再试', { duration: retryAfterText(seconds, language) }));
+    return installDOMI18n(() => language);
+  }, [language, t]);
+
   function toggleTheme() {
     setTheme((current) => current === 'dark' ? 'light' : 'dark');
+  }
+
+  function setLanguage(next: AppLanguage) {
+    setLanguageState(next);
   }
 
   useEffect(() => {
@@ -187,13 +210,17 @@ function App() {
       .then((status) => {
         if (cancelled) return;
         setSetupStatus(status);
+        setLanguage(status.service.language || initialLanguage());
         if (status.setup_required) {
           setAuthState('setup');
           return;
         }
         getOverview()
-          .then(() => {
-            if (!cancelled) setAuthState('authenticated');
+          .then((overview) => {
+            if (!cancelled) {
+              setLanguage(overview.service.language || status.service.language || initialLanguage());
+              setAuthState('authenticated');
+            }
           })
           .catch(() => {
             if (!cancelled) setAuthState('anonymous');
@@ -207,24 +234,37 @@ function App() {
     };
   }, []);
 
-  if (authState === 'checking') {
-    return <LoadingScreen theme={theme} onToggleTheme={toggleTheme} />;
+  return (
+    <I18nContext.Provider value={{ language, setLanguage, t }}>
+      {authState === 'checking' && <LoadingScreen theme={theme} onToggleTheme={toggleTheme} />}
+      {authState === 'setup' && (
+        <SetupWizard
+          mode="initial"
+          status={setupStatus}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          onComplete={(nextLanguage) => {
+            setLanguage(nextLanguage);
+            setAuthState('authenticated');
+          }}
+        />
+      )}
+      {authState === 'anonymous' && <Login onSuccess={() => setAuthState('authenticated')} theme={theme} onToggleTheme={toggleTheme} />}
+      {authState === 'authenticated' && <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />}
+    </I18nContext.Provider>
+  );
+}
+
+function retryAfterText(seconds: number, language: AppLanguage) {
+  const rounded = Math.max(1, Math.ceil(seconds));
+  if (language === 'zh-CN') {
+    if (rounded >= 3600) return `${Math.ceil(rounded / 3600)} 小时`;
+    if (rounded >= 60) return `${Math.ceil(rounded / 60)} 分钟`;
+    return `${rounded} 秒`;
   }
-  if (authState === 'setup') {
-    return (
-      <SetupWizard
-        mode="initial"
-        status={setupStatus}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        onComplete={() => setAuthState('authenticated')}
-      />
-    );
-  }
-  if (authState === 'anonymous') {
-    return <Login onSuccess={() => setAuthState('authenticated')} theme={theme} onToggleTheme={toggleTheme} />;
-  }
-  return <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />;
+  if (rounded >= 3600) return `${Math.ceil(rounded / 3600)} h`;
+  if (rounded >= 60) return `${Math.ceil(rounded / 60)} min`;
+  return `${rounded} sec`;
 }
 
 function LoadingScreen({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
@@ -254,16 +294,18 @@ function SetupWizard({
   status?: SetupStatus;
   theme: Theme;
   onToggleTheme: () => void;
-  onComplete: () => void;
+  onComplete: (language: AppLanguage) => void;
   onCancel?: () => void;
 }) {
+  const { language, setLanguage, t } = useI18n();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [port, setPort] = useState(String(status?.service.configured_port || portFromLocation()));
+  const [selectedLanguage, setSelectedLanguage] = useState<AppLanguage>(status?.service.language || language);
   const [certificatePEM, setCertificatePEM] = useState('');
   const [privateKeyPEM, setPrivateKeyPEM] = useState('');
-  const [certificateName, setCertificateName] = useState('未选择');
-  const [keyName, setKeyName] = useState('未选择');
+  const [certificateName, setCertificateName] = useState(t('未选择'));
+  const [keyName, setKeyName] = useState(t('未选择'));
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -277,19 +319,19 @@ function SetupWizard({
     setMessage('');
     const parsedPort = Number(port);
     if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
-      setError('端口范围应为 1-65535');
+      setError(t('端口范围应为 1-65535'));
       return;
     }
     if ((requirePassword || password || confirmPassword) && password.length < 8) {
-      setError('密码至少 8 位');
+      setError(t('密码至少 8 位'));
       return;
     }
     if (password !== confirmPassword) {
-      setError('两次密码不一致');
+      setError(t('两次密码不一致'));
       return;
     }
     if ((certificatePEM && !privateKeyPEM) || (!certificatePEM && privateKeyPEM)) {
-      setError('证书和私钥需要同时上传');
+      setError(t('证书和私钥需要同时上传'));
       return;
     }
     setLoading(true);
@@ -297,6 +339,7 @@ function SetupWizard({
       const payload = {
         password: password || undefined,
         port: parsedPort,
+        language: selectedLanguage,
         certificate_pem: certificatePEM || undefined,
         private_key_pem: privateKeyPEM || undefined
       };
@@ -304,8 +347,9 @@ function SetupWizard({
       if (mode === 'initial' && password) {
         await login(password);
       }
-      setMessage(result.restart_required ? '配置已保存，重启服务后端口或 HTTPS 生效' : '配置已保存');
-      onComplete();
+      setLanguage(result.service.language || selectedLanguage);
+      setMessage(result.restart_required ? t('配置已保存，重启服务后端口或 HTTPS 生效') : t('配置已保存'));
+      onComplete(result.service.language || selectedLanguage);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'setup failed');
     } finally {
@@ -335,31 +379,41 @@ function SetupWizard({
         </div>
         <div className="setup-title">
           <span className="pill good">{service?.current_scheme?.toUpperCase() ?? 'HTTP'}</span>
-          <h1>{mode === 'initial' ? '首次配置' : '配置引导'}</h1>
-          <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : '初始化服务访问参数'}</p>
+          <h1>{mode === 'initial' ? t('首次配置') : t('配置引导')}</h1>
+          <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : t('初始化服务访问参数')}</p>
         </div>
 
         <div className="setup-grid">
           <label>
-            {mode === 'initial' ? '访问密码' : '新密码'}
-            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? '至少 8 位' : '留空则不变'} />
+            {mode === 'initial' ? t('访问密码') : t('新密码')}
+            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? t('至少 8 位') : t('留空则不变')} />
           </label>
           <label>
-            确认密码
-            <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? '再次输入密码' : '仅修改密码时填写'} />
+            {t('确认密码')}
+            <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? t('再次输入密码') : t('仅修改密码时填写')} />
           </label>
           <label>
-            访问端口
+            {t('访问端口')}
             <input value={port} onChange={(event) => setPort(event.target.value)} type="number" min={1} max={65535} inputMode="numeric" />
+          </label>
+          <label>
+            {t('界面语言')}
+            <select value={selectedLanguage} onChange={(event) => {
+              const next = event.target.value as AppLanguage;
+              setSelectedLanguage(next);
+              setLanguage(next);
+            }}>
+              {languages.map((item) => <option key={item.code} value={item.code}>{item.nativeLabel}</option>)}
+            </select>
           </label>
           <div className="setup-file-row">
             <label>
-              HTTPS 证书
+              {t('HTTPS 证书')}
               <input type="file" accept=".pem,.crt,.cer" onChange={(event) => loadPEM(event, 'cert')} />
               <span>{certificateName}</span>
             </label>
             <label>
-              私钥文件
+              {t('私钥文件')}
               <input type="file" accept=".pem,.key" onChange={(event) => loadPEM(event, 'key')} />
               <span>{keyName}</span>
             </label>
@@ -367,13 +421,13 @@ function SetupWizard({
         </div>
 
         <div className="setup-actions">
-          {onCancel && <button className="secondary" type="button" onClick={onCancel}>取消</button>}
+          {onCancel && <button className="secondary" type="button" onClick={onCancel}>{t('取消')}</button>}
           <button className="primary compact" disabled={loading}>
             <Save size={17} />
-            {loading ? '保存中' : '保存配置'}
+            {loading ? t('保存中') : t('保存配置')}
           </button>
         </div>
-        {service?.cert_not_after && <p className="notice">当前证书到期：{fmtDateTime(service.cert_not_after)}</p>}
+        {service?.cert_not_after && <p className="notice">{t('当前证书到期：{date}', { date: fmtDateTime(service.cert_not_after) })}</p>}
         {message && <p className="notice">{message}</p>}
         {error && <p className="error">{error}</p>}
       </form>
@@ -1240,6 +1294,7 @@ function StatsPanel({ statRows }: { statRows: GPUStats[] }) {
 
 function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme: Theme; onToggleTheme: () => void }) {
   const query = useQueryClient();
+  const { setLanguage, t } = useI18n();
   const service = data?.service;
   const min = data?.min_free_space_bytes ?? data?.disk.min_free_bytes ?? 0;
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -1289,18 +1344,19 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           <div className="settings-section-head">
             <div>
               <h2>访问与安全</h2>
-              <p>凭据、端口和 HTTPS 证书</p>
+              <p>凭据、端口、语言和 HTTPS 证书</p>
             </div>
           </div>
           <PasswordSettings onDone={refreshOverview} />
           <PortSettings service={service} onDone={refreshOverview} />
+          <LanguageSettings service={service} onDone={refreshOverview} />
           <CertificateSettings service={service} onDone={refreshOverview} />
           <article className="panel setting-operation">
             <div className="operation-head">
               <div className="operation-icon"><Settings size={18} /></div>
               <div>
                 <h2>配置引导</h2>
-                <p>重新打开端口、密码和证书配置流程</p>
+                <p>重新打开端口、密码、语言和证书配置流程</p>
               </div>
             </div>
             <button className="secondary action-button" type="button" onClick={openWizard}>
@@ -1331,9 +1387,10 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           theme={theme}
           onToggleTheme={onToggleTheme}
           onCancel={() => setWizardOpen(false)}
-          onComplete={() => {
+          onComplete={(nextLanguage) => {
+            setLanguage(nextLanguage);
             setWizardOpen(false);
-            setMessage('配置已保存，必要时重启服务后生效');
+            setMessage(t('配置已保存，必要时重启服务后生效'));
             void refreshOverview();
           }}
         />
@@ -1636,6 +1693,55 @@ function PortSettings({ service, onDone }: { service?: ServiceStatus; onDone: ()
         <button className="primary compact" disabled={busy}><Save size={16} />{busy ? '保存中' : '保存端口'}</button>
       </form>
       {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+    </article>
+  );
+}
+
+function LanguageSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const { language, setLanguage, t } = useI18n();
+  const [selectedLanguage, setSelectedLanguage] = useState<AppLanguage>(service?.language || language);
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setSelectedLanguage(service?.language || language);
+  }, [language, service?.language]);
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    setMessage('');
+    setBusy(true);
+    try {
+      const result = await updateLanguage(selectedLanguage);
+      setLanguage(result.service.language || selectedLanguage);
+      setMessage(t('语言已保存'));
+      await onDone();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'language update failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="panel setting-operation" data-testid="settings-language">
+      <div className="operation-head">
+        <div className="operation-icon"><Settings size={18} /></div>
+        <div>
+          <h2>{t('语言设置')}</h2>
+          <p>{t('控制首次配置、面板和后续设置页语言')}</p>
+        </div>
+      </div>
+      <form className="settings-form inline" onSubmit={submit}>
+        <label>
+          {t('界面语言')}
+          <select value={selectedLanguage} onChange={(event) => setSelectedLanguage(event.target.value as AppLanguage)}>
+            {languages.map((item) => <option key={item.code} value={item.code}>{item.nativeLabel}</option>)}
+          </select>
+        </label>
+        <button className="primary compact" disabled={busy}><Save size={16} />{busy ? t('保存中') : t('保存语言')}</button>
+      </form>
+      {message && <p className={message.includes('已') || message.includes('saved') ? 'notice' : 'error'}>{message}</p>}
     </article>
   );
 }

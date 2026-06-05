@@ -1028,6 +1028,111 @@ const dashboardHTML = `<!doctype html>
   </div>
   <div id="modalRoot"></div>
   <script>
+    const fallbackI18n = {
+      language: localStorage.getItem('gpufleet-language') || 'zh-CN',
+      exact: {
+        '登录面板': 'Dashboard login',
+        '登录后记住当前设备 30 天': 'This device is remembered for 30 days after login',
+        '密码': 'Password',
+        '登录': 'Log in',
+        '总览': 'Overview',
+        '设备': 'Devices',
+        '设置': 'Settings',
+        'GPU 资源总览': 'GPU Resource Overview',
+        '设备管理': 'Device Management',
+        'GPU 监控': 'GPU Monitoring',
+        '服务设置': 'Service Settings',
+        '等待服务端数据': 'Waiting for server data',
+        '退出登录': 'Log out',
+        '切换主题': 'Toggle theme',
+        '刷新': 'Refresh',
+        '服务状态': 'Service Status',
+        '密码更改': 'Password Change',
+        '端口配置': 'Port Configuration',
+        'HTTPS 证书': 'HTTPS certificate',
+        '数据库下载': 'Database Download',
+        '在线更新': 'Online Update',
+        '版本与变更': 'Version & Changes',
+        '最近变更': 'Latest changes',
+        '配置引导': 'Setup wizard',
+        '检查更新': 'Check update',
+        '拉取并重启': 'Pull and restart',
+        '当前提交': 'Current commit',
+        '远端提交': 'Remote commit',
+        '落后': 'Behind',
+        '超前': 'Ahead',
+        '远端': 'Remote',
+        '检查时间': 'Checked at',
+        '设备列表': 'Device List',
+        '注册设备': 'Register Device',
+        '设备别名': 'Device alias',
+        '创建': 'Create',
+        '保存': 'Save',
+        '取消': 'Cancel',
+        '改名': 'Rename',
+        '启用': 'Enable',
+        '禁用': 'Disable',
+        '轮换': 'Rotate',
+        '删除': 'Delete',
+        '复制': 'Copy',
+        '已复制': 'Copied',
+        '新设备密钥': 'New device secret',
+        '目标设备': 'Target device',
+        '在线设备': 'Online devices',
+        'GPU 总数': 'Total GPUs',
+        '忙碌 GPU': 'Busy GPUs',
+        '高温 GPU': 'Hot GPUs',
+        '总显存用量': 'Total memory usage',
+        '总功耗': 'Total power',
+        'GPU 进程': 'GPU Processes',
+        '24 小时统计': '24-hour Stats',
+        '维护与发布': 'Maintenance & Release',
+        '访问与安全': 'Access & Security',
+        '作者': 'Author',
+        '版本': 'Version',
+        '提交': 'Commit',
+        '构建时间': 'Build time',
+        '仓库地址': 'Repository',
+        '新增': 'Added',
+        '变更': 'Changed',
+        '安全': 'Security',
+        '修复': 'Fixed'
+      }
+    };
+    function fallbackTranslateText(value) {
+      if (fallbackI18n.language !== 'en-US') return value;
+      const trimmed = String(value || '').trim();
+      if (!trimmed) return value;
+      const exact = fallbackI18n.exact[trimmed];
+      if (exact) return String(value).replace(trimmed, exact);
+      return String(value)
+        .replace(/(\d+) 台设备，(\d+) 块 GPU，按最新上报状态汇总。/, '$1 devices, $2 GPUs, summarized from latest reports.')
+        .replace(/服务端时间 (.+)/, 'Server time $1')
+        .replace(/空闲 (.+)/, '$1 free')
+        .replace(/当前证书到期：(.+)/, 'Current certificate expires: $1')
+        .replace(/已创建设备 (.+)/, 'Created device $1')
+        .replace(/设备名称已更新为 (.+)/, 'Device name updated to $1');
+    }
+    function applyFallbackI18n() {
+      document.documentElement.lang = fallbackI18n.language === 'en-US' ? 'en' : 'zh-CN';
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach((node) => {
+        if (!node.__sourceText) node.__sourceText = node.nodeValue;
+        const next = fallbackTranslateText(node.__sourceText);
+        if (node.nodeValue !== next) node.nodeValue = next;
+      });
+      document.querySelectorAll('[title],[placeholder],[aria-label]').forEach((el) => {
+        ['title', 'placeholder', 'aria-label'].forEach((attr) => {
+          const value = el.getAttribute(attr);
+          if (!value) return;
+          const key = '__source_' + attr;
+          if (!el[key]) el[key] = value;
+          el.setAttribute(attr, fallbackTranslateText(el[key]));
+        });
+      });
+    }
     const login = document.getElementById('login');
     const app = document.getElementById('app');
     const state = {
@@ -1269,6 +1374,11 @@ const dashboardHTML = `<!doctype html>
       if (state.view === 'devices') renderDevicesPage(data);
       if (state.view === 'gpus') renderGPUPage(data);
       if (state.view === 'settings') renderSettings(data);
+      if (data.service && data.service.language) {
+        fallbackI18n.language = data.service.language;
+        localStorage.setItem('gpufleet-language', fallbackI18n.language);
+      }
+      applyFallbackI18n();
     }
 
     function renderOverview(data) {

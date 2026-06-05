@@ -117,7 +117,7 @@ func TestVersionAPIRequiresSession(t *testing.T) {
 
 	var info version.ReleaseInfo
 	doJSON(t, handler, http.MethodGet, "/api/v1/version", nil, loginCookie(t, handler), http.StatusOK, &info)
-	if info.Product != version.Product || info.Version != "0.1.1" || info.Author != "stlin256" || info.Repository != "https://github.com/stlin256/GPU-Fleet" {
+	if info.Product != version.Product || info.Version != version.Version || info.Author != "stlin256" || info.Repository != "https://github.com/stlin256/GPU-Fleet" {
 		t.Fatalf("unexpected version response: %+v", info)
 	}
 	if len(info.Changelog) == 0 || info.Changelog[0].Version != info.Version || info.Changelog[0].Title == "" {
@@ -449,6 +449,9 @@ func TestInitialSetupCreatesPasswordCredential(t *testing.T) {
 	if !status.SetupRequired || status.SetupComplete {
 		t.Fatalf("expected setup to be required, got %+v", status)
 	}
+	if status.Service.Language != defaultLanguage {
+		t.Fatalf("expected default language %q, got %q", defaultLanguage, status.Service.Language)
+	}
 	doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "setup-pass"}, nil, http.StatusUnauthorized, nil)
 
 	var applied struct {
@@ -459,8 +462,9 @@ func TestInitialSetupCreatesPasswordCredential(t *testing.T) {
 	doJSON(t, handler, http.MethodPost, "/api/v1/setup/apply", map[string]any{
 		"password": "setup-pass",
 		"port":     9091,
+		"language": "en-US",
 	}, nil, http.StatusOK, &applied)
-	if !applied.OK || applied.Service.ConfiguredPort != 9091 || !applied.RestartRequired {
+	if !applied.OK || applied.Service.ConfiguredPort != 9091 || applied.Service.Language != "en-US" || !applied.RestartRequired {
 		t.Fatalf("unexpected setup apply response: %+v", applied)
 	}
 	doJSON(t, handler, http.MethodPost, "/api/v1/setup/apply", map[string]any{
@@ -488,6 +492,17 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 	if !portUpdate.OK || portUpdate.Service.ConfiguredPort != 9443 || !portUpdate.RestartRequired {
 		t.Fatalf("unexpected port update response: %+v", portUpdate)
 	}
+
+	var languageUpdate struct {
+		OK              bool          `json:"ok"`
+		Service         serviceStatus `json:"service"`
+		RestartRequired bool          `json:"restart_required"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/language", map[string]string{"language": "en-US"}, cookie, http.StatusOK, &languageUpdate)
+	if !languageUpdate.OK || languageUpdate.Service.Language != "en-US" {
+		t.Fatalf("unexpected language update response: %+v", languageUpdate)
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/language", map[string]string{"language": "fr-FR"}, cookie, http.StatusBadRequest, nil)
 
 	certPEM, keyPEM, notAfter := testCertificate(t)
 	var certUpdate struct {

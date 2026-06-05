@@ -154,6 +154,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/setup/apply", a.requireSession(a.handleSetupApplyAuthenticated))
 	mux.HandleFunc("/api/v1/admin/password", a.requireSession(a.handleAdminPassword))
 	mux.HandleFunc("/api/v1/admin/server-config", a.requireSession(a.handleAdminServerConfig))
+	mux.HandleFunc("/api/v1/admin/language", a.requireSession(a.handleAdminLanguage))
 	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
 	mux.HandleFunc("/api/v1/admin/database/download", a.requireSession(a.handleDatabaseDownload))
 	mux.HandleFunc("/api/v1/admin/update/status", a.requireSession(a.handleUpdateStatus))
@@ -315,6 +316,7 @@ func (a *App) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Password       string `json:"password"`
 		Port           int    `json:"port"`
+		Language       string `json:"language"`
 		CertificatePEM string `json:"certificate_pem"`
 		PrivateKeyPEM  string `json:"private_key_pem"`
 	}
@@ -325,6 +327,7 @@ func (a *App) handleSetupApply(w http.ResponseWriter, r *http.Request) {
 	config, err := a.meta.CompleteInitialSetup(
 		body.Password,
 		body.Port,
+		body.Language,
 		[]byte(strings.TrimSpace(body.CertificatePEM)),
 		[]byte(strings.TrimSpace(body.PrivateKeyPEM)),
 	)
@@ -356,6 +359,7 @@ func (a *App) handleSetupApplyAuthenticated(w http.ResponseWriter, r *http.Reque
 	var body struct {
 		Password       string `json:"password"`
 		Port           int    `json:"port"`
+		Language       string `json:"language"`
 		CertificatePEM string `json:"certificate_pem"`
 		PrivateKeyPEM  string `json:"private_key_pem"`
 	}
@@ -366,6 +370,7 @@ func (a *App) handleSetupApplyAuthenticated(w http.ResponseWriter, r *http.Reque
 	config, err := a.meta.ReconfigureSetup(
 		body.Password,
 		body.Port,
+		body.Language,
 		[]byte(strings.TrimSpace(body.CertificatePEM)),
 		[]byte(strings.TrimSpace(body.PrivateKeyPEM)),
 	)
@@ -413,6 +418,30 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	config, err := a.meta.UpdateServicePort(body.Port)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"service":          a.serviceStatusFromConfig(config, r),
+		"restart_required": a.restartRequired(config),
+	})
+}
+
+func (a *App) handleAdminLanguage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		Language string `json:"language"`
+	}
+	if err := decodeJSON(r, &body, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	config, err := a.meta.UpdateLanguage(body.Language)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -1055,6 +1084,7 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 		ConfiguredAddr:    config.Addr,
 		ConfiguredPort:    config.Port,
 		HTTPSEnabled:      config.HTTPS,
+		Language:          config.Language,
 		CertNotAfter:      config.CertNotAfter,
 		ConfigRevision:    config.ConfigRevision,
 		UpdatedAt:         config.UpdatedAt,
@@ -1114,6 +1144,7 @@ type serviceStatus struct {
 	ConfiguredAddr    string    `json:"configured_addr"`
 	ConfiguredPort    int       `json:"configured_port"`
 	HTTPSEnabled      bool      `json:"https_enabled"`
+	Language          string    `json:"language"`
 	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
 	ConfigRevision    int       `json:"config_revision"`
 	UpdatedAt         time.Time `json:"updated_at,omitempty"`
