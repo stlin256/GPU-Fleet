@@ -203,6 +203,10 @@ function storePendingUpdate(notice: PendingUpdateNotice) {
   writeJSON(updatePendingKey, notice);
 }
 
+function hasPendingUpdate() {
+  return Boolean(readJSON<PendingUpdateNotice>(updatePendingKey));
+}
+
 function readCachedUpdateStatus() {
   const cached = readJSON<CachedUpdateStatus>(updateStatusCacheKey);
   if (!cached?.status || !cached.cached_at) return undefined;
@@ -609,6 +613,7 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
   }, [overview.error, onUnauthorized]);
 
   useEffect(() => {
+    if (hasPendingUpdate()) return undefined;
     let cancelled = false;
     getUpdateStatus()
       .then((status) => {
@@ -1593,8 +1598,10 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
 
 function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
   const query = useQueryClient();
+  const { t } = useI18n();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [waitingForRestart, setWaitingForRestart] = useState(() => hasPendingUpdate());
   const [proxyURL, setProxyURL] = useState(service?.update_proxy || '');
   const [proxyMessage, setProxyMessage] = useState('');
   const [savingProxy, setSavingProxy] = useState(false);
@@ -1615,14 +1622,17 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
     },
     initialData: cachedUpdate?.status,
     initialDataUpdatedAt: cachedUpdate ? new Date(cachedUpdate.cached_at).getTime() : undefined,
+    enabled: !waitingForRestart,
     staleTime: updateStatusCacheTTL,
-    refetchInterval: updateStatusCacheTTL,
+    refetchInterval: waitingForRestart ? false : updateStatusCacheTTL,
     refetchOnWindowFocus: false,
-    refetchOnMount: cachedUpdateAge >= updateStatusCacheTTL,
+    refetchOnMount: !waitingForRestart && cachedUpdateAge >= updateStatusCacheTTL,
     retry: false
   });
   const status = update.data;
-  const state = updateState(status, update.isLoading, update.error instanceof Error ? update.error.message : '');
+  const state = waitingForRestart
+    ? { label: t('重启中'), tone: 'warn' as const, message: t('服务端正在自动重启，恢复后页面会自动刷新。') }
+    : updateState(status, update.isLoading, update.error instanceof Error ? update.error.message : '');
   const canApply = Boolean(status?.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && status.ahead === 0 && !busy);
 
   useEffect(() => {
@@ -1632,6 +1642,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   async function check() {
     setMessage('');
     setProgressStep(0);
+    setWaitingForRestart(false);
     const result = await update.refetch();
     if (result.data) storeCachedUpdateStatus(result.data);
   }
@@ -1672,6 +1683,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           started_at: new Date().toISOString()
         };
         storePendingUpdate(pending);
+        setWaitingForRestart(true);
         setMessage(`更新已构建完成，服务端正在自动重启${result.restart_at ? `，预计 ${fmtDateTime(result.restart_at)} 前后恢复` : ''}。恢复后页面会自动刷新。`);
         setProgressStep(5);
         void waitForServerAfterUpdate(pending);
@@ -1694,7 +1706,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
         setProgressStep(6);
         setMessage('当前已经是最新版本');
       }
-      await query.invalidateQueries({ queryKey: ['update-status'] });
+      if (!result.restarting) await query.invalidateQueries({ queryKey: ['update-status'] });
       await query.invalidateQueries({ queryKey: ['version'] });
     } catch (err) {
       window.clearTimeout(timer);
