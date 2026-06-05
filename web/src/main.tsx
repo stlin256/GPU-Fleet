@@ -69,6 +69,7 @@ import {
   StoredProcess,
   UpdateStatus,
   updateLanguage,
+  updateProxy,
   updateServerConfig,
   uploadCertificate
 } from './api';
@@ -84,6 +85,7 @@ type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
 type DeviceActionKind = 'enable' | 'disable' | 'rotate' | 'delete';
 type PendingUpdateNotice = {
+  kind?: 'update' | 'certificate';
   previous_commit?: string;
   target_commit?: string;
   previous_version?: string;
@@ -103,6 +105,13 @@ const repositoryName = 'GPU-Fleet';
 const repositoryURL = `https://github.com/${repositoryOwner}/${repositoryName}`;
 const updatePendingKey = 'gpufleet-update-pending';
 const updateNoticeKey = 'gpufleet-update-notice';
+const updateStatusCacheKey = 'gpufleet-update-status-cache';
+const updateStatusCacheTTL = 60 * 60 * 1000;
+
+type CachedUpdateStatus = {
+  status: UpdateStatus;
+  cached_at: string;
+};
 
 function initialTheme(): Theme {
   const stored = window.localStorage.getItem('gpufleet-theme');
@@ -194,6 +203,16 @@ function storePendingUpdate(notice: PendingUpdateNotice) {
   writeJSON(updatePendingKey, notice);
 }
 
+function readCachedUpdateStatus() {
+  const cached = readJSON<CachedUpdateStatus>(updateStatusCacheKey);
+  if (!cached?.status || !cached.cached_at) return undefined;
+  return cached;
+}
+
+function storeCachedUpdateStatus(status: UpdateStatus) {
+  writeJSON(updateStatusCacheKey, { status, cached_at: new Date().toISOString() } satisfies CachedUpdateStatus);
+}
+
 function takeCompletedUpdateNotice() {
   const notice = readJSON<CompletedUpdateNotice>(updateNoticeKey);
   if (notice) window.localStorage.removeItem(updateNoticeKey);
@@ -217,6 +236,30 @@ async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
           product: release?.product,
           current_commit: status.local_commit || release?.commit,
           current_version: release?.version,
+          completed_at: new Date().toISOString()
+        } satisfies CompletedUpdateNotice);
+        window.location.reload();
+        return;
+      }
+    } catch {
+      sawFailure = true;
+    }
+  }
+}
+
+async function waitForServerAfterRestart(pending: PendingUpdateNotice) {
+  const deadline = Date.now() + 90_000;
+  const minimumWaitUntil = Date.now() + 2_000;
+  let sawFailure = false;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1800));
+    try {
+      await getSetupStatus();
+      if (Date.now() >= minimumWaitUntil && sawFailure) {
+        window.localStorage.removeItem(updatePendingKey);
+        writeJSON(updateNoticeKey, {
+          ...pending,
+          product: 'GPUFleet',
           completed_at: new Date().toISOString()
         } satisfies CompletedUpdateNotice);
         window.location.reload();
@@ -274,7 +317,10 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     const pending = readJSON<PendingUpdateNotice>(updatePendingKey);
-    if (pending) void waitForServerAfterUpdate(pending);
+    if (pending) {
+      if (pending.kind === 'certificate') void waitForServerAfterRestart(pending);
+      else void waitForServerAfterUpdate(pending);
+    }
     getSetupStatus()
       .then((status) => {
         if (cancelled) return;
@@ -374,8 +420,8 @@ function SetupWizard({
   const [selectedLanguage, setSelectedLanguage] = useState<AppLanguage>(status?.service.language || language);
   const [certificatePEM, setCertificatePEM] = useState('');
   const [privateKeyPEM, setPrivateKeyPEM] = useState('');
-  const [certificateName, setCertificateName] = useState(t('未选择'));
-  const [keyName, setKeyName] = useState(t('未选择'));
+  const [certificateName, setCertificateName] = useState('');
+  const [keyName, setKeyName] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -477,16 +523,8 @@ function SetupWizard({
             </select>
           </label>
           <div className="setup-file-row">
-            <label>
-              {t('HTTPS 证书')}
-              <input type="file" accept=".pem,.crt,.cer" onChange={(event) => loadPEM(event, 'cert')} />
-              <span>{certificateName}</span>
-            </label>
-            <label>
-              {t('私钥文件')}
-              <input type="file" accept=".pem,.key" onChange={(event) => loadPEM(event, 'key')} />
-              <span>{keyName}</span>
-            </label>
+            <FilePicker label={t('HTTPS 证书')} accept=".pem,.crt,.cer" fileName={certificateName} onChange={(event) => loadPEM(event, 'cert')} />
+            <FilePicker label={t('私钥文件')} accept=".pem,.key" fileName={keyName} onChange={(event) => loadPEM(event, 'key')} />
           </div>
         </div>
 
@@ -646,6 +684,11 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
   const devices = data?.devices ?? [];
   const hotCount = gpus.filter((item) => (item.gpu.temperature_celsius ?? 0) >= 80).length;
   const busyCount = gpus.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) >= 80).length;
+  const onlineText = data ? `${data.online_device_count}/${data.device_count}` : '-';
+  const gpuCountText = data ? String(data.gpu_count) : '-';
+  const busyText = data ? String(busyCount) : '-';
+  const hotText = data ? String(hotCount) : '-';
+  const powerValue = data?.power_draw_watts;
 
   return (
     <>
@@ -656,12 +699,12 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
           <p>{devices.length > 0 ? `${devices.length} 台设备，${gpus.length} 块 GPU，按最新上报状态汇总。` : '等待客户端上报 GPU 运行信息。'}</p>
         </div>
         <div className="fleet-kpis">
-          <FleetKPI label="在线设备" value={`${data?.online_device_count ?? 0}/${data?.device_count ?? 0}`} tone={(data?.online_device_count ?? 0) === (data?.device_count ?? 0) ? 'good' : 'warn'} />
-          <FleetKPI label="GPU 总数" value={String(data?.gpu_count ?? 0)} />
-          <FleetKPI label="忙碌 GPU" value={String(busyCount)} tone={busyCount > 0 ? 'accent' : 'good'} />
-          <FleetKPI label="高温 GPU" value={String(hotCount)} tone={hotCount > 0 ? 'bad' : 'good'} />
+          <FleetKPI label="在线设备" value={onlineText} tone={data && data.online_device_count === data.device_count ? 'good' : 'warn'} />
+          <FleetKPI label="GPU 总数" value={gpuCountText} />
+          <FleetKPI label="忙碌 GPU" value={busyText} tone={busyCount > 0 ? 'accent' : 'good'} />
+          <FleetKPI label="高温 GPU" value={hotText} tone={hotCount > 0 ? 'bad' : 'good'} />
           <FleetKPI label="总显存用量" value={fmtMemoryG(data?.memory_used_bytes, data?.memory_total_bytes)} />
-          <FleetKPI label="总功耗" value={watts(data?.power_draw_watts ?? 0)} tone={(data?.power_draw_watts ?? 0) > 0 ? 'accent' : 'good'} />
+          <FleetKPI label="总功耗" value={typeof powerValue === 'number' ? watts(powerValue) : '-'} tone={(powerValue ?? 0) > 0 ? 'accent' : 'good'} />
         </div>
       </section>
 
@@ -747,6 +790,7 @@ function FleetBoard({ items, devices }: { items: StoredGPU[]; devices: Device[] 
 }
 
 function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Device; health: ReturnType<typeof gpuHealth> }) {
+  const { language } = useI18n();
   const gpu = item.gpu;
   const util = gpu.utilization_gpu_percent;
   const mem = memoryUsagePercent(item);
@@ -774,7 +818,7 @@ function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Devi
           <span className={`status-dot ${health.tone}`} />
           <div>
             <strong>{deviceName(device, item.device_id)}</strong>
-            <p>{shortGPUName(gpu.name || gpu.gpu_id)} · {gpu.gpu_id} · {timeAgo(item.timestamp)}</p>
+            <p>{shortGPUName(gpu.name || gpu.gpu_id)} · {gpu.gpu_id} · {timeAgo(item.timestamp, language)}</p>
           </div>
         </div>
         <span className={`pill ${health.tone}`}>{health.label}</span>
@@ -942,15 +986,15 @@ function tempToneText(value?: number) {
   return '正常';
 }
 
-function timeAgo(value: string) {
+function timeAgo(value: string, language: AppLanguage) {
   const delta = Date.now() - new Date(value).getTime();
-  if (!Number.isFinite(delta) || delta < 0) return '刚刚';
+  if (!Number.isFinite(delta) || delta < 0) return language === 'en-US' ? 'just now' : '刚刚';
   const seconds = Math.floor(delta / 1000);
-  if (seconds < 60) return `${seconds}s 前`;
+  if (seconds < 60) return language === 'en-US' ? `${seconds}s ago` : `${seconds}s 前`;
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m 前`;
+  if (minutes < 60) return language === 'en-US' ? `${minutes}m ago` : `${minutes}m 前`;
   const hours = Math.floor(minutes / 60);
-  return `${hours}h 前`;
+  return language === 'en-US' ? `${hours}h ago` : `${hours}h 前`;
 }
 
 function gpuHealth(item: StoredGPU, device?: Device): { tone: 'good' | 'warn' | 'bad' | 'offline'; label: string } {
@@ -1275,9 +1319,12 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
   }, [notice, onClose]);
 
   if (!notice) return null;
+  const isCertificate = notice.kind === 'certificate';
   const from = shortHash(notice.previous_commit);
   const to = shortHash(notice.current_commit || notice.target_commit);
   const versionText = notice.current_version ? `v${notice.current_version}` : '-';
+  const title = isCertificate ? t('HTTPS 证书已启用') : t('版本已更新');
+  const body = isCertificate ? t('HTTPS 证书已保存，服务端已自动重启并刷新页面。') : t('服务端已自动重启并刷新页面。');
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
@@ -1287,10 +1334,10 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
         <div className="confirm-icon"><CheckCircle2 size={22} /></div>
         <div className="confirm-copy">
           <span>{notice.product || 'GPUFleet'}</span>
-          <h2 id="update-notice-title">{t('版本已更新')}</h2>
-          <p>{t('服务端已自动重启并刷新页面。')}</p>
+          <h2 id="update-notice-title">{title}</h2>
+          <p>{body}</p>
         </div>
-        <div className="confirm-target update-notice-grid">
+        {!isCertificate && <div className="confirm-target update-notice-grid">
           <div>
             <span>{t('版本')}</span>
             <strong>{versionText}</strong>
@@ -1299,7 +1346,7 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
             <span>{t('提交')}</span>
             <strong title={notice.current_commit || notice.target_commit}>{from !== '-' && to !== '-' ? `${from} -> ${to}` : to}</strong>
           </div>
-        </div>
+        </div>}
         <div className="confirm-actions">
           <button className="primary compact" type="button" onClick={onClose}>
             <CheckCircle2 size={16} />
@@ -1445,6 +1492,9 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
       setMessage(err instanceof Error ? err.message : 'setup reopen failed');
     }
   }
+  const certCaption = service?.https_enabled
+    ? service.current_scheme === 'https' ? 'HTTPS 已启用' : 'HTTPS 下次启动生效'
+    : 'HTTP 模式';
 
   return (
     <div className="settings-page" data-testid="settings-page">
@@ -1459,7 +1509,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
         <div className="settings-kpi-grid">
           <SettingStat label="当前协议" value={(service?.current_scheme ?? 'http').toUpperCase()} caption={service?.https_enabled ? '证书已配置' : '未启用证书'} />
           <SettingStat label="访问端口" value={String(service?.configured_port ?? portFromLocation())} caption={service?.current_addr ?? '-'} />
-          <SettingStat label="证书到期" value={service?.cert_not_after ? fmtDateTime(service.cert_not_after) : '未配置'} caption={service?.https_enabled ? 'HTTPS 下次启动生效' : 'HTTP 模式'} />
+          <SettingStat label="证书到期" value={service?.cert_not_after ? fmtDateTime(service.cert_not_after) : '未配置'} caption={certCaption} />
           <SettingStat label="磁盘预留" value={fmtBytes(min)} caption={`空闲 ${fmtBytes(data?.disk.free_bytes)}`} />
         </div>
       </section>
@@ -1500,7 +1550,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
             </div>
           </div>
           <DatabaseSettings data={data} />
-          <UpdateSettings />
+          <UpdateSettings service={service} onDone={refreshOverview} />
           <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
         </div>
       </section>
@@ -1524,10 +1574,16 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
   );
 }
 
-function UpdateSettings() {
+function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
   const query = useQueryClient();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [proxyURL, setProxyURL] = useState(service?.update_proxy || '');
+  const [proxyMessage, setProxyMessage] = useState('');
+  const [savingProxy, setSavingProxy] = useState(false);
+  const [progressStep, setProgressStep] = useState(0);
+  const cachedUpdate = readCachedUpdateStatus();
+  const cachedUpdateAge = cachedUpdate ? Date.now() - new Date(cachedUpdate.cached_at).getTime() : Number.POSITIVE_INFINITY;
   const release = useQuery({
     queryKey: ['version'],
     queryFn: getVersion,
@@ -1535,25 +1591,61 @@ function UpdateSettings() {
   });
   const update = useQuery({
     queryKey: ['update-status'],
-    queryFn: getUpdateStatus,
-    staleTime: 60 * 1000,
+    queryFn: async () => {
+      const next = await getUpdateStatus();
+      storeCachedUpdateStatus(next);
+      return next;
+    },
+    initialData: cachedUpdate?.status,
+    initialDataUpdatedAt: cachedUpdate ? new Date(cachedUpdate.cached_at).getTime() : undefined,
+    staleTime: updateStatusCacheTTL,
+    refetchInterval: updateStatusCacheTTL,
+    refetchOnWindowFocus: false,
+    refetchOnMount: cachedUpdateAge >= updateStatusCacheTTL,
     retry: false
   });
   const status = update.data;
   const state = updateState(status, update.isLoading, update.error instanceof Error ? update.error.message : '');
   const canApply = Boolean(status?.supported && status.upstream && status.available && !status.dirty && status.ahead === 0 && !busy);
 
+  useEffect(() => {
+    setProxyURL(service?.update_proxy || '');
+  }, [service?.update_proxy]);
+
   async function check() {
     setMessage('');
-    await update.refetch();
+    setProgressStep(0);
+    const result = await update.refetch();
+    if (result.data) storeCachedUpdateStatus(result.data);
+  }
+
+  async function saveProxy(event: React.FormEvent) {
+    event.preventDefault();
+    setProxyMessage('');
+    setSavingProxy(true);
+    try {
+      await updateProxy(proxyURL.trim());
+      setProxyMessage(proxyURL.trim() ? '更新代理已保存' : '更新代理已清空');
+      await onDone();
+      await update.refetch();
+    } catch (err) {
+      setProxyMessage(err instanceof Error ? err.message : 'proxy update failed');
+    } finally {
+      setSavingProxy(false);
+    }
   }
 
   async function pull() {
     setMessage('');
     setBusy(true);
+    setProgressStep(1);
+    const timer = window.setTimeout(() => setProgressStep(2), 1200);
     try {
       const result = await applyUpdate();
+      window.clearTimeout(timer);
+      setProgressStep(3);
       if (result.restarting) {
+        setProgressStep(4);
         const pending = {
           previous_commit: status?.local_commit,
           target_commit: result.status.local_commit || status?.remote_commit,
@@ -1563,9 +1655,11 @@ function UpdateSettings() {
         };
         storePendingUpdate(pending);
         setMessage(`更新已构建完成，服务端正在自动重启${result.restart_at ? `，预计 ${fmtDateTime(result.restart_at)} 前后恢复` : ''}。恢复后页面会自动刷新。`);
+        setProgressStep(5);
         void waitForServerAfterUpdate(pending);
       } else {
         if (result.restart_required) {
+          setProgressStep(5);
           const notice = {
             previous_commit: status?.local_commit,
             target_commit: result.status.local_commit || status?.remote_commit,
@@ -1579,11 +1673,14 @@ function UpdateSettings() {
           window.location.reload();
           return;
         }
+        setProgressStep(6);
         setMessage('当前已经是最新版本');
       }
       await query.invalidateQueries({ queryKey: ['update-status'] });
       await query.invalidateQueries({ queryKey: ['version'] });
     } catch (err) {
+      window.clearTimeout(timer);
+      setProgressStep(0);
       setMessage(err instanceof Error ? err.message : 'update failed');
     } finally {
       setBusy(false);
@@ -1631,6 +1728,18 @@ function UpdateSettings() {
         </div>
       </div>
 
+      <form className="settings-form inline update-proxy-form" onSubmit={saveProxy}>
+        <label>
+          更新代理
+          <input value={proxyURL} onChange={(event) => setProxyURL(event.target.value)} placeholder="http://127.0.0.1:7890" />
+        </label>
+        <button className="secondary" type="submit" disabled={savingProxy || busy}>
+          <Network size={16} />
+          {savingProxy ? '保存中' : '保存代理'}
+        </button>
+      </form>
+      {proxyMessage && <p className={proxyMessage.includes('已') ? 'notice update-note' : 'error update-note'}>{proxyMessage}</p>}
+
       <div className="settings-button-row">
         <button className="secondary" type="button" onClick={check} disabled={update.isFetching || busy}>
           <RefreshCw size={16} />
@@ -1641,8 +1750,29 @@ function UpdateSettings() {
           {busy ? '更新中' : '拉取并重启'}
         </button>
       </div>
+      {progressStep > 0 && <UpdateProgress step={progressStep} />}
       {(message || state.message) && <p className={message.includes('已') || message.includes('正在自动重启') || state.tone === 'good' ? 'notice update-note' : 'error update-note'}>{message || state.message}</p>}
     </article>
+  );
+}
+
+function UpdateProgress({ step }: { step: number }) {
+  const stages = [
+    '已发送更新请求',
+    '依赖预检、构建远端提交并执行 fast-forward 拉取',
+    '更新已应用，准备自动重启',
+    '服务端正在自动重启',
+    '等待服务端恢复，恢复后自动刷新'
+  ];
+  return (
+    <div className="update-progress" data-testid="update-progress">
+      {stages.map((label, index) => (
+        <div className={index + 1 < step ? 'done' : index + 1 === step ? 'active' : ''} key={label}>
+          <span>{index + 1}</span>
+          <p>{label}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1660,6 +1790,7 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
 }
 
 function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInfo; loading: boolean; error: string }) {
+  const { language } = useI18n();
   const latest = release?.changelog?.[0];
   const versionText = release?.version ? `v${release.version}` : loading ? '加载中' : '-';
   const commitText = release?.commit && release.commit !== 'dev' ? release.commit : 'dev';
@@ -1702,7 +1833,7 @@ function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInf
           <BookOpenText size={16} />
           <span>最近变更</span>
         </div>
-        {latest ? <ChangelogEntryView entry={latest} /> : <p>{error || '正在读取版本信息'}</p>}
+        {latest ? <ChangelogEntryView entry={latest} language={language} /> : <p>{error || '正在读取版本信息'}</p>}
       </div>
       <a className="secondary action-button" href={release?.repository ?? repositoryURL} target="_blank" rel="noreferrer">
         <Github size={16} />
@@ -1712,18 +1843,23 @@ function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInf
   );
 }
 
-function ChangelogEntryView({ entry }: { entry: NonNullable<ReleaseInfo['changelog']>[number] }) {
+function ChangelogEntryView({ entry, language }: { entry: NonNullable<ReleaseInfo['changelog']>[number]; language: AppLanguage }) {
+  const title = language === 'en-US' ? entry.title_en || entry.title : entry.title;
+  const added = language === 'en-US' ? entry.added_en || entry.added : entry.added;
+  const changed = language === 'en-US' ? entry.changed_en || entry.changed : entry.changed;
+  const security = language === 'en-US' ? entry.security_en || entry.security : entry.security;
+  const fixed = language === 'en-US' ? entry.fixed_en || entry.fixed : entry.fixed;
   return (
     <div className="changelog-entry">
       <div>
         <strong>v{entry.version}</strong>
         <span>{entry.date}</span>
       </div>
-      <p>{entry.title}</p>
-      <ChangelogList label="新增" items={entry.added} />
-      <ChangelogList label="变更" items={entry.changed} />
-      <ChangelogList label="安全" items={entry.security} />
-      <ChangelogList label="修复" items={entry.fixed} />
+      <p>{title}</p>
+      <ChangelogList label="新增" items={added} />
+      <ChangelogList label="变更" items={changed} />
+      <ChangelogList label="安全" items={security} />
+      <ChangelogList label="修复" items={fixed} />
     </div>
   );
 }
@@ -1900,10 +2036,11 @@ function LanguageSettings({ service, onDone }: { service?: ServiceStatus; onDone
 }
 
 function CertificateSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const { t } = useI18n();
   const [certificatePEM, setCertificatePEM] = useState('');
   const [privateKeyPEM, setPrivateKeyPEM] = useState('');
-  const [certificateName, setCertificateName] = useState('未选择');
-  const [keyName, setKeyName] = useState('未选择');
+  const [certificateName, setCertificateName] = useState('');
+  const [keyName, setKeyName] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -1924,13 +2061,24 @@ function CertificateSettings({ service, onDone }: { service?: ServiceStatus; onD
     event.preventDefault();
     setMessage('');
     if (!certificatePEM || !privateKeyPEM) {
-      setMessage('证书和私钥需要同时上传');
+      setMessage(t('证书和私钥需要同时上传'));
       return;
     }
     setBusy(true);
     try {
       const result = await uploadCertificate(certificatePEM, privateKeyPEM);
-      setMessage(result.restart_required ? '证书已保存，重启后启用 HTTPS' : '证书已保存');
+      if (result.restarting) {
+        const pending = {
+          kind: 'certificate',
+          restart_at: result.restart_at,
+          started_at: new Date().toISOString()
+        } satisfies PendingUpdateNotice;
+        storePendingUpdate(pending);
+        setMessage(t('证书已保存，服务端正在自动重启。恢复后页面会自动刷新。'));
+        void waitForServerAfterRestart(pending);
+        return;
+      }
+      setMessage(result.restart_required ? t('证书已保存，重启后启用 HTTPS') : t('证书已保存'));
       await onDone();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'certificate upload failed');
@@ -1944,17 +2092,32 @@ function CertificateSettings({ service, onDone }: { service?: ServiceStatus; onD
       <div className="operation-head">
         <div className="operation-icon"><FileKey2 size={18} /></div>
         <div>
-          <h2>HTTPS 证书</h2>
-          <p>到期 {service?.cert_not_after ? fmtDateTime(service.cert_not_after) : '未配置'}</p>
+          <h2>{t('HTTPS 证书')}</h2>
+          <p>{t('到期 {date}', { date: service?.cert_not_after ? fmtDateTime(service.cert_not_after) : t('未配置') })}</p>
         </div>
       </div>
       <form className="settings-form" onSubmit={submit}>
-        <label>证书文件<input type="file" accept=".pem,.crt,.cer" onChange={(event) => loadPEM(event, 'cert')} /><span>{certificateName}</span></label>
-        <label>私钥文件<input type="file" accept=".pem,.key" onChange={(event) => loadPEM(event, 'key')} /><span>{keyName}</span></label>
-        <button className="primary compact" disabled={busy}><Upload size={16} />{busy ? '上传中' : '上传证书'}</button>
+        <FilePicker label={t('证书文件')} accept=".pem,.crt,.cer" fileName={certificateName} onChange={(event) => loadPEM(event, 'cert')} />
+        <FilePicker label={t('私钥文件')} accept=".pem,.key" fileName={keyName} onChange={(event) => loadPEM(event, 'key')} />
+        <button className="primary compact" disabled={busy}><Upload size={16} />{busy ? t('上传中') : t('上传证书')}</button>
       </form>
-      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+      {message && <p className={message.includes('已') || message.includes('saved') ? 'notice' : 'error'}>{message}</p>}
     </article>
+  );
+}
+
+function FilePicker({ label, accept, fileName, onChange }: { label: string; accept: string; fileName: string; onChange: (event: React.ChangeEvent<HTMLInputElement>) => void }) {
+  const { t } = useI18n();
+  const id = React.useId();
+  return (
+    <label className="file-picker" htmlFor={id}>
+      <span>{label}</span>
+      <input id={id} type="file" accept={accept} onChange={onChange} />
+      <span className="file-picker-control">
+        <span className="secondary file-picker-button">{t('选择文件')}</span>
+        <span className="file-picker-name">{fileName || t('未选择文件')}</span>
+      </span>
+    </label>
   );
 }
 
@@ -1965,7 +2128,7 @@ function DatabaseSettings({ data }: { data?: Overview }) {
         <div className="operation-icon"><Database size={18} /></div>
         <div>
           <h2>数据库下载</h2>
-          <p>数据库大小 {fmtBytes(data?.database_size_bytes)} · {fmtHours(data?.retention_hours ?? 0)} · {fmtBytes(data?.disk.free_bytes)} 空闲</p>
+          <p>数据库大小 {fmtBytes(data?.database_size_bytes ?? 0)} · {fmtHours(data?.retention_hours ?? 0)} · {fmtBytes(data?.disk.free_bytes)} 空闲</p>
         </div>
       </div>
       <a className="secondary action-button" href={databaseDownloadURL()} download>

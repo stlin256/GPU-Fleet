@@ -1526,6 +1526,10 @@ input:focus {
   grid-template-columns: minmax(0, 1.25fr) minmax(150px, .75fr);
 }
 
+.update-proxy-form {
+  margin-top: 0;
+}
+
 .update-compare div,
 .update-meta div {
   min-width: 0;
@@ -1565,6 +1569,57 @@ input:focus {
   margin-top: -4px;
 }
 
+.update-progress {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+
+.update-progress div {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+}
+
+.update-progress span {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.update-progress p {
+  margin: 0;
+}
+
+.update-progress .active {
+  color: var(--accent-strong);
+}
+
+.update-progress .active span {
+  border-color: color-mix(in srgb, var(--accent) 54%, var(--line));
+  background: var(--accent-soft);
+}
+
+.update-progress .done {
+  color: var(--good);
+}
+
+.update-progress .done span {
+  border-color: color-mix(in srgb, var(--good) 50%, var(--line));
+  background: var(--good-soft);
+}
+
 .settings-form {
   display: grid;
   gap: 10px;
@@ -1595,6 +1650,57 @@ input:focus {
 
 input[type="file"] {
   padding: 8px;
+}
+
+.file-picker {
+  display: grid;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.file-picker input[type="file"] {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-form label.file-picker,
+.setup-grid label.file-picker {
+  white-space: normal;
+}
+
+.file-picker-control {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-form label .file-picker-control,
+.settings-form label .file-picker-button,
+.settings-form label .file-picker-name {
+  display: block;
+}
+
+.file-picker-button {
+  width: fit-content;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.file-picker-name {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-button {

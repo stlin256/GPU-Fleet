@@ -1050,6 +1050,7 @@ const dashboardHTML = `<!doctype html>
         '密码更改': 'Password Change',
         '端口配置': 'Port Configuration',
         'HTTPS 证书': 'HTTPS certificate',
+        'HTTPS 已启用': 'HTTPS enabled',
         '数据库下载': 'Database Download',
         '数据库大小': 'Database size',
         '在线更新': 'Online Update',
@@ -1058,6 +1059,8 @@ const dashboardHTML = `<!doctype html>
         '配置引导': 'Setup wizard',
         '检查更新': 'Check update',
         '拉取并重启': 'Pull and restart',
+        '更新代理': 'Update proxy',
+        '保存代理': 'Save proxy',
         '当前提交': 'Current commit',
         '远端提交': 'Remote commit',
         '落后': 'Behind',
@@ -1147,8 +1150,11 @@ const dashboardHTML = `<!doctype html>
       pendingConfirm: null,
       confirmBusy: false,
       editingDevice: null,
+      updateCheckTimer: null,
       theme: initialTheme()
     };
+    const updateStatusCacheKey = 'gpufleet-update-status-cache';
+    const updateStatusCacheTTL = 60 * 60 * 1000;
     const titles = {
       overview: 'GPU 资源总览',
       devices: '设备管理',
@@ -1708,13 +1714,14 @@ const dashboardHTML = `<!doctype html>
       const disk = data.disk || {};
       const service = data.service || {};
       const min = data.min_free_space_bytes || disk.min_free_bytes || 0;
+      const certCaption = service.https_enabled ? (service.current_scheme === 'https' ? 'HTTPS 已启用' : 'HTTPS 下次启动生效') : 'HTTP 模式';
       document.getElementById('settingsView').innerHTML =
         '<div class="settings-page" data-testid="settings-page">' +
           '<section class="settings-status panel"><div class="panel-head"><div><h2>服务状态</h2><p>' + esc((service.current_addr || '-') + ' · ' + String(service.current_scheme || 'http').toUpperCase()) + '</p></div>' + (service.restart_required ? '<span class="pill warn">需要重启</span>' : '') + '</div>' +
           '<div class="settings-kpi-grid">' +
             settingStat('当前协议', String(service.current_scheme || 'http').toUpperCase(), service.https_enabled ? '证书已配置' : '未启用证书') +
             settingStat('访问端口', String(service.configured_port || location.port || 8080), service.current_addr || '-') +
-            settingStat('证书到期', service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置', service.https_enabled ? 'HTTPS 下次启动生效' : 'HTTP 模式') +
+            settingStat('证书到期', service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置', certCaption) +
             settingStat('磁盘预留', fmtBytes(min), '空闲 ' + fmtBytes(disk.free_bytes)) +
           '</div></section>' +
           '<section class="settings-workbench">' +
@@ -1727,11 +1734,12 @@ const dashboardHTML = `<!doctype html>
             '</div>' +
             '<div class="settings-column settings-column-operations">' +
               settingsSectionHead('维护与发布', '数据库、在线更新和版本信息') +
-              operationPanel('数据库下载', '数据库大小 ' + fmtBytes(data.database_size_bytes) + ' · ' + fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
+              operationPanel('数据库下载', '数据库大小 ' + fmtBytes(data.database_size_bytes || 0) + ' · ' + fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
               updatePanel() +
               projectPanel() +
             '</div>' +
           '</section></div>';
+      hydrateUpdatePanel();
     }
     function settingsSectionHead(title, caption) {
       return '<div class="settings-section-head"><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>';
@@ -1743,17 +1751,65 @@ const dashboardHTML = `<!doctype html>
       return '<article class="panel setting-operation"' + (testID ? ' data-testid="' + esc(testID) + '"' : '') + '><div class="operation-head"><div class="operation-icon">' + esc(icon) + '</div><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>' + action + '</article>';
     }
     function updatePanel() {
-      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div><div><span>超前</span><strong id="updateAhead">0</strong></div></div><div class="update-meta"><div><span>远端</span><strong id="updateRemoteURL">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>拉取并重启</button></div><p class="update-note" id="updateMessage">服务端会先检查依赖，再拉取、构建并自动重启。</p></article>';
+      const service = state.data && state.data.service || {};
+      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div><div><span>超前</span><strong id="updateAhead">0</strong></div></div><div class="update-meta"><div><span>远端</span><strong id="updateRemoteURL">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><form class="settings-form inline update-proxy-form" onsubmit="saveUpdateProxy(event)"><label>更新代理<input id="updateProxyInput" value="' + esc(service.update_proxy || '') + '" placeholder="http://127.0.0.1:7890"></label><button class="secondary" type="submit">保存代理</button></form><p class="update-note" id="updateProxyMessage"></p><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>拉取并重启</button></div><div class="update-progress hidden" id="updateProgress"></div><p class="update-note" id="updateMessage">服务端会先检查依赖，再拉取、构建并自动重启。</p></article>';
     }
-    async function checkUpdateStatus() {
+    async function saveUpdateProxy(event) {
+      event.preventDefault();
+      const input = document.getElementById('updateProxyInput');
+      const message = document.getElementById('updateProxyMessage');
+      try {
+        const result = await api('/api/v1/admin/update/proxy', {method: 'POST', body: JSON.stringify({proxy_url: input ? input.value.trim() : ''})});
+        if (state.data && result.service) state.data.service = result.service;
+        if (message) {
+          message.className = 'notice update-note';
+          message.textContent = result.service && result.service.update_proxy ? '更新代理已保存' : '更新代理已清空';
+        }
+        checkUpdateStatus(true);
+      } catch (err) {
+        if (message) {
+          message.className = 'error update-note';
+          message.textContent = err.message;
+        }
+      }
+    }
+    function readCachedUpdateStatus() {
+      try {
+        const cached = JSON.parse(localStorage.getItem(updateStatusCacheKey) || 'null');
+        if (!cached || !cached.status || !cached.cached_at) return null;
+        return cached;
+      } catch (_) {
+        return null;
+      }
+    }
+    function storeCachedUpdateStatus(status) {
+      localStorage.setItem(updateStatusCacheKey, JSON.stringify({status, cached_at: new Date().toISOString()}));
+    }
+    function hydrateUpdatePanel() {
+      const cached = readCachedUpdateStatus();
+      const cachedAt = cached ? new Date(cached.cached_at).getTime() : 0;
+      if (cached && Date.now() - cachedAt < updateStatusCacheTTL) {
+        renderUpdateStatus(cached.status);
+      } else {
+        checkUpdateStatus(true);
+      }
+      if (!state.updateCheckTimer) {
+        state.updateCheckTimer = setInterval(() => {
+          if (state.view === 'settings') checkUpdateStatus(true);
+        }, updateStatusCacheTTL);
+      }
+    }
+    async function checkUpdateStatus(silent) {
       const state = document.getElementById('updateState');
       const message = document.getElementById('updateMessage');
-      if (state) state.textContent = '检查中';
-      if (message) message.textContent = '正在读取 Git 状态';
+      if (!silent && state) state.textContent = '检查中';
+      if (!silent && message) message.textContent = '正在读取 Git 状态';
       try {
-        renderUpdateStatus(await api('/api/v1/admin/update/status'));
+        const status = await api('/api/v1/admin/update/status');
+        storeCachedUpdateStatus(status);
+        renderUpdateStatus(status);
       } catch (err) {
-        renderUpdateError(err.message || 'update status failed');
+        if (!silent) renderUpdateError(err.message || 'update status failed');
       }
     }
     async function applyUpdate() {
@@ -1761,13 +1817,32 @@ const dashboardHTML = `<!doctype html>
       const message = document.getElementById('updateMessage');
       if (button) button.disabled = true;
       if (message) message.textContent = '正在检查依赖、拉取并构建更新';
+      renderUpdateProgress(1);
+      const timer = setTimeout(() => renderUpdateProgress(2), 1200);
       try {
         const result = await api('/api/v1/admin/update/apply', {method: 'POST'});
+        clearTimeout(timer);
+        if (result.status) storeCachedUpdateStatus(result.status);
         renderUpdateStatus(result.status || {});
+        renderUpdateProgress(result.restarting ? 4 : 5);
         if (message) message.textContent = result.restarting ? '更新已构建完成，服务端正在自动重启' : (result.restart_required ? '更新已拉取并构建完成，正在等待服务端重启' : '当前已经是最新版本');
       } catch (err) {
+        clearTimeout(timer);
+        renderUpdateProgress(0);
         renderUpdateError(err.message || 'update failed');
       }
+    }
+    function renderUpdateProgress(step) {
+      const root = document.getElementById('updateProgress');
+      if (!root) return;
+      if (!step) {
+        root.classList.add('hidden');
+        root.innerHTML = '';
+        return;
+      }
+      const labels = ['已发送更新请求', '依赖预检、构建远端提交并执行 fast-forward 拉取', '更新已应用，准备自动重启', '服务端正在自动重启', '等待服务端恢复，恢复后自动刷新'];
+      root.classList.remove('hidden');
+      root.innerHTML = labels.map((label, index) => '<div class="' + (index + 1 < step ? 'done' : index + 1 === step ? 'active' : '') + '"><span>' + (index + 1) + '</span><p>' + esc(label) + '</p></div>').join('');
     }
     function renderUpdateStatus(status) {
       const local = document.getElementById('updateLocal');
@@ -1875,12 +1950,13 @@ const dashboardHTML = `<!doctype html>
     }
     function timeAgo(value) {
       const delta = Date.now() - new Date(value).getTime();
-      if (!Number.isFinite(delta) || delta < 0) return '刚刚';
+      if (!Number.isFinite(delta) || delta < 0) return fallbackI18n.language === 'en-US' ? 'just now' : '刚刚';
       const seconds = Math.floor(delta / 1000);
-      if (seconds < 60) return seconds + 's 前';
+      if (seconds < 60) return fallbackI18n.language === 'en-US' ? seconds + 's ago' : seconds + 's 前';
       const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return minutes + 'm 前';
-      return Math.floor(minutes / 60) + 'h 前';
+      if (minutes < 60) return fallbackI18n.language === 'en-US' ? minutes + 'm ago' : minutes + 'm 前';
+      const hours = Math.floor(minutes / 60);
+      return fallbackI18n.language === 'en-US' ? hours + 'h ago' : hours + 'h 前';
     }
 
     refresh();

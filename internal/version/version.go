@@ -3,7 +3,7 @@ package version
 import "fmt"
 
 var (
-	Version   = "0.1.4"
+	Version   = "0.1.5"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -25,13 +25,18 @@ type ReleaseInfo struct {
 }
 
 type ChangelogEntry struct {
-	Version  string   `json:"version"`
-	Date     string   `json:"date"`
-	Title    string   `json:"title"`
-	Added    []string `json:"added,omitempty"`
-	Changed  []string `json:"changed,omitempty"`
-	Security []string `json:"security,omitempty"`
-	Fixed    []string `json:"fixed,omitempty"`
+	Version    string   `json:"version"`
+	Date       string   `json:"date"`
+	Title      string   `json:"title"`
+	TitleEN    string   `json:"title_en,omitempty"`
+	Added      []string `json:"added,omitempty"`
+	AddedEN    []string `json:"added_en,omitempty"`
+	Changed    []string `json:"changed,omitempty"`
+	ChangedEN  []string `json:"changed_en,omitempty"`
+	Security   []string `json:"security,omitempty"`
+	SecurityEN []string `json:"security_en,omitempty"`
+	Fixed      []string `json:"fixed,omitempty"`
+	FixedEN    []string `json:"fixed_en,omitempty"`
 }
 
 func Current() ReleaseInfo {
@@ -55,6 +60,50 @@ func String() string {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.5",
+			Date:    "2026-06-05",
+			Title:   "在线更新体验、HTTPS 证书重启与双语变更记录",
+			TitleEN: "Online update UX, HTTPS certificate restart, and bilingual changelog",
+			Added: []string{
+				"在线更新新增代理地址配置，Git fetch、worktree 构建和 Go build 会复用该代理环境。",
+				"拉取并重启流程新增明确进度反馈，覆盖请求发送、依赖预检、构建、重启和恢复等待。",
+				"上传 HTTPS 证书后会自动调度服务端重启，恢复后页面自动刷新并弹出提示。",
+				"版本 API 和设置页 Changelog 新增中英双语字段，英文模式显示英文变更内容。",
+			},
+			AddedEN: []string{
+				"Added an online update proxy setting reused by Git fetch, update worktree builds, and Go build.",
+				"Added explicit progress feedback for pull-and-restart: request, dependency checks, build, restart, and recovery wait.",
+				"HTTPS certificate upload now schedules an automatic server restart, refreshes the page after recovery, and shows a notice.",
+				"Version API and the settings changelog now expose bilingual Chinese and English fields.",
+			},
+			Changed: []string{
+				"设置页在线更新状态会缓存 1 小时，打开设置页时优先显示缓存结果，并在后台按小时刷新。",
+				"点击检查更新会绕过缓存并立即重新检查 Git upstream 状态。",
+				"首页顶部 KPI 在 overview 尚未加载完成时显示占位符，避免短暂显示 0/0 等错误数值。",
+				"README 顶部 Logo 调整为小图标加项目名称的横幅形式，避免首屏被大图占满。",
+				"刷新 imgs 目录中的部署截图素材。",
+			},
+			ChangedEN: []string{
+				"Online update status is cached for one hour, shown immediately on settings open, and refreshed hourly in the background.",
+				"The Check update button bypasses the cache and rechecks Git upstream immediately.",
+				"Top overview KPI cards show placeholders until overview data is loaded, avoiding transient 0/0 values.",
+				"README logo presentation was changed to a compact logo plus project-name banner.",
+				"Refreshed deployment screenshots in the imgs directory.",
+			},
+			Fixed: []string{
+				"修复英文模式下 GPU 卡片相对时间仍显示“前”的问题。",
+				"修复 HTTPS 已启用时仍提示“下次启动生效”的状态文案。",
+				"修复数据库大小为空时设置页只显示短横线的问题。",
+				"修复 HTTPS 证书上传文件选择控件在英文模式下仍显示浏览器原生中文文案的问题。",
+			},
+			FixedEN: []string{
+				"Fixed GPU card relative time still showing the Chinese suffix in English mode.",
+				"Fixed HTTPS status copy still saying it would take effect on next start after HTTPS was already active.",
+				"Fixed database size showing only a dash when no size had been loaded.",
+				"Fixed HTTPS certificate file pickers showing browser-native Chinese copy in English mode.",
+			},
+		},
 		{
 			Version: "0.1.4",
 			Date:    "2026-06-05",

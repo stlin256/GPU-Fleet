@@ -526,17 +526,38 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 	}
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/language", map[string]string{"language": "fr-FR"}, cookie, http.StatusBadRequest, nil)
 
+	var proxyUpdate struct {
+		OK              bool          `json:"ok"`
+		Service         serviceStatus `json:"service"`
+		RestartRequired bool          `json:"restart_required"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/proxy", map[string]string{"proxy_url": "http://127.0.0.1:7890"}, cookie, http.StatusOK, &proxyUpdate)
+	if !proxyUpdate.OK || proxyUpdate.Service.UpdateProxy != "http://127.0.0.1:7890" || proxyUpdate.RestartRequired {
+		t.Fatalf("unexpected update proxy response: %+v", proxyUpdate)
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/proxy", map[string]string{"proxy_url": "ftp://127.0.0.1:21"}, cookie, http.StatusBadRequest, nil)
+
+	app.updateScheduleRestart = func(req updateRestartRequest) error {
+		if req.ReplaceExecutable || req.CurrentExe == "" || req.NextExe != "" || req.PID <= 0 || req.RestartAt.IsZero() {
+			t.Fatalf("unexpected certificate restart request: %+v", req)
+		}
+		return nil
+	}
+	app.updateExit = func() {}
+
 	certPEM, keyPEM, notAfter := testCertificate(t)
 	var certUpdate struct {
 		OK              bool          `json:"ok"`
 		Service         serviceStatus `json:"service"`
 		RestartRequired bool          `json:"restart_required"`
+		Restarting      bool          `json:"restarting"`
+		RestartAt       time.Time     `json:"restart_at"`
 	}
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/certificate", map[string]string{
 		"certificate_pem": string(certPEM),
 		"private_key_pem": string(keyPEM),
 	}, cookie, http.StatusOK, &certUpdate)
-	if !certUpdate.OK || !certUpdate.Service.HTTPSEnabled || certUpdate.Service.CertNotAfter.IsZero() || !certUpdate.RestartRequired {
+	if !certUpdate.OK || !certUpdate.Service.HTTPSEnabled || certUpdate.Service.CertNotAfter.IsZero() || !certUpdate.RestartRequired || !certUpdate.Restarting || certUpdate.RestartAt.IsZero() {
 		t.Fatalf("unexpected certificate update response: %+v", certUpdate)
 	}
 	if !sameSecond(certUpdate.Service.CertNotAfter, notAfter) {

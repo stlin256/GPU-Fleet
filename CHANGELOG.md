@@ -2,6 +2,41 @@
 
 所有值得用户关注的变更都会记录在这里。项目版本遵循语义化版本思路：`MAJOR.MINOR.PATCH`，当前仍处于 MVP 预览阶段。
 
+User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in the MVP preview stage.
+
+## [0.1.5] - 2026-06-05
+
+### Added / 新增
+
+- 新增在线更新代理地址配置，Git fetch、worktree 构建和 Go build 会复用该代理环境。
+- Added an online update proxy setting reused by Git fetch, update worktree builds, and Go build.
+- 拉取并重启流程新增明确进度反馈，覆盖请求发送、依赖预检、构建、重启和恢复等待。
+- Added explicit progress feedback for pull-and-restart: request, dependency checks, build, restart, and recovery wait.
+- 上传 HTTPS 证书后会自动调度服务端重启，恢复后页面自动刷新并弹出提示。
+- HTTPS certificate upload now schedules an automatic server restart, refreshes the page after recovery, and shows a notice.
+- 版本 API 和设置页 Changelog 新增中英双语字段，英文模式显示英文变更内容。
+- Version API and the settings changelog now expose bilingual Chinese and English fields.
+
+### Changed / 变更
+
+- 设置页在线更新状态会缓存 1 小时，打开设置页时优先显示缓存结果，并在后台按小时刷新；点击检查更新会绕过缓存。
+- Online update status is cached for one hour, shown immediately on settings open, refreshed hourly in the background, and bypassed by the manual Check update action.
+- 首页顶部 KPI 在 overview 尚未加载完成时显示占位符，避免短暂显示 `0/0` 等错误数值。
+- Top overview KPI cards show placeholders until overview data is loaded, avoiding transient `0/0` values.
+- README 顶部 Logo 调整为小图标加项目名称的横幅形式，并刷新 `imgs` 目录部署截图素材。
+- README logo presentation was changed to a compact logo plus project-name banner, and deployment screenshots in `imgs` were refreshed.
+
+### Fixed / 修复
+
+- 修复英文模式下 GPU 卡片相对时间仍显示“前”的问题。
+- Fixed GPU card relative time still showing the Chinese suffix in English mode.
+- 修复 HTTPS 已启用时仍提示“下次启动生效”的状态文案。
+- Fixed HTTPS status copy still saying it would take effect on next start after HTTPS was already active.
+- 修复数据库大小为空时设置页只显示短横线的问题。
+- Fixed database size showing only a dash when no size had been loaded.
+- 修复 HTTPS 证书上传文件选择控件在英文模式下仍显示浏览器原生中文文案的问题。
+- Fixed HTTPS certificate file pickers showing browser-native Chinese copy in English mode.
+
 ## [0.1.4] - 2026-06-05
 
 ### Added

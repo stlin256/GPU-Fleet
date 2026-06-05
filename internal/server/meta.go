@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -49,6 +50,7 @@ type ServiceConfig struct {
 	Port           int       `json:"port"`
 	HTTPS          bool      `json:"https"`
 	Language       string    `json:"language,omitempty"`
+	UpdateProxy    string    `json:"update_proxy,omitempty"`
 	CertPath       string    `json:"cert_path,omitempty"`
 	KeyPath        string    `json:"key_path,omitempty"`
 	CertNotAfter   time.Time `json:"cert_not_after,omitempty"`
@@ -345,6 +347,23 @@ func (s *MetadataStore) UpdateLanguage(language string) (ServiceConfig, error) {
 	}
 	s.bumpServiceConfigLocked()
 	s.addAuditLocked("service_language_changed", fmt.Sprintf("changed UI language to %s", s.data.Service.Language))
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) UpdateProxy(proxyURL string) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	proxyURL, err := normalizeProxyURL(proxyURL)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	s.data.Service.UpdateProxy = proxyURL
+	s.bumpServiceConfigLocked()
+	if proxyURL == "" {
+		s.addAuditLocked("update_proxy_changed", "cleared update proxy")
+	} else {
+		s.addAuditLocked("update_proxy_changed", "changed update proxy")
+	}
 	return s.data.Service, s.saveLocked()
 }
 
@@ -749,6 +768,23 @@ func validLanguage(language string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func normalizeProxyURL(proxyURL string) (string, error) {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(proxyURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", errors.New("proxy URL must include scheme and host")
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https", "socks5", "socks5h":
+		return proxyURL, nil
+	default:
+		return "", errors.New("proxy URL scheme must be http, https, socks5, or socks5h")
 	}
 }
 

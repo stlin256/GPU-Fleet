@@ -107,6 +107,7 @@ export type ServiceStatus = {
   configured_port: number;
   https_enabled: boolean;
   language: AppLanguage;
+  update_proxy?: string;
   cert_not_after?: string;
   config_revision: number;
   updated_at?: string;
@@ -133,16 +134,23 @@ export type ServiceMutationResponse = {
   ok: boolean;
   service: ServiceStatus;
   restart_required: boolean;
+  restarting?: boolean;
+  restart_at?: string;
 };
 
 export type ChangelogEntry = {
   version: string;
   date: string;
   title: string;
+  title_en?: string;
   added?: string[];
+  added_en?: string[];
   changed?: string[];
+  changed_en?: string[];
   security?: string[];
+  security_en?: string[];
   fixed?: string[];
+  fixed_en?: string[];
 };
 
 export type ReleaseInfo = {
@@ -377,6 +385,13 @@ export function updateLanguage(language: AppLanguage) {
   return request<ServiceMutationResponse>('/api/v1/admin/language', {
     method: 'POST',
     body: JSON.stringify({ language })
+  });
+}
+
+export function updateProxy(proxyURL: string) {
+  return request<ServiceMutationResponse>('/api/v1/admin/update/proxy', {
+    method: 'POST',
+    body: JSON.stringify({ proxy_url: proxyURL })
   });
 }
 

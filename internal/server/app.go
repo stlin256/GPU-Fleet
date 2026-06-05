@@ -155,6 +155,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/password", a.requireSession(a.handleAdminPassword))
 	mux.HandleFunc("/api/v1/admin/server-config", a.requireSession(a.handleAdminServerConfig))
 	mux.HandleFunc("/api/v1/admin/language", a.requireSession(a.handleAdminLanguage))
+	mux.HandleFunc("/api/v1/admin/update/proxy", a.requireSession(a.handleAdminUpdateProxy))
 	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
 	mux.HandleFunc("/api/v1/admin/database/download", a.requireSession(a.handleDatabaseDownload))
 	mux.HandleFunc("/api/v1/admin/update/status", a.requireSession(a.handleUpdateStatus))
@@ -453,6 +454,30 @@ func (a *App) handleAdminLanguage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *App) handleAdminUpdateProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		ProxyURL string `json:"proxy_url"`
+	}
+	if err := decodeJSON(r, &body, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	config, err := a.meta.UpdateProxy(body.ProxyURL)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"service":          a.serviceStatusFromConfig(config, r),
+		"restart_required": false,
+	})
+}
+
 func (a *App) handleAdminCertificate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -471,10 +496,45 @@ func (a *App) handleAdminCertificate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	restartRequired := true
+	restarting := false
+	var restartAt time.Time
+	if restartRequired {
+		exePath, err := currentExecutablePath()
+		if err != nil {
+			writeError(w, http.StatusPreconditionFailed, err.Error())
+			return
+		}
+		restartAt = time.Now().UTC().Add(updateRestartDelay)
+		restartReq := updateRestartRequest{
+			CurrentExe:        exePath,
+			Args:              append([]string(nil), os.Args[1:]...),
+			WorkDir:           mustGetwd(),
+			PID:               os.Getpid(),
+			RestartAt:         restartAt,
+			ReplaceExecutable: false,
+		}
+		if err := a.updateScheduleRestart(restartReq); err != nil {
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500)))
+			return
+		}
+		restarting = true
+		_ = a.meta.AddAudit("certificate_restart_scheduled", "saved HTTPS certificate and scheduled automatic restart")
+		go func() {
+			time.Sleep(updateRestartDelay)
+			if a.updateExit != nil {
+				a.updateExit()
+				return
+			}
+			os.Exit(0)
+		}()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":               true,
 		"service":          a.serviceStatusFromConfig(config, r),
-		"restart_required": a.restartRequired(config),
+		"restart_required": restartRequired,
+		"restarting":       restarting,
+		"restart_at":       restartAt,
 	})
 }
 
@@ -1114,6 +1174,7 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 		ConfiguredPort:    config.Port,
 		HTTPSEnabled:      config.HTTPS,
 		Language:          config.Language,
+		UpdateProxy:       config.UpdateProxy,
 		CertNotAfter:      config.CertNotAfter,
 		ConfigRevision:    config.ConfigRevision,
 		UpdatedAt:         config.UpdatedAt,
@@ -1175,6 +1236,7 @@ type serviceStatus struct {
 	ConfiguredPort    int       `json:"configured_port"`
 	HTTPSEnabled      bool      `json:"https_enabled"`
 	Language          string    `json:"language"`
+	UpdateProxy       string    `json:"update_proxy,omitempty"`
 	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
 	ConfigRevision    int       `json:"config_revision"`
 	UpdatedAt         time.Time `json:"updated_at,omitempty"`

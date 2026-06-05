@@ -63,6 +63,7 @@ type updateBuildRequest struct {
 	RepoDir      string
 	RemoteCommit string
 	OutputPath   string
+	ProxyURL     string
 }
 
 type updateBuildResult struct {
@@ -71,12 +72,13 @@ type updateBuildResult struct {
 }
 
 type updateRestartRequest struct {
-	CurrentExe string
-	NextExe    string
-	Args       []string
-	WorkDir    string
-	PID        int
-	RestartAt  time.Time
+	CurrentExe        string
+	NextExe           string
+	Args              []string
+	WorkDir           string
+	PID               int
+	RestartAt         time.Time
+	ReplaceExecutable bool
 }
 
 type updateBuildFunc func(context.Context, updateBuildRequest) (updateBuildResult, error)
@@ -148,6 +150,7 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		RepoDir:      a.config.RepoDir,
 		RemoteCommit: status.RemoteCommit,
 		OutputPath:   nextPath,
+		ProxyURL:     a.meta.ServiceConfig().UpdateProxy,
 	})
 	buildCancel()
 	if err != nil {
@@ -175,12 +178,13 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	if restartRequired {
 		restartAt := time.Now().UTC().Add(updateRestartDelay)
 		restartReq := updateRestartRequest{
-			CurrentExe: exePath,
-			NextExe:    buildResult.OutputPath,
-			Args:       append([]string(nil), os.Args[1:]...),
-			WorkDir:    mustGetwd(),
-			PID:        os.Getpid(),
-			RestartAt:  restartAt,
+			CurrentExe:        exePath,
+			NextExe:           buildResult.OutputPath,
+			Args:              append([]string(nil), os.Args[1:]...),
+			WorkDir:           mustGetwd(),
+			PID:               os.Getpid(),
+			RestartAt:         restartAt,
+			ReplaceExecutable: true,
 		}
 		if err := a.updateScheduleRestart(restartReq); err != nil {
 			_ = os.Remove(buildResult.OutputPath)
@@ -293,7 +297,7 @@ func (a *App) runGit(ctx context.Context, args ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return runGitInDir(ctx, repoDir, args...)
+	return runGitInDir(ctx, repoDir, a.meta.ServiceConfig().UpdateProxy, args...)
 }
 
 func (a *App) checkUpdateDependencies() updateDependencyStatus {
@@ -345,18 +349,18 @@ func defaultBuildServerForUpdate(ctx context.Context, req updateBuildRequest) (u
 	worktreeDir := filepath.Join(os.TempDir(), "gpufleet-update-worktree-"+strconv.FormatInt(time.Now().UnixNano(), 10))
 	defer os.RemoveAll(worktreeDir)
 
-	if output, err := runGitInDir(ctx, repoDir, "worktree", "add", "--detach", "--quiet", worktreeDir, req.RemoteCommit); err != nil {
+	if output, err := runGitInDir(ctx, repoDir, req.ProxyURL, "worktree", "add", "--detach", "--quiet", worktreeDir, req.RemoteCommit); err != nil {
 		return updateBuildResult{}, fmt.Errorf("create update worktree: %s", limitText(output+err.Error(), 500))
 	}
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_, _ = runGitInDir(cleanupCtx, repoDir, "worktree", "remove", "--force", worktreeDir)
+		_, _ = runGitInDir(cleanupCtx, repoDir, req.ProxyURL, "worktree", "remove", "--force", worktreeDir)
 	}()
 
 	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", req.OutputPath, updateSourceEntry)
 	cmd.Dir = worktreeDir
-	cmd.Env = append(os.Environ(), "GOWORK=off")
+	cmd.Env = updateProxyEnv(append(os.Environ(), "GOWORK=off"), req.ProxyURL)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -376,11 +380,16 @@ func defaultScheduleRestartAfterUpdate(req updateRestartRequest) error {
 	if req.PID <= 0 {
 		return errors.New("invalid current process id")
 	}
-	if req.CurrentExe == "" || req.NextExe == "" {
-		return errors.New("restart paths are empty")
+	if req.CurrentExe == "" {
+		return errors.New("current executable path is empty")
 	}
-	if _, err := os.Stat(req.NextExe); err != nil {
-		return fmt.Errorf("new server executable is not available: %w", err)
+	if req.ReplaceExecutable {
+		if req.NextExe == "" {
+			return errors.New("new executable path is empty")
+		}
+		if _, err := os.Stat(req.NextExe); err != nil {
+			return fmt.Errorf("new server executable is not available: %w", err)
+		}
 	}
 	if req.RestartAt.IsZero() {
 		req.RestartAt = time.Now().UTC().Add(updateRestartDelay)
@@ -453,12 +462,17 @@ func windowsRestartScript(req updateRestartRequest, logPath, helperPath string) 
 	if delayMs < 0 {
 		delayMs = 0
 	}
+	replace := ""
+	if req.ReplaceExecutable {
+		replace = fmt.Sprintf(`  Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue
+  Move-Item -LiteralPath %s -Destination %s -Force
+`, psQuote(req.CurrentExe), psQuote(req.NextExe), psQuote(req.CurrentExe))
+	}
 	return fmt.Sprintf(`$ErrorActionPreference = 'Stop'
 Start-Sleep -Milliseconds %d
 try {
   Wait-Process -Id %d -Timeout 30 -ErrorAction SilentlyContinue
-  Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue
-  Move-Item -LiteralPath %s -Destination %s -Force
+%s
   Start-Process -FilePath %s -ArgumentList @(%s) -WorkingDirectory %s -WindowStyle Hidden
   "restarted at $(Get-Date -Format o)" | Out-File -FilePath %s -Append -Encoding utf8
 } catch {
@@ -470,9 +484,7 @@ try {
 `,
 		delayMs,
 		req.PID,
-		psQuote(req.CurrentExe),
-		psQuote(req.NextExe),
-		psQuote(req.CurrentExe),
+		replace,
 		psQuote(req.CurrentExe),
 		strings.Join(args, ", "),
 		psQuote(req.WorkDir),
@@ -491,6 +503,10 @@ func linuxRestartScript(req updateRestartRequest, logPath, helperPath string) st
 	if delay < 0 {
 		delay = 0
 	}
+	replace := ""
+	if req.ReplaceExecutable {
+		replace = fmt.Sprintf("mv -f %s %s\n", shQuote(req.NextExe), shQuote(req.CurrentExe))
+	}
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 sleep %.3f
@@ -499,7 +515,7 @@ while kill -0 %d 2>/dev/null && [ "$i" -lt 300 ]; do
   i=$((i + 1))
   sleep 0.1
 done
-mv -f %s %s
+%s
 cd %s
 nohup %s %s >> %s 2>&1 &
 printf 'restarted at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
@@ -507,8 +523,7 @@ rm -f %s
 `,
 		delay,
 		req.PID,
-		shQuote(req.NextExe),
-		shQuote(req.CurrentExe),
+		replace,
 		shQuote(req.WorkDir),
 		shQuote(req.CurrentExe),
 		strings.Join(args, " "),
@@ -518,11 +533,11 @@ rm -f %s
 	)
 }
 
-func runGitInDir(ctx context.Context, dir string, args ...string) (string, error) {
+func runGitInDir(ctx context.Context, dir, proxyURL string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Args = append([]string{"git", "-c", "core.hooksPath=" + filepath.Join(os.TempDir(), "gpufleet-disabled-hooks")}, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never")
+	cmd.Env = updateProxyEnv(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never"), proxyURL)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -537,6 +552,22 @@ func runGitInDir(ctx context.Context, dir string, args ...string) (string, error
 		return combined, fmt.Errorf("%s: %s", strings.Join(args, " "), strings.TrimSpace(combined))
 	}
 	return text, nil
+}
+
+func updateProxyEnv(env []string, proxyURL string) []string {
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL == "" {
+		return env
+	}
+	env = append(env,
+		"HTTP_PROXY="+proxyURL,
+		"HTTPS_PROXY="+proxyURL,
+		"ALL_PROXY="+proxyURL,
+		"http_proxy="+proxyURL,
+		"https_proxy="+proxyURL,
+		"all_proxy="+proxyURL,
+	)
+	return env
 }
 
 func currentExecutablePath() (string, error) {

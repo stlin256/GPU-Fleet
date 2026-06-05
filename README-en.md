@@ -1,12 +1,13 @@
-# GPUFleet
-
-![GPUFleet logo](web/public/brand/gpufleet-logo.svg)
+<h1>
+  <img src="web/public/brand/gpufleet-logo.svg" alt="GPUFleet logo" width="40" height="40" align="absmiddle">
+  GPUFleet
+</h1>
 
 GPUFleet is a lightweight NVIDIA GPU fleet monitoring system. It combines a public server and Windows/Linux Agents to collect GPU runtime data from machines across different networks, then presents current status, history, statistics, device management, database download, and operations controls in a responsive web dashboard.
 
 Chinese documentation: [README.md](README.md)
 
-Current version: `0.1.4`<br>
+Current version: `0.1.5`<br>
 Author: `stlin256`<br>
 Repository: `https://github.com/stlin256/GPU-Fleet`
 
