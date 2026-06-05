@@ -477,6 +477,28 @@ func TestInitialSetupCreatesPasswordCredential(t *testing.T) {
 	}
 }
 
+func TestServerDoesNotCreateBootstrapDeviceByDefault(t *testing.T) {
+	root := t.TempDir()
+	app, _, err := NewApp(Config{
+		Addr:          "127.0.0.1:8088",
+		AddrExplicit:  true,
+		DataDir:       filepath.Join(root, "data"),
+		WebDir:        filepath.Join(root, "missing-web"),
+		MinFreeBytes:  1,
+		Retention:     time.Hour,
+		AdminPassword: "admin-test",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := app.Handler()
+	var overview overviewResponse
+	doJSON(t, handler, http.MethodGet, "/api/v1/overview", nil, loginCookie(t, handler), http.StatusOK, &overview)
+	if overview.DeviceCount != 0 || len(overview.Devices) != 0 {
+		t.Fatalf("expected no bootstrap device without explicit bootstrap config, got %+v", overview.Devices)
+	}
+}
+
 func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))

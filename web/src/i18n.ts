@@ -173,6 +173,10 @@ const en: Record<string, string> = {
   '更新已构建完成，服务端正在自动重启': 'Update built. Server is restarting automatically',
   '，预计 {date} 前后恢复': ', expected to recover around {date}',
   '更新已拉取并构建完成，正在等待服务端重启': 'Update pulled and built. Waiting for server restart.',
+  '恢复后页面会自动刷新。': 'The page will refresh automatically after recovery.',
+  '版本已更新': 'Version updated',
+  '服务端已自动重启并刷新页面。': 'The server restarted automatically and the page has been refreshed.',
+  '知道了': 'OK',
   '当前已经是最新版本': 'Already up to date',
   '在线更新': 'Online Update',
   '未绑定上游': 'No upstream',
@@ -242,7 +246,8 @@ const en: Record<string, string> = {
   '上传证书': 'Upload certificate',
   '数据库下载': 'Database Download',
   '下载数据库': 'Download database',
-  '请求过于频繁，请等待 {duration} 后再试': 'Too many requests. Retry after {duration}.'
+  '请求过于频繁，请等待 {duration} 后再试': 'Too many requests. Retry after {duration}.',
+  'language endpoint not found; rebuild and restart the server binary': 'Language endpoint not found; rebuild and restart the server binary.'
 };
 
 const enPatterns: Array<[RegExp, string]> = [
@@ -262,6 +267,7 @@ const enPatterns: Array<[RegExp, string]> = [
   [/^删除后 (.+) 将从设备列表和最新 GPU 快照中移除，原 Agent 密钥会失效。$/, 'After deletion, $1 is removed from the device list and latest GPU snapshots. The old Agent secret expires.'],
   [/^(\d+) 个提交可拉取、构建并自动重启$/, '$1 commits can be pulled, built, and restarted automatically'],
   [/^更新已构建完成，服务端正在自动重启，预计 (.+) 前后恢复$/, 'Update built. Server is restarting automatically, expected to recover around $1'],
+  [/^更新已构建完成，服务端正在自动重启，预计 (.+) 前后恢复。恢复后页面会自动刷新。$/, 'Update built. Server is restarting automatically, expected to recover around $1. The page will refresh automatically after recovery.'],
   [/^(\d+) 天$/, '$1 days'],
   [/^(\d+) 天 (\d+) 小时$/, '$1 days $2 hours'],
   [/^(\d+) 小时$/, '$1 hours'],

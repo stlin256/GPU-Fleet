@@ -3,7 +3,7 @@ package version
 import "fmt"
 
 var (
-	Version   = "0.1.2"
+	Version   = "0.1.3"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -55,6 +55,19 @@ func String() string {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.3",
+			Date:    "2026-06-05",
+			Title:   "更新重启反馈与默认设备修复",
+			Changed: []string{
+				"服务端在线更新成功并自动重启后，Web 面板会等待服务恢复、自动刷新页面并展示版本更新弹窗。",
+				"语言保存接口缺失时，前端会提示需要重建并重启服务端，避免只显示 not found。",
+				"服务端启动不再默认创建 local-dev 引导设备；只有显式配置 bootstrap device id 和 secret 时才会创建初始设备。",
+			},
+			Fixed: []string{
+				"修复删除 local-dev 后，服务端自动更新或重启又重新创建该设备的问题。",
+			},
+		},
 		{
 			Version: "0.1.2",
 			Date:    "2026-06-05",

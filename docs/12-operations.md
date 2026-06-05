@@ -100,8 +100,6 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 .\bin\gpufleet-server.exe `
   -addr 0.0.0.0:8080 `
   -data-dir data `
-  -bootstrap-device-id "device_xxx" `
-  -bootstrap-secret "replace-with-device-secret" `
   -min-free-mb 800 `
   -retention-days 30 `
   -web-dir web/dist `
@@ -111,6 +109,8 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 首次启动按 `-addr` 指定的端口使用 HTTP。浏览器打开 Web 面板后会先选择界面语言，再进入首次配置引导，设置访问密码、下一次启动端口和可选 HTTPS 证书。上传证书后需要重启服务，重启后服务端自身会使用 HTTPS；未配置证书时继续使用 HTTP。
 
 `-admin-password` 仍可用于自动化部署预置初始密码，但普通部署建议留空并使用首次配置引导。生产环境也可以在服务端前面放 Caddy/Nginx/Traefik 终止 HTTPS，再反代到 GPUFleet 的 HTTP 监听地址。
+
+`-bootstrap-device-id` 和 `-bootstrap-secret` 只用于自动化预创建一个初始 Agent 设备。普通生产部署建议不要传这两个参数，而是在 Web 面板的“设备”页创建设备；如果曾经删除过引导设备，未显式配置 bootstrap 时服务端重启不会重新创建它。
 
 界面语言支持 `zh-CN` 和 `en-US`，保存在服务端数据目录的 `metadata.json` 中。登录后可在设置页单独修改语言，语言切换不需要重启服务。
 
@@ -136,6 +136,7 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 - 服务端会在临时 Git worktree 中构建远端提交，构建成功后才执行 `git pull --ff-only`。
 - 工作区存在未提交改动、没有 upstream、本地超前或与上游分叉时会阻止更新。
 - 拉取完成后会生成平台重启器，等待旧进程退出后替换当前服务端二进制，并按原启动参数拉起新进程。重启日志写入当前二进制目录的 `gpufleet-update-restart.log`。
+- Web 面板会在自动重启后等待服务端恢复、刷新当前页面，并弹出版本更新提示。
 
 ## 设备注册和密钥轮换
 

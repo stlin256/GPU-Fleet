@@ -19,8 +19,8 @@ func main() {
 	var showVersion bool
 	flag.StringVar(&cfg.Addr, "addr", env("GPUFLEET_ADDR", "127.0.0.1:8080"), "listen address")
 	flag.StringVar(&cfg.DataDir, "data-dir", env("GPUFLEET_DATA_DIR", "data"), "runtime data directory")
-	flag.StringVar(&cfg.BootstrapDeviceID, "bootstrap-device-id", env("GPUFLEET_BOOTSTRAP_DEVICE_ID", "local-dev"), "initial device id")
-	flag.StringVar(&cfg.BootstrapSecret, "bootstrap-secret", env("GPUFLEET_BOOTSTRAP_SECRET", "local-dev-secret"), "initial device secret")
+	flag.StringVar(&cfg.BootstrapDeviceID, "bootstrap-device-id", env("GPUFLEET_BOOTSTRAP_DEVICE_ID", ""), "initial device id")
+	flag.StringVar(&cfg.BootstrapSecret, "bootstrap-secret", env("GPUFLEET_BOOTSTRAP_SECRET", ""), "initial device secret")
 	flag.StringVar(&cfg.AdminPassword, "admin-password", env("GPUFLEET_ADMIN_PASSWORD", ""), "initial admin password")
 	flag.StringVar(&cfg.WebDir, "web-dir", env("GPUFLEET_WEB_DIR", "web/dist"), "web dashboard build directory")
 	flag.StringVar(&cfg.RepoDir, "repo-dir", env("GPUFLEET_REPO_DIR", "."), "Git repository directory for server self-update checks")

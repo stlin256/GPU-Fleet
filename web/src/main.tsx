@@ -83,11 +83,26 @@ type AuthState = 'checking' | 'setup' | 'authenticated' | 'anonymous';
 type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
 type DeviceActionKind = 'enable' | 'disable' | 'rotate' | 'delete';
+type PendingUpdateNotice = {
+  previous_commit?: string;
+  target_commit?: string;
+  previous_version?: string;
+  restart_at?: string;
+  started_at: string;
+};
+type CompletedUpdateNotice = PendingUpdateNotice & {
+  product?: string;
+  current_commit?: string;
+  current_version?: string;
+  completed_at: string;
+};
 
 const deviceBorderPalette = ['#146c78', '#6750a4', '#b26a00', '#198754', '#c54040', '#2f6fbd', '#8a5a00', '#00806a'];
 const repositoryOwner = 'stlin256';
 const repositoryName = 'GPU-Fleet';
 const repositoryURL = `https://github.com/${repositoryOwner}/${repositoryName}`;
+const updatePendingKey = 'gpufleet-update-pending';
+const updateNoticeKey = 'gpufleet-update-notice';
 
 function initialTheme(): Theme {
   const stored = window.localStorage.getItem('gpufleet-theme');
@@ -162,6 +177,57 @@ function shortHash(value?: string) {
   return value.length > 12 ? value.slice(0, 12) : value;
 }
 
+function readJSON<T>(key: string): T | undefined {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) as T : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeJSON(key: string, value: unknown) {
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function storePendingUpdate(notice: PendingUpdateNotice) {
+  writeJSON(updatePendingKey, notice);
+}
+
+function takeCompletedUpdateNotice() {
+  const notice = readJSON<CompletedUpdateNotice>(updateNoticeKey);
+  if (notice) window.localStorage.removeItem(updateNoticeKey);
+  return notice;
+}
+
+async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
+  const deadline = Date.now() + 90_000;
+  const minimumWaitUntil = Date.now() + 2_000;
+  let sawFailure = false;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => window.setTimeout(resolve, 1800));
+    try {
+      const status = await getUpdateStatus();
+      const release = await getVersion().catch(() => undefined);
+      const reachedTarget = !pending.target_commit || status.local_commit === pending.target_commit || status.remote_commit === pending.target_commit;
+      if (Date.now() >= minimumWaitUntil && (sawFailure || reachedTarget)) {
+        window.localStorage.removeItem(updatePendingKey);
+        writeJSON(updateNoticeKey, {
+          ...pending,
+          product: release?.product,
+          current_commit: status.local_commit || release?.commit,
+          current_version: release?.version,
+          completed_at: new Date().toISOString()
+        } satisfies CompletedUpdateNotice);
+        window.location.reload();
+        return;
+      }
+    } catch {
+      sawFailure = true;
+    }
+  }
+}
+
 function portFromLocation() {
   const parsed = Number(window.location.port || (window.location.protocol === 'https:' ? 443 : 80));
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 8080;
@@ -181,6 +247,7 @@ function App() {
   const [setupStatus, setSetupStatus] = useState<SetupStatus>();
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [language, setLanguageState] = useState<AppLanguage>(initialLanguage);
+  const [updateNotice, setUpdateNotice] = useState<CompletedUpdateNotice | undefined>(() => takeCompletedUpdateNotice());
   const t = useMemo(() => makeTranslator(language), [language]);
 
   useEffect(() => {
@@ -206,6 +273,8 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const pending = readJSON<PendingUpdateNotice>(updatePendingKey);
+    if (pending) void waitForServerAfterUpdate(pending);
     getSetupStatus()
       .then((status) => {
         if (cancelled) return;
@@ -251,6 +320,7 @@ function App() {
       )}
       {authState === 'anonymous' && <Login onSuccess={() => setAuthState('authenticated')} theme={theme} onToggleTheme={toggleTheme} />}
       {authState === 'authenticated' && <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />}
+      <UpdateNoticeDialog notice={updateNotice} onClose={() => setUpdateNotice(undefined)} />
     </I18nContext.Provider>
   );
 }
@@ -1186,6 +1256,55 @@ function DeviceActionConfirm({
   );
 }
 
+function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotice; onClose: () => void }) {
+  const { t } = useI18n();
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [notice, onClose]);
+
+  if (!notice) return null;
+  const from = shortHash(notice.previous_commit);
+  const to = shortHash(notice.current_commit || notice.target_commit);
+  const versionText = notice.current_version ? `v${notice.current_version}` : '-';
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="confirm-dialog update-notice-dialog" role="dialog" aria-modal="true" aria-labelledby="update-notice-title" data-testid="update-notice-dialog">
+        <div className="confirm-icon"><CheckCircle2 size={22} /></div>
+        <div className="confirm-copy">
+          <span>{notice.product || 'GPUFleet'}</span>
+          <h2 id="update-notice-title">{t('版本已更新')}</h2>
+          <p>{t('服务端已自动重启并刷新页面。')}</p>
+        </div>
+        <div className="confirm-target update-notice-grid">
+          <div>
+            <span>{t('版本')}</span>
+            <strong>{versionText}</strong>
+          </div>
+          <div>
+            <span>{t('提交')}</span>
+            <strong title={notice.current_commit || notice.target_commit}>{from !== '-' && to !== '-' ? `${from} -> ${to}` : to}</strong>
+          </div>
+        </div>
+        <div className="confirm-actions">
+          <button className="primary compact" type="button" onClick={onClose}>
+            <CheckCircle2 size={16} />
+            {t('知道了')}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function deviceActionCopy(kind: DeviceActionKind, device: Device) {
   const name = device.alias || device.id;
   if (kind === 'enable') {
@@ -1403,6 +1522,11 @@ function UpdateSettings() {
   const query = useQueryClient();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const release = useQuery({
+    queryKey: ['version'],
+    queryFn: getVersion,
+    staleTime: 5 * 60 * 1000
+  });
   const update = useQuery({
     queryKey: ['update-status'],
     queryFn: getUpdateStatus,
@@ -1424,9 +1548,32 @@ function UpdateSettings() {
     try {
       const result = await applyUpdate();
       if (result.restarting) {
-        setMessage(`更新已构建完成，服务端正在自动重启${result.restart_at ? `，预计 ${fmtDateTime(result.restart_at)} 前后恢复` : ''}`);
+        const pending = {
+          previous_commit: status?.local_commit,
+          target_commit: result.status.local_commit || status?.remote_commit,
+          previous_version: release.data?.version,
+          restart_at: result.restart_at,
+          started_at: new Date().toISOString()
+        };
+        storePendingUpdate(pending);
+        setMessage(`更新已构建完成，服务端正在自动重启${result.restart_at ? `，预计 ${fmtDateTime(result.restart_at)} 前后恢复` : ''}。恢复后页面会自动刷新。`);
+        void waitForServerAfterUpdate(pending);
       } else {
-        setMessage(result.restart_required ? '更新已拉取并构建完成，正在等待服务端重启' : '当前已经是最新版本');
+        if (result.restart_required) {
+          const notice = {
+            previous_commit: status?.local_commit,
+            target_commit: result.status.local_commit || status?.remote_commit,
+            previous_version: release.data?.version,
+            current_commit: result.status.local_commit,
+            current_version: release.data?.version,
+            started_at: new Date().toISOString(),
+            completed_at: new Date().toISOString()
+          } satisfies CompletedUpdateNotice;
+          writeJSON(updateNoticeKey, notice);
+          window.location.reload();
+          return;
+        }
+        setMessage('当前已经是最新版本');
       }
       await query.invalidateQueries({ queryKey: ['update-status'] });
       await query.invalidateQueries({ queryKey: ['version'] });

@@ -245,6 +245,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     if (typeof body.retry_after_seconds === 'number' && body.retry_after_seconds > 0) {
       throw new Error(errorFormatter(body.retry_after_seconds));
     }
+    if (response.status === 404 && path === '/api/v1/admin/language') {
+      throw new Error('language endpoint not found; rebuild and restart the server binary');
+    }
     throw new Error(body.error ?? response.statusText);
   }
   return response.json() as Promise<T>;
