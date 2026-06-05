@@ -168,11 +168,22 @@ export type UpdateStatus = {
   message?: string;
 };
 
+export type UpdateDependencyStatus = {
+  ok: boolean;
+  platform: string;
+  checked?: string[];
+  missing?: string[];
+};
+
 export type UpdateApplyResponse = {
   ok: boolean;
   status: UpdateStatus;
   output?: string;
+  build_output?: string;
+  dependency_status?: UpdateDependencyStatus;
   restart_required: boolean;
+  restarting: boolean;
+  restart_at?: string;
 };
 
 export type Overview = {

@@ -3,6 +3,7 @@ package server
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -158,10 +159,16 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	git(t, source, "checkout", "-b", "main")
 	git(t, source, "config", "user.email", "test@example.com")
 	git(t, source, "config", "user.name", "GPUFleet Test")
+	if err := os.MkdirAll(filepath.Join(source, "cmd", "gpufleet-server"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "cmd", "gpufleet-server", "main.go"), []byte("package main\nfunc main() {}\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(source, "version.txt"), []byte("v1"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	git(t, source, "add", "version.txt")
+	git(t, source, "add", "cmd/gpufleet-server/main.go", "version.txt")
 	git(t, source, "commit", "-m", "initial")
 	git(t, source, "remote", "add", "origin", remote)
 	git(t, source, "push", "-u", "origin", "main")
@@ -169,6 +176,25 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	git(t, root, "clone", remote, local)
 
 	app := newTestAppWithRepo(t, root, filepath.Join(root, "missing-web"), local)
+	var buildReq updateBuildRequest
+	var restartReq updateRestartRequest
+	var buildCalled bool
+	var restartCalled bool
+	app.updateBuildServer = func(ctx context.Context, req updateBuildRequest) (updateBuildResult, error) {
+		buildCalled = true
+		buildReq = req
+		if err := os.WriteFile(req.OutputPath, []byte("test server binary"), 0700); err != nil {
+			return updateBuildResult{}, err
+		}
+		return updateBuildResult{OutputPath: req.OutputPath, Output: "test build ok"}, nil
+	}
+	app.updateScheduleRestart = func(req updateRestartRequest) error {
+		restartCalled = true
+		restartReq = req
+		_ = os.Remove(req.NextExe)
+		return nil
+	}
+	app.updateExit = func() {}
 	handler := app.Handler()
 	cookie := loginCookie(t, handler)
 
@@ -193,8 +219,17 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 
 	var applied updateApplyResponse
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusOK, &applied)
-	if !applied.OK || applied.RestartRequired == false || applied.Status.Available || applied.Status.LocalCommit != applied.Status.RemoteCommit {
+	if !applied.OK || applied.RestartRequired == false || !applied.Restarting || applied.RestartAt.IsZero() || applied.Status.Available || applied.Status.LocalCommit != applied.Status.RemoteCommit {
 		t.Fatalf("unexpected update apply response: %+v", applied)
+	}
+	if !buildCalled || buildReq.RemoteCommit != available.RemoteCommit || buildReq.OutputPath == "" {
+		t.Fatalf("expected update build hook to run for remote commit %s, got called=%v req=%+v", available.RemoteCommit, buildCalled, buildReq)
+	}
+	if !restartCalled || restartReq.CurrentExe == "" || restartReq.NextExe == "" || restartReq.PID <= 0 {
+		t.Fatalf("expected update restart hook to run, got called=%v req=%+v", restartCalled, restartReq)
+	}
+	if !applied.DependencyStatus.OK || applied.DependencyStatus.Platform == "" {
+		t.Fatalf("expected dependency status in update response, got %+v", applied.DependencyStatus)
 	}
 	raw, err := os.ReadFile(filepath.Join(local, "version.txt"))
 	if err != nil {

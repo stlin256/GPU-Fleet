@@ -114,7 +114,7 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 
 ## 服务端在线更新
 
-设置页的“在线更新”用于检查和拉取服务端自身 Git 仓库更新。服务端必须从 Git checkout 启动，并且当前分支需要配置 upstream，例如 `main` 跟踪 `origin/main`。
+设置页的“在线更新”用于检查、构建、拉取并自动重启服务端自身 Git 仓库更新。服务端必须从 Git checkout 启动，并且当前分支需要配置 upstream，例如 `main` 跟踪 `origin/main`。
 
 运行参数：
 
@@ -130,9 +130,10 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 
 - `-repo-dir` 默认为当前工作目录，也可用 `GPUFLEET_REPO_DIR` 指定。
 - 检查更新会执行固定 Git 状态检查和 `git fetch --quiet --prune`。
-- 点击拉取只会执行 `git pull --ff-only`。
+- 点击“拉取并重启”会先检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。
+- 服务端会在临时 Git worktree 中构建远端提交，构建成功后才执行 `git pull --ff-only`。
 - 工作区存在未提交改动、没有 upstream、本地超前或与上游分叉时会阻止更新。
-- 拉取更新后不会自动重启服务端；按当前部署方式重新启动或重新构建后生效。
+- 拉取完成后会生成平台重启器，等待旧进程退出后替换当前服务端二进制，并按原启动参数拉起新进程。重启日志写入当前二进制目录的 `gpufleet-update-restart.log`。
 
 ## 设备注册和密钥轮换
 

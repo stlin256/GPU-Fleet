@@ -96,10 +96,12 @@ MVP 支持本地管理员账号：
 - 该能力只操作服务端运行目录对应的 Git 工作区，由 `-repo-dir` 或 `GPUFLEET_REPO_DIR` 指定。
 - 接口需要已登录的 Web Cookie Session。
 - 请求体不接受命令、仓库路径、分支、远端或任意参数。
-- 后端只执行固定 Git 参数：状态检查、`fetch --quiet --prune`、`rev-parse`、`rev-list`、`status --porcelain` 和 `pull --ff-only`。
+- 后端只执行固定 Git 参数：状态检查、`fetch --quiet --prune`、`rev-parse`、`rev-list`、`status --porcelain`、`worktree add/remove` 和 `pull --ff-only`。
+- 后端只使用固定的 `go build ./cmd/gpufleet-server` 构建服务端，不接受前端传入构建命令。
+- 更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限；缺少依赖时拒绝应用更新。
 - 工作区存在未提交改动、没有 upstream、本地超前或与上游分叉时拒绝拉取。
 - Git 执行禁用终端交互提示，并禁用仓库本地 hooks。
-- 拉取更新后不自动重启服务进程，也不向客户端 Agent 下发升级命令。
+- 更新只会替换并重启服务端自身进程，不向客户端 Agent 下发升级命令。
 
 ## 数据脱敏
 

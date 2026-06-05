@@ -1366,7 +1366,11 @@ function UpdateSettings() {
     setBusy(true);
     try {
       const result = await applyUpdate();
-      setMessage(result.restart_required ? '更新已拉取，重启或重建服务端后生效' : '当前已经是最新版本');
+      if (result.restarting) {
+        setMessage(`更新已构建完成，服务端正在自动重启${result.restart_at ? `，预计 ${fmtDateTime(result.restart_at)} 前后恢复` : ''}`);
+      } else {
+        setMessage(result.restart_required ? '更新已拉取并构建完成，正在等待服务端重启' : '当前已经是最新版本');
+      }
       await query.invalidateQueries({ queryKey: ['update-status'] });
       await query.invalidateQueries({ queryKey: ['version'] });
     } catch (err) {
@@ -1424,10 +1428,10 @@ function UpdateSettings() {
         </button>
         <button className="primary compact" type="button" onClick={pull} disabled={!canApply}>
           <Download size={16} />
-          {busy ? '拉取中' : '拉取更新'}
+          {busy ? '更新中' : '拉取并重启'}
         </button>
       </div>
-      {(message || state.message) && <p className={message.includes('已') || state.tone === 'good' ? 'notice update-note' : 'error update-note'}>{message || state.message}</p>}
+      {(message || state.message) && <p className={message.includes('已') || message.includes('正在自动重启') || state.tone === 'good' ? 'notice update-note' : 'error update-note'}>{message || state.message}</p>}
     </article>
   );
 }
@@ -1441,7 +1445,7 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
   if (!status.upstream) return { label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream' };
   if (status.ahead > 0 && status.behind > 0) return { label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward' };
   if (status.ahead > 0) return { label: '本地超前', tone: 'warn', message: '本地提交超前上游，面板不会执行拉取' };
-  if (status.available) return { label: '有新版本', tone: 'good', message: `${status.behind} 个提交可拉取` };
+  if (status.available) return { label: '有新版本', tone: 'good', message: `${status.behind} 个提交可拉取、构建并自动重启` };
   return { label: '最新', tone: 'good', message: status.message || '已经是最新版本' };
 }
 

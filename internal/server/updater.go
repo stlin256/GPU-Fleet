@@ -10,15 +10,20 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	updateCheckTimeout = 25 * time.Second
-	updatePullTimeout  = 60 * time.Second
-	updateOutputLimit  = 6000
+	updateCheckTimeout   = 25 * time.Second
+	updatePullTimeout    = 60 * time.Second
+	updateBuildTimeout   = 3 * time.Minute
+	updateRestartDelay   = 1200 * time.Millisecond
+	updateOutputLimit    = 6000
+	updateSourceEntry    = "./cmd/gpufleet-server"
+	updateRestartLogName = "gpufleet-update-restart.log"
 )
 
 type updateStatus struct {
@@ -36,12 +41,46 @@ type updateStatus struct {
 	Message      string    `json:"message,omitempty"`
 }
 
-type updateApplyResponse struct {
-	OK              bool         `json:"ok"`
-	Status          updateStatus `json:"status"`
-	Output          string       `json:"output,omitempty"`
-	RestartRequired bool         `json:"restart_required"`
+type updateDependencyStatus struct {
+	OK       bool     `json:"ok"`
+	Platform string   `json:"platform"`
+	Checked  []string `json:"checked,omitempty"`
+	Missing  []string `json:"missing,omitempty"`
 }
+
+type updateApplyResponse struct {
+	OK               bool                   `json:"ok"`
+	Status           updateStatus           `json:"status"`
+	Output           string                 `json:"output,omitempty"`
+	BuildOutput      string                 `json:"build_output,omitempty"`
+	DependencyStatus updateDependencyStatus `json:"dependency_status,omitempty"`
+	RestartRequired  bool                   `json:"restart_required"`
+	Restarting       bool                   `json:"restarting"`
+	RestartAt        time.Time              `json:"restart_at,omitempty"`
+}
+
+type updateBuildRequest struct {
+	RepoDir      string
+	RemoteCommit string
+	OutputPath   string
+}
+
+type updateBuildResult struct {
+	OutputPath string
+	Output     string
+}
+
+type updateRestartRequest struct {
+	CurrentExe string
+	NextExe    string
+	Args       []string
+	WorkDir    string
+	PID        int
+	RestartAt  time.Time
+}
+
+type updateBuildFunc func(context.Context, updateBuildRequest) (updateBuildResult, error)
+type updateRestartFunc func(updateRestartRequest) error
 
 func (a *App) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -88,11 +127,42 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	deps := a.checkUpdateDependencies()
+	if !deps.OK {
+		_ = a.meta.AddAudit("server_update_failed", "missing update dependencies: "+strings.Join(deps.Missing, ", "))
+		writeError(w, http.StatusPreconditionFailed, "missing update dependencies: "+strings.Join(deps.Missing, ", "))
+		return
+	}
+
+	exePath, err := currentExecutablePath()
+	if err != nil {
+		_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
+		writeError(w, http.StatusPreconditionFailed, err.Error())
+		return
+	}
+	nextPath := exePath + ".next"
+	_ = os.Remove(nextPath)
+
+	buildCtx, buildCancel := context.WithTimeout(r.Context(), updateBuildTimeout)
+	buildResult, err := a.updateBuildServer(buildCtx, updateBuildRequest{
+		RepoDir:      a.config.RepoDir,
+		RemoteCommit: status.RemoteCommit,
+		OutputPath:   nextPath,
+	})
+	buildCancel()
+	if err != nil {
+		_ = os.Remove(nextPath)
+		_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("build update failed: %s", limitText(err.Error(), 500)))
+		return
+	}
+
 	before := status.LocalCommit
 	pullCtx, pullCancel := context.WithTimeout(r.Context(), updatePullTimeout)
 	output, err := a.runGit(pullCtx, "pull", "--ff-only")
 	pullCancel()
 	if err != nil {
+		_ = os.Remove(buildResult.OutputPath)
 		_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("git pull failed: %s", limitText(err.Error(), 500)))
 		return
@@ -102,12 +172,53 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	finalStatus := a.gitUpdateStatus(finalCtx)
 	finalCancel()
 	restartRequired := before != "" && finalStatus.LocalCommit != "" && before != finalStatus.LocalCommit
-	_ = a.meta.AddAudit("server_update_pulled", fmt.Sprintf("pulled fast-forward update from %s to %s", shortCommit(before), shortCommit(finalStatus.LocalCommit)))
+	if restartRequired {
+		restartAt := time.Now().UTC().Add(updateRestartDelay)
+		restartReq := updateRestartRequest{
+			CurrentExe: exePath,
+			NextExe:    buildResult.OutputPath,
+			Args:       append([]string(nil), os.Args[1:]...),
+			WorkDir:    mustGetwd(),
+			PID:        os.Getpid(),
+			RestartAt:  restartAt,
+		}
+		if err := a.updateScheduleRestart(restartReq); err != nil {
+			_ = os.Remove(buildResult.OutputPath)
+			_ = a.meta.AddAudit("server_update_failed", limitText(err.Error(), 300))
+			writeError(w, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500)))
+			return
+		}
+		_ = a.meta.AddAudit("server_update_scheduled", fmt.Sprintf("pulled %s -> %s and scheduled automatic restart", shortCommit(before), shortCommit(finalStatus.LocalCommit)))
+		go func() {
+			time.Sleep(updateRestartDelay)
+			if a.updateExit != nil {
+				a.updateExit()
+				return
+			}
+			os.Exit(0)
+		}()
+		writeJSON(w, http.StatusOK, updateApplyResponse{
+			OK:               true,
+			Status:           finalStatus,
+			Output:           limitText(output, updateOutputLimit),
+			BuildOutput:      limitText(buildResult.Output, updateOutputLimit),
+			DependencyStatus: deps,
+			RestartRequired:  true,
+			Restarting:       true,
+			RestartAt:        restartAt,
+		})
+		return
+	}
+
+	_ = os.Remove(buildResult.OutputPath)
 	writeJSON(w, http.StatusOK, updateApplyResponse{
-		OK:              true,
-		Status:          finalStatus,
-		Output:          limitText(output, updateOutputLimit),
-		RestartRequired: restartRequired,
+		OK:               true,
+		Status:           finalStatus,
+		Output:           limitText(output, updateOutputLimit),
+		BuildOutput:      limitText(buildResult.Output, updateOutputLimit),
+		DependencyStatus: deps,
+		RestartRequired:  false,
+		Restarting:       false,
 	})
 }
 
@@ -182,15 +293,241 @@ func (a *App) runGit(ctx context.Context, args ...string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	cmd := exec.CommandContext(ctx, "git", args...)
-	cmd.Args = append([]string{"git", "-c", "core.hooksPath=" + filepath.Join(os.TempDir(), "gpufleet-disabled-hooks")}, args...)
-	cmd.Dir = repoDir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never")
+	return runGitInDir(ctx, repoDir, args...)
+}
+
+func (a *App) checkUpdateDependencies() updateDependencyStatus {
+	status := updateDependencyStatus{OK: true, Platform: runtime.GOOS}
+	check := func(name string, err error) {
+		if err == nil {
+			status.Checked = append(status.Checked, name)
+			return
+		}
+		status.OK = false
+		status.Missing = append(status.Missing, name+" ("+err.Error()+")")
+	}
+
+	repoDir, err := a.repoDir()
+	check("repo-dir", err)
+	check("git", lookPath("git"))
+	check("go", lookPath("go"))
+	if err == nil {
+		check(updateSourceEntry, fileExists(filepath.Join(repoDir, "cmd", "gpufleet-server", "main.go")))
+	}
+	exePath, exeErr := currentExecutablePath()
+	check("current executable", exeErr)
+	if exeErr == nil {
+		check("executable directory writable", writableDir(filepath.Dir(exePath)))
+	}
+	switch runtime.GOOS {
+	case "windows":
+		check("powershell.exe", lookPath("powershell.exe"))
+	case "linux":
+		check("/bin/sh", fileExists("/bin/sh"))
+	default:
+		status.OK = false
+		status.Missing = append(status.Missing, "unsupported platform "+runtime.GOOS)
+	}
+	return status
+}
+
+func defaultBuildServerForUpdate(ctx context.Context, req updateBuildRequest) (updateBuildResult, error) {
+	if strings.TrimSpace(req.RemoteCommit) == "" {
+		return updateBuildResult{}, errors.New("remote commit is empty")
+	}
+	repoDir, err := filepath.Abs(req.RepoDir)
+	if err != nil {
+		return updateBuildResult{}, fmt.Errorf("resolve repo dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(req.OutputPath), 0755); err != nil {
+		return updateBuildResult{}, fmt.Errorf("prepare output dir: %w", err)
+	}
+	worktreeDir := filepath.Join(os.TempDir(), "gpufleet-update-worktree-"+strconv.FormatInt(time.Now().UnixNano(), 10))
+	defer os.RemoveAll(worktreeDir)
+
+	if output, err := runGitInDir(ctx, repoDir, "worktree", "add", "--detach", "--quiet", worktreeDir, req.RemoteCommit); err != nil {
+		return updateBuildResult{}, fmt.Errorf("create update worktree: %s", limitText(output+err.Error(), 500))
+	}
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_, _ = runGitInDir(cleanupCtx, repoDir, "worktree", "remove", "--force", worktreeDir)
+	}()
+
+	cmd := exec.CommandContext(ctx, "go", "build", "-trimpath", "-o", req.OutputPath, updateSourceEntry)
+	cmd.Dir = worktreeDir
+	cmd.Env = append(os.Environ(), "GOWORK=off")
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err = cmd.Run()
+	combined := limitText(stdout.String()+stderr.String(), updateOutputLimit)
+	if ctx.Err() != nil {
+		return updateBuildResult{OutputPath: req.OutputPath, Output: combined}, ctx.Err()
+	}
+	if err != nil {
+		return updateBuildResult{OutputPath: req.OutputPath, Output: combined}, fmt.Errorf("go build failed: %s", strings.TrimSpace(combined))
+	}
+	return updateBuildResult{OutputPath: req.OutputPath, Output: combined}, nil
+}
+
+func defaultScheduleRestartAfterUpdate(req updateRestartRequest) error {
+	if req.PID <= 0 {
+		return errors.New("invalid current process id")
+	}
+	if req.CurrentExe == "" || req.NextExe == "" {
+		return errors.New("restart paths are empty")
+	}
+	if _, err := os.Stat(req.NextExe); err != nil {
+		return fmt.Errorf("new server executable is not available: %w", err)
+	}
+	if req.RestartAt.IsZero() {
+		req.RestartAt = time.Now().UTC().Add(updateRestartDelay)
+	}
+	switch runtime.GOOS {
+	case "windows":
+		return scheduleWindowsRestart(req)
+	case "linux":
+		return scheduleLinuxRestart(req)
+	default:
+		return fmt.Errorf("unsupported restart platform %s", runtime.GOOS)
+	}
+}
+
+func scheduleWindowsRestart(req updateRestartRequest) error {
+	helper, err := os.CreateTemp("", "gpufleet-update-*.ps1")
+	if err != nil {
+		return fmt.Errorf("create restart helper: %w", err)
+	}
+	helperPath := helper.Name()
+	logPath := filepath.Join(filepath.Dir(req.CurrentExe), updateRestartLogName)
+	script := windowsRestartScript(req, logPath, helperPath)
+	if _, err := helper.WriteString(script); err != nil {
+		helper.Close()
+		return fmt.Errorf("write restart helper: %w", err)
+	}
+	if err := helper.Close(); err != nil {
+		return fmt.Errorf("close restart helper: %w", err)
+	}
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", helperPath)
+	cmd.Dir = req.WorkDir
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
+func scheduleLinuxRestart(req updateRestartRequest) error {
+	helper, err := os.CreateTemp("", "gpufleet-update-*.sh")
+	if err != nil {
+		return fmt.Errorf("create restart helper: %w", err)
+	}
+	helperPath := helper.Name()
+	logPath := filepath.Join(filepath.Dir(req.CurrentExe), updateRestartLogName)
+	script := linuxRestartScript(req, logPath, helperPath)
+	if _, err := helper.WriteString(script); err != nil {
+		helper.Close()
+		return fmt.Errorf("write restart helper: %w", err)
+	}
+	if err := helper.Close(); err != nil {
+		return fmt.Errorf("close restart helper: %w", err)
+	}
+	if err := os.Chmod(helperPath, 0700); err != nil {
+		return fmt.Errorf("chmod restart helper: %w", err)
+	}
+	cmd := exec.Command("/bin/sh", helperPath)
+	cmd.Dir = req.WorkDir
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
+}
+
+func windowsRestartScript(req updateRestartRequest, logPath, helperPath string) string {
+	args := make([]string, 0, len(req.Args))
+	for _, arg := range req.Args {
+		args = append(args, psQuote(arg))
+	}
+	delayMs := int(time.Until(req.RestartAt) / time.Millisecond)
+	if delayMs < 0 {
+		delayMs = 0
+	}
+	return fmt.Sprintf(`$ErrorActionPreference = 'Stop'
+Start-Sleep -Milliseconds %d
+try {
+  Wait-Process -Id %d -Timeout 30 -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue
+  Move-Item -LiteralPath %s -Destination %s -Force
+  Start-Process -FilePath %s -ArgumentList @(%s) -WorkingDirectory %s -WindowStyle Hidden
+  "restarted at $(Get-Date -Format o)" | Out-File -FilePath %s -Append -Encoding utf8
+} catch {
+  "restart failed at $(Get-Date -Format o): $($_.Exception.Message)" | Out-File -FilePath %s -Append -Encoding utf8
+  exit 1
+} finally {
+  Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue
+}
+`,
+		delayMs,
+		req.PID,
+		psQuote(req.CurrentExe),
+		psQuote(req.NextExe),
+		psQuote(req.CurrentExe),
+		psQuote(req.CurrentExe),
+		strings.Join(args, ", "),
+		psQuote(req.WorkDir),
+		psQuote(logPath),
+		psQuote(logPath),
+		psQuote(helperPath),
+	)
+}
+
+func linuxRestartScript(req updateRestartRequest, logPath, helperPath string) string {
+	args := make([]string, 0, len(req.Args))
+	for _, arg := range req.Args {
+		args = append(args, shQuote(arg))
+	}
+	delay := time.Until(req.RestartAt).Seconds()
+	if delay < 0 {
+		delay = 0
+	}
+	return fmt.Sprintf(`#!/bin/sh
+set -eu
+sleep %.3f
+i=0
+while kill -0 %d 2>/dev/null && [ "$i" -lt 300 ]; do
+  i=$((i + 1))
+  sleep 0.1
+done
+mv -f %s %s
+cd %s
+nohup %s %s >> %s 2>&1 &
+printf 'restarted at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
+rm -f %s
+`,
+		delay,
+		req.PID,
+		shQuote(req.NextExe),
+		shQuote(req.CurrentExe),
+		shQuote(req.WorkDir),
+		shQuote(req.CurrentExe),
+		strings.Join(args, " "),
+		shQuote(logPath),
+		shQuote(logPath),
+		shQuote(helperPath),
+	)
+}
+
+func runGitInDir(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Args = append([]string{"git", "-c", "core.hooksPath=" + filepath.Join(os.TempDir(), "gpufleet-disabled-hooks")}, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GCM_INTERACTIVE=Never")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
 	text := limitText(stdout.String(), updateOutputLimit)
 	if ctx.Err() != nil {
 		return text, ctx.Err()
@@ -200,6 +537,63 @@ func (a *App) runGit(ctx context.Context, args ...string) (string, error) {
 		return combined, fmt.Errorf("%s: %s", strings.Join(args, " "), strings.TrimSpace(combined))
 	}
 	return text, nil
+}
+
+func currentExecutablePath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolve current executable: %w", err)
+	}
+	abs, err := filepath.Abs(exe)
+	if err != nil {
+		return "", fmt.Errorf("resolve current executable path: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return abs, nil
+	}
+	return resolved, nil
+}
+
+func writableDir(dir string) error {
+	probe, err := os.CreateTemp(dir, ".gpufleet-update-write-*")
+	if err != nil {
+		return err
+	}
+	name := probe.Name()
+	if err := probe.Close(); err != nil {
+		_ = os.Remove(name)
+		return err
+	}
+	return os.Remove(name)
+}
+
+func fileExists(path string) error {
+	if _, err := os.Stat(path); err != nil {
+		return err
+	}
+	return nil
+}
+
+func lookPath(name string) error {
+	_, err := exec.LookPath(name)
+	return err
+}
+
+func mustGetwd() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return filepath.Dir(os.Args[0])
+	}
+	return wd
+}
+
+func psQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
+func shQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func parseAheadBehind(raw string) (int, int) {

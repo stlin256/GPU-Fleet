@@ -18,6 +18,8 @@ logs/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.next
+gpufleet-update-restart.log
 agent-queue/
 
 # Env and local config

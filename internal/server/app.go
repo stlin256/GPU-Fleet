@@ -38,18 +38,21 @@ type Config struct {
 }
 
 type App struct {
-	config     Config
-	meta       *MetadataStore
-	metrics    *MetricsStore
-	processes  *ProcessStore
-	nonces     *NonceStore
-	sessions   *SessionStore
-	loginRate  *RateLimiter
-	loginGuard *LoginGuard
-	agentRate  *RateLimiter
-	updateMu   sync.Mutex
-	logger     *log.Logger
-	scheme     string
+	config                Config
+	meta                  *MetadataStore
+	metrics               *MetricsStore
+	processes             *ProcessStore
+	nonces                *NonceStore
+	sessions              *SessionStore
+	loginRate             *RateLimiter
+	loginGuard            *LoginGuard
+	agentRate             *RateLimiter
+	updateMu              sync.Mutex
+	updateBuildServer     updateBuildFunc
+	updateScheduleRestart updateRestartFunc
+	updateExit            func()
+	logger                *log.Logger
+	scheme                string
 }
 
 const webSessionTTL = 30 * 24 * time.Hour
@@ -117,17 +120,20 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 	}
 
 	return &App{
-		config:     config,
-		meta:       meta,
-		metrics:    metrics,
-		processes:  processes,
-		nonces:     NewNonceStore(10 * time.Minute),
-		sessions:   NewSessionStore(webSessionTTL, meta),
-		loginRate:  NewRateLimiter(10, time.Minute),
-		loginGuard: NewLoginGuard(5, 30*time.Minute, 5*time.Minute, time.Hour),
-		agentRate:  NewRateLimiter(240, time.Minute),
-		logger:     logger,
-		scheme:     scheme,
+		config:                config,
+		meta:                  meta,
+		metrics:               metrics,
+		processes:             processes,
+		nonces:                NewNonceStore(10 * time.Minute),
+		sessions:              NewSessionStore(webSessionTTL, meta),
+		loginRate:             NewRateLimiter(10, time.Minute),
+		loginGuard:            NewLoginGuard(5, 30*time.Minute, 5*time.Minute, time.Hour),
+		agentRate:             NewRateLimiter(240, time.Minute),
+		updateBuildServer:     defaultBuildServerForUpdate,
+		updateScheduleRestart: defaultScheduleRestartAfterUpdate,
+		updateExit:            func() { os.Exit(0) },
+		logger:                logger,
+		scheme:                scheme,
 	}, generatedPassword, nil
 }
 

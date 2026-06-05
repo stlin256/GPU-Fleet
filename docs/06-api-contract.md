@@ -279,9 +279,9 @@ POST /api/v1/admin/update/apply
 - `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，有证书并重启后使用 HTTPS。
 - `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
 - `GET /admin/update/status`：检查服务端自身 Git 工作区和 upstream 状态。
-- `POST /admin/update/apply`：仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时执行 `git pull --ff-only`。
+- `POST /admin/update/apply`：仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时预检依赖、构建远端提交、执行 `git pull --ff-only`，并安排服务端自动重启。
 
-在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。拉取完成后返回 `restart_required`，但不会自动重启服务进程。
+在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。依赖缺失时返回错误且不会开始应用更新。
 
 更新状态响应示例：
 
@@ -308,7 +308,15 @@ POST /api/v1/admin/update/apply
 {
   "ok": true,
   "restart_required": true,
+  "restarting": true,
+  "restart_at": "2026-06-05T12:00:07Z",
   "output": "Updating 1111111..2222222\nFast-forward",
+  "build_output": "",
+  "dependency_status": {
+    "ok": true,
+    "platform": "windows",
+    "checked": ["repo-dir", "git", "go", "./cmd/gpufleet-server", "current executable", "executable directory writable", "powershell.exe"]
+  },
   "status": {
     "available": false,
     "supported": true,

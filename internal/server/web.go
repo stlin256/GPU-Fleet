@@ -1628,7 +1628,7 @@ const dashboardHTML = `<!doctype html>
       return '<article class="panel setting-operation"' + (testID ? ' data-testid="' + esc(testID) + '"' : '') + '><div class="operation-head"><div class="operation-icon">' + esc(icon) + '</div><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>' + action + '</article>';
     }
     function updatePanel() {
-      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div><div><span>超前</span><strong id="updateAhead">0</strong></div></div><div class="update-meta"><div><span>远端</span><strong id="updateRemoteURL">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>拉取更新</button></div><p class="update-note" id="updateMessage">服务端只允许 fast-forward 拉取。</p></article>';
+      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div><div><span>超前</span><strong id="updateAhead">0</strong></div></div><div class="update-meta"><div><span>远端</span><strong id="updateRemoteURL">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>拉取并重启</button></div><p class="update-note" id="updateMessage">服务端会先检查依赖，再拉取、构建并自动重启。</p></article>';
     }
     async function checkUpdateStatus() {
       const state = document.getElementById('updateState');
@@ -1645,11 +1645,11 @@ const dashboardHTML = `<!doctype html>
       const button = document.getElementById('updateApplyButton');
       const message = document.getElementById('updateMessage');
       if (button) button.disabled = true;
-      if (message) message.textContent = '正在拉取更新';
+      if (message) message.textContent = '正在检查依赖、拉取并构建更新';
       try {
         const result = await api('/api/v1/admin/update/apply', {method: 'POST'});
         renderUpdateStatus(result.status || {});
-        if (message) message.textContent = result.restart_required ? '更新已拉取，重启或重建服务端后生效' : '当前已经是最新版本';
+        if (message) message.textContent = result.restarting ? '更新已构建完成，服务端正在自动重启' : (result.restart_required ? '更新已拉取并构建完成，正在等待服务端重启' : '当前已经是最新版本');
       } catch (err) {
         renderUpdateError(err.message || 'update failed');
       }
@@ -1703,7 +1703,7 @@ const dashboardHTML = `<!doctype html>
       if (!status.upstream) return {label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream'};
       if (status.ahead > 0 && status.behind > 0) return {label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward'};
       if (status.ahead > 0) return {label: '本地超前', tone: 'warn', message: '本地提交超前上游，面板不会执行拉取'};
-      if (status.available) return {label: '有新版本', tone: 'good', message: String(status.behind || 0) + ' 个提交可拉取'};
+      if (status.available) return {label: '有新版本', tone: 'good', message: String(status.behind || 0) + ' 个提交可拉取、构建并自动重启'};
       return {label: '最新', tone: 'good', message: status.message || '已经是最新版本'};
     }
     function shortHash(value) {
