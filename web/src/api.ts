@@ -262,6 +262,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function requestWithFallback<T>(paths: string[], options: RequestInit = {}): Promise<T> {
+  let lastError: Error | undefined;
+  for (const path of paths) {
+    try {
+      return await request<T>(path, options);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (!lastError.message.toLowerCase().includes('not found')) throw lastError;
+    }
+  }
+  throw lastError ?? new Error('request failed');
+}
+
 function fmtRetryAfter(seconds: number, language: AppLanguage) {
   const rounded = Math.max(1, Math.ceil(seconds));
   if (language === 'zh-CN') {
@@ -389,7 +402,7 @@ export function updateLanguage(language: AppLanguage) {
 }
 
 export function updateProxy(proxyURL: string) {
-  return request<ServiceMutationResponse>('/api/v1/admin/update/proxy', {
+  return requestWithFallback<ServiceMutationResponse>(['/api/v1/admin/update/proxy', '/api/v1/admin/update-proxy'], {
     method: 'POST',
     body: JSON.stringify({ proxy_url: proxyURL })
   });

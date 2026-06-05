@@ -156,6 +156,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/server-config", a.requireSession(a.handleAdminServerConfig))
 	mux.HandleFunc("/api/v1/admin/language", a.requireSession(a.handleAdminLanguage))
 	mux.HandleFunc("/api/v1/admin/update/proxy", a.requireSession(a.handleAdminUpdateProxy))
+	mux.HandleFunc("/api/v1/admin/update-proxy", a.requireSession(a.handleAdminUpdateProxy))
 	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
 	mux.HandleFunc("/api/v1/admin/database/download", a.requireSession(a.handleDatabaseDownload))
 	mux.HandleFunc("/api/v1/admin/update/status", a.requireSession(a.handleUpdateStatus))
@@ -565,7 +566,7 @@ func (a *App) handleDatabaseDownload(w http.ResponseWriter, r *http.Request) {
 			return nil
 		}
 		relSlash := filepath.ToSlash(rel)
-		if relSlash != "metadata.json" && relSlash != "processes.json" && !strings.HasPrefix(relSlash, "metrics/") {
+		if shouldSkipDatabaseArchiveFile(relSlash) {
 			return nil
 		}
 		info, err := entry.Info()
@@ -701,7 +702,7 @@ func databaseSizeBytes(dataDir string) uint64 {
 			return nil
 		}
 		relSlash := filepath.ToSlash(rel)
-		if relSlash != "metadata.json" && relSlash != "processes.json" && !strings.HasPrefix(relSlash, "metrics/") {
+		if shouldSkipDatabaseArchiveFile(relSlash) {
 			return nil
 		}
 		info, err := entry.Info()
@@ -711,6 +712,27 @@ func databaseSizeBytes(dataDir string) uint64 {
 		return nil
 	})
 	return total
+}
+
+func shouldSkipDataFile(relSlash string) bool {
+	base := filepath.Base(relSlash)
+	if base == "" || strings.HasPrefix(base, ".") {
+		return true
+	}
+	if strings.HasSuffix(base, ".tmp") || strings.HasSuffix(base, ".lock") {
+		return true
+	}
+	return false
+}
+
+func shouldSkipDatabaseArchiveFile(relSlash string) bool {
+	if shouldSkipDataFile(relSlash) {
+		return true
+	}
+	if strings.HasPrefix(relSlash, "certs/") {
+		return true
+	}
+	return false
 }
 
 func (a *App) handleDevices(w http.ResponseWriter, r *http.Request) {

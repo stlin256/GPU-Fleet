@@ -591,7 +591,8 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
     queryKey: ['overview'],
     queryFn: getOverview,
     refetchInterval: 10000,
-    retry: false
+    retry: 6,
+    retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 3000)
   });
   const stats = useQuery({
     queryKey: ['stats', 24],
@@ -1629,7 +1630,8 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
       await onDone();
       await update.refetch();
     } catch (err) {
-      setProxyMessage(err instanceof Error ? err.message : 'proxy update failed');
+      const message = err instanceof Error ? err.message : 'proxy update failed';
+      setProxyMessage(message.toLowerCase().includes('not found') ? '当前服务端未包含更新代理接口，请先完成服务端更新并重启' : message);
     } finally {
       setSavingProxy(false);
     }

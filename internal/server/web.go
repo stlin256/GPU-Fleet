@@ -1124,7 +1124,9 @@ const dashboardHTML = `<!doctype html>
       const nodes = [];
       while (walker.nextNode()) nodes.push(walker.currentNode);
       nodes.forEach((node) => {
-        if (!node.__sourceText) node.__sourceText = node.nodeValue;
+        const current = node.nodeValue || '';
+        const translated = fallbackTranslateText(node.__sourceText || current);
+        if (!node.__sourceText || (current !== node.__sourceText && current !== translated)) node.__sourceText = current;
         const next = fallbackTranslateText(node.__sourceText);
         if (node.nodeValue !== next) node.nodeValue = next;
       });
@@ -1133,7 +1135,8 @@ const dashboardHTML = `<!doctype html>
           const value = el.getAttribute(attr);
           if (!value) return;
           const key = '__source_' + attr;
-          if (!el[key]) el[key] = value;
+          const translated = fallbackTranslateText(el[key] || value);
+          if (!el[key] || (value !== el[key] && value !== translated)) el[key] = value;
           el.setAttribute(attr, fallbackTranslateText(el[key]));
         });
       });

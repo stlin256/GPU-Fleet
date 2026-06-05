@@ -342,7 +342,7 @@ export function translateRoot(root: ParentNode, language: AppLanguage) {
     const stored = textSources.get(node);
     const current = node.nodeValue ?? '';
     let source = stored ?? current;
-    if (stored && language !== 'zh-CN') {
+    if (stored) {
       const translatedStored = translateText(stored, language);
       if (current !== stored && current !== translatedStored) source = current;
     }
@@ -359,7 +359,7 @@ export function translateRoot(root: ParentNode, language: AppLanguage) {
       const current = element.getAttribute(attr);
       if (!current) continue;
       let source = stored[attr] ?? current;
-      if (stored[attr] && language !== 'zh-CN') {
+      if (stored[attr]) {
         const translatedStored = translateText(stored[attr], language);
         if (current !== stored[attr] && current !== translatedStored) source = current;
       }
