@@ -2420,10 +2420,14 @@ function UtilChart({ items, theme, compact = false }: { items: StoredGPU[]; them
   const barColor = theme === 'dark' ? '#4db6ac' : '#146c78';
   const option = useMemo(() => ({
     tooltip: {},
+    animation: true,
+    animationDuration: 260,
+    animationDurationUpdate: 360,
+    animationEasingUpdate: 'cubicOut' as const,
     grid: { left: 32, right: 12, top: compact ? 12 : 22, bottom: compact ? 18 : 24 },
     xAxis: { type: 'category', data: items.map((item) => item.gpu.gpu_id), axisLabel: { color: axisColor } },
     yAxis: { type: 'value', max: 100, axisLabel: { color: axisColor }, splitLine: { lineStyle: { color: theme === 'dark' ? '#2c3741' : '#d9e0e7' } } },
-    series: [{ type: 'bar', data: items.map((item) => item.gpu.utilization_gpu_percent ?? 0), itemStyle: { color: barColor, borderRadius: [4, 4, 0, 0] } }]
+    series: [{ type: 'bar', id: 'gpu-utilization', animationDuration: 0, animationDurationUpdate: 360, data: items.map((item) => item.gpu.utilization_gpu_percent ?? 0), itemStyle: { color: barColor, borderRadius: [4, 4, 0, 0] } }]
   }), [axisColor, barColor, compact, items, theme]);
 
   return <EChart option={option} />;
@@ -2431,16 +2435,21 @@ function UtilChart({ items, theme, compact = false }: { items: StoredGPU[]; them
 
 function EChart({ option }: { option: echarts.EChartsCoreOption }) {
   const ref = React.useRef<HTMLDivElement>(null);
+  const chartRef = React.useRef<echarts.ECharts | null>(null);
   React.useEffect(() => {
     if (!ref.current) return;
     const chart = echarts.init(ref.current);
-    chart.setOption(option);
+    chartRef.current = chart;
     const resize = () => chart.resize();
     window.addEventListener('resize', resize);
     return () => {
       window.removeEventListener('resize', resize);
       chart.dispose();
+      chartRef.current = null;
     };
+  }, []);
+  React.useEffect(() => {
+    chartRef.current?.setOption(option, { notMerge: false, lazyUpdate: true });
   }, [option]);
   return <div className="chart" ref={ref} />;
 }
