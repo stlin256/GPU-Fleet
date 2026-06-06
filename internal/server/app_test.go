@@ -14,6 +14,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -459,6 +460,24 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	if !guestOverview.Guest || len(guestOverview.LatestProcesses) != 0 || guestOverview.LatestGPUs[0].DeviceID == created.Device.ID || guestOverview.LatestGPUs[0].GPU.UUIDHash != "" || guestOverview.LatestGPUs[0].GPU.DriverVersion != "" {
 		t.Fatalf("guest overview leaked sensitive data: %+v", guestOverview)
 	}
+	var guestSeries []SeriesPoint
+	guestSeriesPath := "/api/v1/guest/gpus/0/series?device_id=" + url.QueryEscape(guestOverview.LatestGPUs[0].DeviceID) + "&hours=1"
+	req = httptest.NewRequest(http.MethodGet, guestSeriesPath, nil)
+	req.Header.Set("X-GPUFleet-Guest-Fingerprint", "fp-test")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected guest GPU series 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &guestSeries); err != nil {
+		t.Fatal(err)
+	}
+	if len(guestSeries) == 0 {
+		t.Fatalf("expected guest GPU series points, got none")
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/guest", map[string]bool{"enabled": false}, cookie, http.StatusOK, nil)
+	doJSON(t, handler, http.MethodGet, "/api/v1/guest/overview", nil, nil, http.StatusForbidden, nil)
+	doJSON(t, handler, http.MethodGet, guestSeriesPath, nil, nil, http.StatusForbidden, nil)
 	var guestVisits struct {
 		OK     bool         `json:"ok"`
 		Visits []GuestVisit `json:"visits"`

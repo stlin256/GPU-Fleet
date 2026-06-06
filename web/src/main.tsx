@@ -48,6 +48,7 @@ import {
   deleteDevice,
   Device,
   getGPUSeries,
+  getGuestGPUSeries,
   getGuestOverview,
   getGuestStatus,
   getGuestVisits,
@@ -640,7 +641,7 @@ function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: (
           {loading ? t('登录中') : t('登录')}
         </button>
         {guestEnabled && (
-          <button className="secondary action-button" type="button" onClick={enterGuest}>
+          <button className="secondary action-button guest-login-button" type="button" onClick={enterGuest}>
             <Activity size={18} />
             {t('访客访问')}
           </button>
@@ -757,7 +758,7 @@ function Brand() {
 
 function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
   return (
-    <button className="icon-button theme-toggle" onClick={onToggle} title={theme === 'dark' ? '切换浅色' : '切换深色'} data-testid="theme-toggle">
+    <button className="icon-button theme-toggle" type="button" onClick={onToggle} title={theme === 'dark' ? '切换浅色' : '切换深色'} data-testid="theme-toggle">
       {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
     </button>
   );
@@ -807,7 +808,7 @@ function GuestDashboard({ theme, onToggleTheme }: { theme: Theme; onToggleTheme:
 
 function OverviewPage({ data, statRows, theme, guest = false }: { data?: Overview; statRows: GPUStats[]; theme: Theme; guest?: boolean }) {
   const gpus = data?.latest_gpus ?? [];
-  const aggregateSeries = useAggregateSeries(guest ? [] : gpus);
+  const aggregateSeries = useAggregateSeries(gpus, guest);
   const devices = data?.devices ?? [];
   const hotCount = gpus.filter((item) => (item.gpu.temperature_celsius ?? 0) >= 80).length;
   const busyCount = gpus.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) >= 80).length;
@@ -941,11 +942,10 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
   const powerLimit = gpu.power_limit_watts ?? gpu.power_enforced_limit_watts;
   const deviceColor = deviceBorderColor(item.device_id);
   const series = useQuery({
-    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1),
-    queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
+    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1, guest),
+    queryFn: () => guest ? getGuestGPUSeries(item.device_id, gpu.gpu_id, 1) : getGPUSeries(item.device_id, gpu.gpu_id, 1),
     staleTime: 20_000,
     refetchInterval: 30000,
-    enabled: !guest,
     retry: false
   });
   const points = series.data ?? [];
@@ -1077,17 +1077,17 @@ type AggregateSeries = AggregateSeriesData & {
   ready: boolean;
 };
 
-function useAggregateSeries(items: StoredGPU[]): AggregateSeries {
+function useAggregateSeries(items: StoredGPU[], guest = false): AggregateSeries {
   const query = useQueryClient();
   const keys = useMemo(() => items.map((item) => `${item.device_id}/${item.gpu.gpu_id}`).sort(), [items]);
   const series = useQuery({
-    queryKey: ['aggregate-gpu-series', keys],
+    queryKey: ['aggregate-gpu-series', guest ? 'guest' : 'admin', keys],
     queryFn: async () => {
       const batches = await Promise.all(items.map(async (item) => ({
         item,
         points: await query.fetchQuery({
-          queryKey: gpuSeriesQueryKey(item.device_id, item.gpu.gpu_id, 1),
-          queryFn: () => getGPUSeries(item.device_id, item.gpu.gpu_id, 1),
+          queryKey: gpuSeriesQueryKey(item.device_id, item.gpu.gpu_id, 1, guest),
+          queryFn: () => guest ? getGuestGPUSeries(item.device_id, item.gpu.gpu_id, 1) : getGPUSeries(item.device_id, item.gpu.gpu_id, 1),
           staleTime: 20_000
         })
       })));
@@ -1101,8 +1101,8 @@ function useAggregateSeries(items: StoredGPU[]): AggregateSeries {
   return series.data ? { ...series.data, ready: true } : { utilization: [], memory: [], power: [], ready: false };
 }
 
-function gpuSeriesQueryKey(deviceID: string, gpuID: string, hours: number) {
-  return ['gpu-series', deviceID, gpuID, hours] as const;
+function gpuSeriesQueryKey(deviceID: string, gpuID: string, hours: number, guest = false) {
+  return ['gpu-series', guest ? 'guest' : 'admin', deviceID, gpuID, hours] as const;
 }
 
 function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeriesData {

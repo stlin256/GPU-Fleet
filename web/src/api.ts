@@ -420,6 +420,12 @@ export function getGPUSeries(deviceId: string, gpuId: string, hours = 1) {
   return request<GPUSeriesPoint[]>(`/api/v1/gpus/${encodeURIComponent(gpuId)}/series?device_id=${encodeURIComponent(deviceId)}&hours=${hours}`);
 }
 
+export function getGuestGPUSeries(deviceId: string, gpuId: string, hours = 1) {
+  return request<GPUSeriesPoint[]>(`/api/v1/guest/gpus/${encodeURIComponent(gpuId)}/series?device_id=${encodeURIComponent(deviceId)}&hours=${hours}`, {
+    headers: guestFingerprintHeaders()
+  });
+}
+
 export function createDevice(alias: string) {
   return request<DeviceSecretResponse>('/api/v1/admin/devices', {
     method: 'POST',

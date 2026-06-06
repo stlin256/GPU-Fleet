@@ -149,6 +149,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/setup/apply", a.handleSetupApply)
 	mux.HandleFunc("/api/v1/guest/status", a.handleGuestStatus)
 	mux.HandleFunc("/api/v1/guest/overview", a.handleGuestOverview)
+	mux.HandleFunc("/api/v1/guest/gpus/", a.handleGuestGPUSeries)
 	mux.HandleFunc("/api/v1/auth/login", a.handleLogin)
 	mux.HandleFunc("/api/v1/auth/logout", a.handleLogout)
 	mux.HandleFunc("/api/v1/version", a.requireSession(a.handleVersion))
@@ -727,6 +728,43 @@ func (a *App) handleGuestOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, a.overviewResponse(r, true))
 }
 
+func (a *App) handleGuestGPUSeries(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !a.meta.ServiceConfig().GuestEnabled {
+		writeError(w, http.StatusForbidden, "guest access disabled")
+		return
+	}
+	if !strings.HasSuffix(r.URL.Path, "/series") {
+		http.NotFound(w, r)
+		return
+	}
+	gpuID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/guest/gpus/"), "/series")
+	if gpuID == "" {
+		writeError(w, http.StatusBadRequest, "missing gpu id")
+		return
+	}
+	guestDeviceID := r.URL.Query().Get("device_id")
+	if guestDeviceID == "" {
+		writeError(w, http.StatusBadRequest, "missing device_id")
+		return
+	}
+	deviceID, ok := a.realDeviceIDForGuest(guestDeviceID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "device not found")
+		return
+	}
+	hours := parseHours(r, 1)
+	points, err := a.metrics.Series(deviceID, gpuID, time.Now().Add(-time.Duration(hours)*time.Hour))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, points)
+}
+
 func (a *App) overviewResponse(r *http.Request, guest bool) overviewResponse {
 	devices := a.meta.ListDevices()
 	diskStatus, _ := a.metrics.DiskStatus()
@@ -842,6 +880,16 @@ func chooseString(allowed bool, value string) string {
 		return ""
 	}
 	return value
+}
+
+func (a *App) realDeviceIDForGuest(guestDeviceID string) (string, bool) {
+	devices := a.meta.ListDevices()
+	for index, device := range devices {
+		if guestDeviceID == fmt.Sprintf("guest-device-%d", index+1) {
+			return device.ID, true
+		}
+	}
+	return "", false
 }
 
 func databaseSizeBytes(dataDir string) uint64 {
