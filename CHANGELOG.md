@@ -43,6 +43,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: The online update card now removes ahead, running commit, and remote fields, requires confirmation before updating, and adds an immediately applied disk reserve setting.
 - zh-CN: 首次配置和设置页重新打开配置引导统一为同一套全屏品牌化向导，重新打开时会预填此前端口、语言和证书状态。
 - en-US: First-time setup and the settings-page setup wizard now share the same full-screen branded flow, with reopened setup prefilled from the existing port, language, and certificate state.
+- zh-CN: 设置页新增手动重启服务操作，确认后以全屏进度等待服务恢复，并在恢复刷新后弹出重启成功提示。
+- en-US: Added a manual service restart action in settings, with a full-screen recovery progress view and a restart success notice after refresh.
 
 ### Fixed / 修复
 

@@ -163,6 +163,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/update/proxy", a.requireSession(a.handleAdminUpdateProxy))
 	mux.HandleFunc("/api/v1/admin/update-proxy", a.requireSession(a.handleAdminUpdateProxy))
 	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
+	mux.HandleFunc("/api/v1/admin/restart", a.requireSession(a.handleAdminRestart))
 	mux.HandleFunc("/api/v1/admin/database/download", a.requireSession(a.handleDatabaseDownload))
 	mux.HandleFunc("/api/v1/admin/update/status", a.requireSession(a.handleUpdateStatus))
 	mux.HandleFunc("/api/v1/admin/update/apply", a.requireSession(a.handleUpdateApply))
@@ -522,45 +523,67 @@ func (a *App) handleAdminCertificate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	restartRequired := true
-	restarting := false
-	var restartAt time.Time
-	if restartRequired {
-		exePath, err := currentExecutablePath()
-		if err != nil {
-			writeError(w, http.StatusPreconditionFailed, err.Error())
-			return
-		}
-		restartAt = time.Now().UTC().Add(updateRestartDelay)
-		restartReq := updateRestartRequest{
-			CurrentExe:        exePath,
-			Args:              append([]string(nil), os.Args[1:]...),
-			WorkDir:           mustGetwd(),
-			PID:               os.Getpid(),
-			RestartAt:         restartAt,
-			ReplaceExecutable: false,
-		}
-		if err := a.updateScheduleRestart(restartReq); err != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500)))
-			return
-		}
-		restarting = true
-		_ = a.meta.AddAudit("certificate_restart_scheduled", "saved HTTPS certificate and scheduled automatic restart")
-		go func() {
-			time.Sleep(updateRestartDelay)
-			if a.updateExit != nil {
-				a.updateExit()
-				return
-			}
-			os.Exit(0)
-		}()
+	restartAt, err := a.scheduleServiceRestart()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500)))
+		return
 	}
+	_ = a.meta.AddAudit("certificate_restart_scheduled", "saved HTTPS certificate and scheduled automatic restart")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":               true,
 		"service":          a.serviceStatusFromConfig(config, r),
 		"restart_required": restartRequired,
-		"restarting":       restarting,
+		"restarting":       true,
 		"restart_at":       restartAt,
 	})
+}
+
+func (a *App) handleAdminRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	restartAt, err := a.scheduleServiceRestart()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500)))
+		return
+	}
+	_ = a.meta.AddAudit("service_restart_scheduled", "manual service restart scheduled from settings")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"service":          a.serviceStatusFromConfig(a.meta.ServiceConfig(), r),
+		"restart_required": true,
+		"restarting":       true,
+		"restart_at":       restartAt,
+	})
+}
+
+func (a *App) scheduleServiceRestart() (time.Time, error) {
+	exePath, err := currentExecutablePath()
+	if err != nil {
+		return time.Time{}, err
+	}
+	restartAt := time.Now().UTC().Add(updateRestartDelay)
+	restartReq := updateRestartRequest{
+		CurrentExe:        exePath,
+		Args:              append([]string(nil), os.Args[1:]...),
+		WorkDir:           mustGetwd(),
+		PID:               os.Getpid(),
+		RestartAt:         restartAt,
+		ReplaceExecutable: false,
+	}
+	if err := a.updateScheduleRestart(restartReq); err != nil {
+		return time.Time{}, err
+	}
+	go func() {
+		time.Sleep(updateRestartDelay)
+		if a.updateExit != nil {
+			a.updateExit()
+			return
+		}
+		os.Exit(0)
+	}()
+	return restartAt, nil
 }
 
 func (a *App) handleDatabaseDownload(w http.ResponseWriter, r *http.Request) {
@@ -1287,7 +1310,7 @@ type serviceStatus struct {
 	HTTPSEnabled      bool      `json:"https_enabled"`
 	Language          string    `json:"language"`
 	UpdateProxy       string    `json:"update_proxy,omitempty"`
-	MinFreeBytes     uint64    `json:"min_free_bytes"`
+	MinFreeBytes      uint64    `json:"min_free_bytes"`
 	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
 	ConfigRevision    int       `json:"config_revision"`
 	UpdatedAt         time.Time `json:"updated_at,omitempty"`

@@ -671,6 +671,19 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 		t.Fatalf("expected cert expiry %s, got %s", notAfter, certUpdate.Service.CertNotAfter)
 	}
 
+	var manualRestart struct {
+		OK              bool          `json:"ok"`
+		Service         serviceStatus `json:"service"`
+		RestartRequired bool          `json:"restart_required"`
+		Restarting      bool          `json:"restarting"`
+		RestartAt       time.Time     `json:"restart_at"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/restart", nil, cookie, http.StatusOK, &manualRestart)
+	if !manualRestart.OK || !manualRestart.RestartRequired || !manualRestart.Restarting || manualRestart.RestartAt.IsZero() {
+		t.Fatalf("unexpected manual restart response: %+v", manualRestart)
+	}
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/restart", nil, cookie, http.StatusMethodNotAllowed, nil)
+
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/password", map[string]string{
 		"current_password": "admin-test",
 		"next_password":    "next-pass",

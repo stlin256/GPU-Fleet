@@ -61,6 +61,7 @@ import {
   ReleaseInfo,
   renameDevice,
   reopenSetup,
+  restartService,
   rotateDeviceSecret,
   ServiceStatus,
   setDeviceEnabled,
@@ -86,7 +87,7 @@ type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
 type DeviceActionKind = 'enable' | 'disable' | 'rotate' | 'delete';
 type PendingUpdateNotice = {
-  kind?: 'update' | 'certificate';
+  kind?: 'update' | 'certificate' | 'restart';
   previous_commit?: string;
   target_commit?: string;
   previous_version?: string;
@@ -323,7 +324,7 @@ function App() {
     let cancelled = false;
     const pending = readJSON<PendingUpdateNotice>(updatePendingKey);
     if (pending) {
-      if (pending.kind === 'certificate') void waitForServerAfterRestart(pending);
+      if (pending.kind === 'certificate' || pending.kind === 'restart') void waitForServerAfterRestart(pending);
       else void waitForServerAfterUpdate(pending);
     }
     getSetupStatus()
@@ -1497,11 +1498,12 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
 
   if (!notice) return null;
   const isCertificate = notice.kind === 'certificate';
+  const isRestart = notice.kind === 'restart';
   const from = shortHash(notice.previous_commit);
   const to = shortHash(notice.current_commit || notice.target_commit);
   const versionText = notice.current_version ? `v${notice.current_version}` : '-';
-  const title = isCertificate ? t('HTTPS 证书已启用') : t('版本已更新');
-  const body = isCertificate ? t('HTTPS 证书已保存，服务端已自动重启并刷新页面。') : t('服务端已自动重启并刷新页面。');
+  const title = isCertificate ? t('HTTPS 证书已启用') : isRestart ? t('服务已重启') : t('版本已更新');
+  const body = isCertificate ? t('HTTPS 证书已保存，服务端已自动重启并刷新页面。') : isRestart ? t('服务端已重启并刷新页面。') : t('服务端已自动重启并刷新页面。');
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -1512,7 +1514,7 @@ function UpdateNoticeDialog({ notice, onClose }: { notice?: CompletedUpdateNotic
           <h2 id="update-notice-title">{title}</h2>
           <p>{body}</p>
         </div>
-        {!isCertificate && <div className="confirm-target update-notice-grid">
+        {!isCertificate && !isRestart && <div className="confirm-target update-notice-grid">
           <div>
             <span>{t('版本')}</span>
             <strong>{versionText}</strong>
@@ -1812,6 +1814,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           </div>
           <DatabaseSettings data={data} />
           <DiskReserveSettings data={data} onDone={refreshOverview} />
+          <RestartSettings service={service} />
           <UpdateSettings service={service} onDone={refreshOverview} />
           <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
         </div>
@@ -2444,6 +2447,125 @@ function CertificateSettings({ service, onDone }: { service?: ServiceStatus; onD
       </form>
       {message && <p className={message.includes('已') || message.includes('saved') ? 'notice' : 'error'}>{message}</p>}
     </article>
+  );
+}
+
+function RestartSettings({ service }: { service?: ServiceStatus }) {
+  const { t } = useI18n();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const [message, setMessage] = useState('');
+
+  async function restart() {
+    setConfirmOpen(false);
+    setMessage('');
+    setBusy(true);
+    try {
+      const result = await restartService();
+      const pending = {
+        kind: 'restart',
+        restart_at: result.restart_at,
+        started_at: new Date().toISOString()
+      } satisfies PendingUpdateNotice;
+      storePendingUpdate(pending);
+      setWaiting(true);
+      setMessage(t('服务端正在重启，恢复后页面会自动刷新。'));
+      void waitForServerAfterRestart(pending);
+    } catch (err) {
+      setWaiting(false);
+      setMessage(err instanceof Error ? err.message : 'service restart failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="panel setting-operation" data-testid="settings-restart">
+      <div className="operation-head">
+        <div className="operation-icon"><RefreshCw size={18} /></div>
+        <div>
+          <h2>{t('重启服务')}</h2>
+          <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : t('等待服务端配置')}</p>
+        </div>
+        {service?.restart_required && <span className="pill warn">{t('需要重启')}</span>}
+      </div>
+      <button className="secondary action-button" type="button" onClick={() => setConfirmOpen(true)} disabled={busy || waiting}>
+        <RefreshCw size={16} />
+        {waiting ? t('重启中') : t('重启服务')}
+      </button>
+      {confirmOpen && <RestartConfirmDialog busy={busy} onCancel={() => setConfirmOpen(false)} onConfirm={restart} />}
+      {waiting && <RestartProgress />}
+      {message && <p className={message.includes('正在') || message.includes('restarting') ? 'notice' : 'error'}>{message}</p>}
+    </article>
+  );
+}
+
+function RestartConfirmDialog({ busy, onCancel, onConfirm }: { busy: boolean; onCancel: () => void; onConfirm: () => void }) {
+  const { t } = useI18n();
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onCancel();
+    }}>
+      <section className="confirm-dialog warning" role="dialog" aria-modal="true" aria-labelledby="restart-confirm-title" data-testid="restart-confirm-dialog">
+        <div className="confirm-icon"><RefreshCw size={22} /></div>
+        <div className="confirm-copy">
+          <span>{t('重启服务')}</span>
+          <h2 id="restart-confirm-title">{t('确认重启服务端？')}</h2>
+          <p>{t('服务端会立即调度重启，页面将全屏等待服务恢复，恢复后自动刷新并提示重启成功。')}</p>
+        </div>
+        <div className="confirm-actions">
+          <button className="secondary" type="button" onClick={onCancel} disabled={busy}>{t('取消')}</button>
+          <button className="primary compact" type="button" onClick={onConfirm} disabled={busy}>
+            <RefreshCw size={16} />
+            {busy ? t('重启中') : t('确认重启')}
+          </button>
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+function RestartProgress() {
+  const { t } = useI18n();
+  const stages = [
+    t('已发送重启请求'),
+    t('服务端正在停止当前进程'),
+    t('等待服务端恢复，恢复后自动刷新')
+  ];
+  return createPortal(
+    <div className="modal-backdrop update-progress-backdrop" role="presentation" data-testid="restart-progress">
+      <section className="confirm-dialog update-progress-dialog" role="status" aria-live="polite">
+        <div className="update-progress-head">
+          <div className="confirm-icon"><RefreshCw size={18} /></div>
+          <div className="confirm-copy">
+            <span>{t('重启服务')}</span>
+            <h2>{t('正在重启服务端')}</h2>
+            <p>{t('页面正在等待服务恢复')}</p>
+          </div>
+          <strong>99%</strong>
+        </div>
+        <div className="update-progress-bar"><span style={{ width: '99%' }} /></div>
+        <div className="update-progress">
+          {stages.map((label, index) => (
+            <div className={index < 2 ? 'done' : 'active'} key={label}>
+              <span>{index + 1}</span>
+              <p>{label}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 

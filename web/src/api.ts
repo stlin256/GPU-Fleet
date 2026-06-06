@@ -421,6 +421,12 @@ export function uploadCertificate(certificatePEM: string, privateKeyPEM: string)
   });
 }
 
+export function restartService() {
+  return request<ServiceMutationResponse>('/api/v1/admin/restart', {
+    method: 'POST'
+  });
+}
+
 export function databaseDownloadURL() {
   return '/api/v1/admin/database/download';
 }
