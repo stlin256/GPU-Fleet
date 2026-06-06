@@ -2093,11 +2093,14 @@ input[type="file"] {
     background: color-mix(in srgb, var(--bg) 88%, transparent);
     backdrop-filter: blur(16px);
   }
-  .stat-grid, .main-grid {
+  .stat-grid {
     grid-template-columns: 1fr 1fr;
   }
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
   .gpu-main-column {
-    grid-column: 1 / -1;
+    grid-column: auto;
   }
   .content {
     padding: 16px 16px calc(92px + env(safe-area-inset-bottom));
@@ -2140,13 +2143,38 @@ input[type="file"] {
   .gpu-card-meta {
     grid-template-columns: 1fr;
   }
-  .stat-grid, .main-grid {
+  .main-grid {
     grid-template-columns: 1fr;
+  }
+  .stat-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .metric {
+    padding: 10px;
+  }
+  .metric.with-spark,
+  .fleet-kpi.with-spark {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .metric-icon {
+    width: 26px;
+    height: 26px;
+  }
+  .metric strong {
+    margin-top: 5px;
+    font-size: 18px;
+    line-height: 1.08;
+  }
+  .metric-spark,
+  .fleet-kpi-spark {
+    height: 34px;
   }
   nav {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
-  .metric strong { font-size: 23px; }
   .gpu-detail-grid {
     grid-template-columns: 1fr;
   }
