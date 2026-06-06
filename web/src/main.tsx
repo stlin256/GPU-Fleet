@@ -491,7 +491,7 @@ function SetupWizard({
     }
   }
 
-  return (
+  const content = (
     <main className="setup-shell" data-testid={mode === 'initial' ? 'setup-wizard' : 'setup-wizard-inline'}>
       <section className="setup-stage" aria-label={t('配置引导')}>
         <aside className="setup-hero">
@@ -570,6 +570,8 @@ function SetupWizard({
       </section>
     </main>
   );
+
+  return mode === 'authenticated' ? createPortal(content, document.body) : content;
 }
 
 function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; theme: Theme; onToggleTheme: () => void }) {
