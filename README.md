@@ -23,6 +23,7 @@ English documentation: [README-en.md](README-en.md)<br>
 - 首次启动通过浏览器配置访问密码、端口和可选 HTTPS 证书；未配置证书时使用 HTTP，配置证书并重启后使用 HTTPS。
 - 首次启动先选择界面语言，当前支持简体中文和 English；后续可在设置页修改，语言配置保存在服务端元数据中。
 - Web 登录仅使用密码，登录后记住当前浏览器设备 30 天。
+- 设置页可开启访客模式。访客只能访问 `/guest` 的脱敏总览和访客专用 GPU 曲线接口，不能看到进程、24 小时统计、设备真实 ID、主机名、Agent 信息、驱动版本、GPU UUID 或任何管理接口。
 
 ## 当前能力
 
@@ -35,8 +36,9 @@ English documentation: [README-en.md](README-en.md)<br>
 | 设备管理 | 已实现 | 创建设备、一次性密钥、改名、禁用/启用、删除、轮换密钥、危险操作确认 |
 | 数据存储 | 已实现 | gzip JSONL 分段指标、JSON 元数据、保留期清理、数据库下载 |
 | 安全防护 | 已实现 | HMAC 签名、nonce 重放保护、登录限流、递进锁定、30 天会话 |
-| 版本机制 | 已实现 | `-version` 命令、`/api/v1/version`、设置页版本与 Changelog、`CHANGELOG.md` |
-| 在线更新 | 已实现 | 设置页检查 Git upstream、显示提交差异，并在依赖完整时执行构建、fast-forward 拉取和自动重启 |
+| 访客模式 | 已实现 | 登录页访客入口、脱敏总览、访客专用曲线接口、访客记录和浏览器指纹摘要 |
+| 版本机制 | 已实现 | `-version` 命令、`/api/v1/version`、设置页当前版本摘要、完整 Changelog 弹窗、`CHANGELOG.md` |
+| 在线更新 | 已实现 | 设置页检查 Git upstream、1 小时缓存、代理配置、二次确认、远端构建、fast-forward 拉取、自动重启和全屏进度 |
 
 ## 产品截图
 
@@ -301,10 +303,11 @@ sudo sh ./scripts/uninstall-agent-linux.sh
 
 Web 面板有四个主视图：
 
-- 总览：多机多卡 GPU Fleet 卡片、每卡 4 个历史趋势图、离线灰色蒙版、同设备 GPU 边框同色、设备和进程摘要。
+- 总览：多机多卡 GPU Fleet 卡片、每卡 4 个历史趋势图、顶部汇总迷你曲线、离线灰色蒙版、同设备 GPU 边框同色、设备和进程摘要。
 - 设备：创建设备、展示一次性密钥、改名、禁用/启用设备、删除设备、轮换密钥；危险操作使用应用内弹窗二次确认。
-- GPU：完整 GPU 运行字段、2x2 历史趋势图、进程快照和统计。
-- 设置：服务状态、密码更改、端口配置、语言设置、HTTPS 证书上传、证书到期日期、数据库下载、在线更新、配置引导、作者/仓库、版本号和 Changelog。
+- GPU：完整 GPU 运行字段、2x2 历史趋势图、可展开的 24 小时 GPU 曲线、进程快照和统计。
+- 设置：服务状态、密码更改、端口配置、语言设置、HTTPS 证书上传、证书到期日期、数据库下载、磁盘预留空间、在线更新、手动重启服务、访客功能、配置引导、作者/仓库、版本号和 Changelog。
+- 访客总览：仅展示脱敏后的总览和 GPU 卡片曲线；移动端不显示底部导航栏，设备区域只显示设备名称和在线状态。
 
 ```mermaid
 flowchart LR
@@ -316,6 +319,7 @@ flowchart LR
   Cards --> Charts["利用率/显存/温度/功耗历史图表"]
   Settings --> Release["版本号与 Changelog"]
   Settings --> Update["在线更新\n依赖预检 + 构建 + 自动重启"]
+  Settings --> Guest["访客功能\n脱敏总览 + 访问记录"]
 ```
 
 ## 版本与 Changelog
@@ -325,7 +329,8 @@ flowchart LR
 - `Version`：当前版本号。
 - `Commit`：构建提交，可通过 `-ldflags` 注入。
 - `BuildTime`：构建时间，可通过 `-ldflags` 注入。
-- `Changelog()`：结构化变更记录，用于 API 和设置页。
+- `Changelog()`：内置结构化变更记录，作为 `CHANGELOG.md` 读取失败时的 fallback。
+- `CHANGELOG.md`：设置页优先读取的完整发布说明；设置页默认显示当前版本，点击“更多更新记录”后在全屏弹窗中查看完整记录。
 
 查看二进制版本：
 
@@ -361,7 +366,7 @@ flowchart TD
 
 ## 服务端在线更新
 
-服务端可以在设置页检查当前 Git 上游是否有新版本，并由管理员点击“拉取并重启”。该机制只操作服务端自身仓库和当前服务端进程，不会连接或修改任何客户端 Agent。
+服务端可以在设置页检查当前 Git 上游是否有新版本，并由管理员点击“更新”。该机制只操作服务端自身仓库和当前服务端进程，不会连接或修改任何客户端 Agent。更新状态会缓存 1 小时，打开设置页时优先显示缓存；管理员仍可点击检查更新立即刷新。更新支持配置代理地址，并在执行前显示全屏模糊确认弹窗。
 
 ```mermaid
 sequenceDiagram
@@ -388,6 +393,7 @@ sequenceDiagram
 - 更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。
 - 工作区存在未提交改动、没有 upstream、本地超前或分叉时拒绝拉取。
 - 构建成功后才会 fast-forward 当前工作区；随后重启器替换当前服务端二进制，并按原启动参数拉起新进程。
+- 更新、证书启用和手动重启都会使用全屏背景模糊进度弹窗等待服务恢复；重启阶段进度条停在 99%，恢复后刷新页面并展示需要确认的完成提示。
 
 ## API 概览
 
@@ -409,10 +415,17 @@ POST /api/v1/auth/logout
 GET  /api/v1/version
 GET  /api/v1/overview
 GET  /api/v1/gpus/{gpu_id}/series
+GET  /api/v1/guest/status
+GET  /api/v1/guest/overview
+GET  /api/v1/guest/gpus/{gpu_id}/series
 GET  /api/v1/stats/gpu-utilization
 GET  /api/v1/processes/latest
 GET  /api/v1/admin/database/download
 POST /api/v1/admin/language
+POST /api/v1/admin/server-config
+POST /api/v1/admin/guest
+GET  /api/v1/admin/guest/visits
+POST /api/v1/admin/restart
 GET  /api/v1/admin/update/status
 POST /api/v1/admin/update/apply
 POST /api/v1/admin/devices

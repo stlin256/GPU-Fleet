@@ -177,6 +177,9 @@ GET  /api/v1/version
 GET  /api/v1/overview
 GET  /api/v1/devices
 GET  /api/v1/gpus/{gpu_id}/series
+GET  /api/v1/guest/status
+GET  /api/v1/guest/overview
+GET  /api/v1/guest/gpus/{gpu_id}/series
 GET  /api/v1/stats/gpu-utilization
 GET  /api/v1/processes/latest
 POST /api/v1/admin/setup/reopen
@@ -186,6 +189,9 @@ POST /api/v1/admin/server-config
 POST /api/v1/admin/language
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
+POST /api/v1/admin/guest
+GET  /api/v1/admin/guest/visits
+POST /api/v1/admin/restart
 GET  /api/v1/admin/update/status
 POST /api/v1/admin/update/apply
 POST /api/v1/admin/devices
@@ -230,6 +236,8 @@ GET /api/v1/version
 
 该接口需要已登录的 Web Cookie Session。版本信息不公开暴露，避免未认证访问者直接获取服务端版本指纹。
 
+服务端优先读取运行仓库中的 `CHANGELOG.md` 作为结构化变更记录来源；若 `-repo-dir`、工作目录、二进制目录和常见部署目录均无法读取有效 changelog，才回退到 `internal/version` 的内置记录。设置页默认展示当前版本，点击“更多更新记录”会在全屏弹窗中展示完整记录。
+
 响应：
 
 ```json
@@ -270,20 +278,26 @@ POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
 GET  /api/v1/admin/update/status
 POST /api/v1/admin/update/apply
+POST /api/v1/admin/guest
+GET  /api/v1/admin/guest/visits
+POST /api/v1/admin/restart
 ```
 
 - `GET /setup/status`：公开状态探测，返回是否需要首次配置、当前监听协议、配置端口、界面语言、HTTPS 证书状态和是否需要重启。
 - `POST /setup/apply`：仅在尚无密码的首次部署可用，用于设置访问密码、端口、界面语言和可选证书。
 - `POST /admin/setup/reopen` 与 `/admin/setup/apply`：登录后再次打开并应用配置引导，可集中调整密码、端口、界面语言和证书。
 - `POST /admin/password`：修改 Web 访问密码。
-- `POST /admin/server-config`：保存访问端口；当前进程不会热切换端口，响应会标记是否需要重启。
+- `POST /admin/server-config`：保存访问端口和磁盘预留空间。端口不会热切换，响应会标记是否需要重启；磁盘预留空间立即生效。
 - `POST /admin/language`：保存界面语言；当前支持 `zh-CN` 和 `en-US`，即时生效且不需要重启。
-- `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，有证书并重启后使用 HTTPS。
+- `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，证书保存后服务端会调度自动重启，恢复后使用 HTTPS。
 - `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
 - `GET /admin/update/status`：检查服务端自身 Git 工作区和 upstream 状态。
 - `POST /admin/update/apply`：仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时预检依赖、构建远端提交、执行 `git pull --ff-only`，并安排服务端自动重启。
+- `POST /admin/guest`：开启或关闭访客入口和访客总览。
+- `GET /admin/guest/visits`：返回最近 100 次访客总览访问记录，包含远端地址、User-Agent、语言、平台、屏幕、时区和浏览器指纹摘要。
+- `POST /admin/restart`：手动调度服务端重启。页面会全屏等待服务恢复，恢复后刷新并显示完成提示。
 
-在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。依赖缺失时返回错误且不会开始应用更新。
+在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。依赖缺失时返回错误且不会开始应用更新。更新状态在前端缓存 1 小时，管理员可手动重新检查；设置页可保存代理地址，后端 Git 和 Go 构建会复用该代理环境。
 
 更新状态响应示例：
 
@@ -302,6 +316,30 @@ POST /api/v1/admin/update/apply
   "checked_at": "2026-06-05T12:00:00Z",
   "message": "update available"
 }
+```
+
+### 访客接口
+
+访客接口不需要 Web Cookie Session，但只有在管理员开启访客功能后才可访问。关闭访客功能后，访客状态以外的访客接口返回 `403`。
+
+```text
+GET /api/v1/guest/status
+GET /api/v1/guest/overview
+GET /api/v1/guest/gpus/{gpu_id}/series?device_id=guest-device-1&hours=1
+```
+
+- `GET /guest/status`：返回访客功能是否开启、当前语言和协议等最小状态，用于登录页决定是否显示访客入口。
+- `GET /guest/overview`：返回脱敏总览。响应不包含 GPU 进程、24 小时统计、真实设备 ID、主机名、OS、Agent 版本、最近错误、GPU UUID、驱动版本和 VBIOS。
+- `GET /guest/gpus/{gpu_id}/series`：只接受访客总览中返回的匿名设备 ID，例如 `guest-device-1`。服务端会在访客功能开启时映射到真实设备，并在关闭后拒绝读取。
+
+前端会发送以下可选头部用于访客记录和浏览器指纹摘要：
+
+```text
+X-GPUFleet-Guest-Fingerprint
+X-GPUFleet-Guest-Language
+X-GPUFleet-Guest-Platform
+X-GPUFleet-Guest-Screen
+X-GPUFleet-Guest-Timezone
 ```
 
 应用更新响应示例：

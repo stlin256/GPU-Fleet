@@ -190,7 +190,7 @@ cd ..
 - 磁盘保护状态。
 - 图表密集数据状态。
 
-当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、在线更新入口、品牌 Logo、仓库署名、版本号、Changelog、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性和移动端无横向溢出。
+当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、在线更新入口、品牌 Logo、仓库署名、版本号、Changelog、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性和移动端无横向溢出。后续验证应继续覆盖访客入口、访客总览脱敏、访客移动端无底部导航、访客记录弹窗、完整 Changelog 弹窗、更新/重启全屏进度弹窗和设置页手动重启入口。
 
 最新验证使用重新编译后的示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-20260605-final/result.json`：
 

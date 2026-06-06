@@ -62,9 +62,13 @@ cd /opt/gpufleet/repo
 ADDR="0.0.0.0:9008" sh ./scripts/install-server-linux.sh
 ```
 
-Then upload the full certificate chain and private key from Settings. The server schedules a restart after certificate upload.
+Then upload the full certificate chain and private key from Settings. The server schedules a restart after certificate upload and the dashboard waits for recovery before showing the completion notice.
 
-然后在设置页上传完整证书链和私钥。证书上传后服务端会调度重启。
+然后在设置页上传完整证书链和私钥。证书上传后服务端会调度重启，面板会等待服务恢复并显示完成提示。
+
+After setup, Settings can also adjust the disk reserve, configure the online update proxy, run a manual service restart, enable guest access, and open guest visit records.
+
+配置完成后，设置页还可以调整磁盘预留空间、配置在线更新代理、手动重启服务、开启访客访问并查看访客记录。
 
 ### Service Commands / 服务命令
 

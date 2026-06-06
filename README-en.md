@@ -23,6 +23,7 @@ Repository: `https://github.com/stlin256/GPU-Fleet`
 - Storage has retention cleanup and a disk guard with an `800MiB` default free-space reserve.
 - The web dashboard prioritizes multi-host, multi-GPU cards with historical charts, offline masks, same-device border colors, hover readings, dark/light themes, and mobile support.
 - First startup begins with language selection. Simplified Chinese and English are supported; language can later be changed from Settings and is stored in server metadata.
+- Optional guest access exposes only a sanitized `/guest` overview and guest-only GPU series endpoints. Guests cannot access processes, 24-hour stats, real device IDs, hostnames, Agent metadata, driver versions, GPU UUIDs, or admin APIs.
 
 ## Current Capabilities
 
@@ -35,7 +36,9 @@ Repository: `https://github.com/stlin256/GPU-Fleet`
 | Device management | Implemented | Create, one-time secret, rename, enable/disable, delete, rotate secret, confirmation dialogs |
 | Storage | Implemented | gzip JSONL metrics, JSON metadata, retention cleanup, database download |
 | Security | Implemented | HMAC signatures, nonce replay protection, login rate limit, progressive lockout, 30-day sessions |
-| Online update | Implemented | Git upstream check, dependency preflight, remote build, fast-forward pull, automatic server restart |
+| Guest access | Implemented | Login-page guest entry, sanitized overview, guest-only series API, visit records with browser fingerprint summaries |
+| Release info | Implemented | `-version`, `/api/v1/version`, current release summary, full changelog dialog, `CHANGELOG.md` |
+| Online update | Implemented | Git upstream check, 1-hour status cache, proxy setting, confirmation dialog, dependency preflight, remote build, fast-forward pull, automatic server restart |
 
 ## First Startup
 
@@ -47,6 +50,14 @@ The first browser visit opens a setup flow:
 4. Optionally upload an HTTPS certificate and private key.
 
 Language changes apply immediately. Port and HTTPS certificate changes require restarting the current server process.
+
+## Dashboard
+
+The authenticated dashboard has Overview, GPU, Devices, and Settings views. Overview and GPU cards include compact sparklines and 24-hour expandable GPU charts. Settings includes service status, password, port, language, HTTPS certificates, database download, disk reserve, online update, manual service restart, guest access, setup wizard, repository attribution, release information, and the changelog dialog.
+
+The guest dashboard at `/guest` is intentionally smaller: it shows a sanitized overview and GPU chart cards only. It hides GPU processes, 24-hour statistics, management controls, real device identifiers, host metadata, and internal GPU identifiers.
+
+All confirmation, progress, guest records, changelog, update, restart, and fallback-dashboard dialogs use full-viewport blurred backdrops so they are not constrained by the current tab or panel layout.
 
 ## Run Server
 
@@ -71,6 +82,12 @@ Create devices from the dashboard Devices page, copy each one-time secret, then 
   -secret replace-with-device-secret \
   -processes
 ```
+
+## Server Operations
+
+Online update operates only on the server Git checkout configured by `-repo-dir` or `GPUFLEET_REPO_DIR`. It checks upstream state, builds the remote commit in a temporary worktree, fast-forwards only after a successful build, replaces the running server binary, and restarts the server. The update panel caches status for one hour, supports an update proxy URL, and still allows a manual recheck.
+
+Settings also provides a manual service restart button. HTTPS certificate upload schedules an automatic restart; after recovery the page refreshes and shows a completion dialog that must be acknowledged.
 
 ## Documentation
 
