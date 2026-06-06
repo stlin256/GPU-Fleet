@@ -2214,14 +2214,12 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
 
 function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInfo; loading: boolean; error: string }) {
   const { language } = useI18n();
-  const [expanded, setExpanded] = useState(false);
+  const [changelogOpen, setChangelogOpen] = useState(false);
   const allEntries = release?.changelog ?? [];
-  const entries = allEntries.slice(0, expanded ? 3 : 1);
+  const entries = allEntries.slice(0, 1);
   const versionText = release?.version ? `v${release.version}` : loading ? '加载中' : '-';
   const commitText = release?.commit && release.commit !== 'dev' ? release.commit : 'dev';
-  const moreCount = Math.max(0, Math.min(3, allEntries.length) - 1);
-  const expandLabel = language === 'en-US' ? `Show ${moreCount} older version${moreCount > 1 ? 's' : ''}` : `展开 ${moreCount} 个历史版本`;
-  const collapseLabel = language === 'en-US' ? 'Collapse history' : '收起历史版本';
+  const moreLabel = language === 'en-US' ? 'More changelog' : '更多更新记录';
 
   return (
     <article className="panel setting-operation project-card release-card" data-testid="settings-project">
@@ -2265,19 +2263,54 @@ function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInf
           <div className="changelog-entry-list">
             {entries.map((entry) => <ChangelogEntryView entry={entry} language={language} key={`${entry.version}-${entry.date}`} />)}
             {allEntries.length > 1 && (
-              <button className="secondary changelog-toggle" type="button" onClick={() => setExpanded((value) => !value)}>
+              <button className="secondary changelog-toggle" type="button" onClick={() => setChangelogOpen(true)}>
                 <BookOpenText size={15} />
-                {expanded ? collapseLabel : expandLabel}
+                {moreLabel}
               </button>
             )}
           </div>
         ) : <p>{error || '正在读取版本信息'}</p>}
       </div>
+      {changelogOpen && <ChangelogDialog entries={allEntries} language={language} onClose={() => setChangelogOpen(false)} />}
       <a className="secondary action-button" href={release?.repository ?? repositoryURL} target="_blank" rel="noreferrer">
         <Github size={16} />
         打开 GitHub
       </a>
     </article>
+  );
+}
+
+function ChangelogDialog({ entries, language, onClose }: { entries: NonNullable<ReleaseInfo['changelog']>; language: AppLanguage; onClose: () => void }) {
+  const title = language === 'en-US' ? 'Changelog' : '更新记录';
+  const subtitle = language === 'en-US' ? 'Complete release history from CHANGELOG.md' : '从 CHANGELOG.md 读取的完整更新记录';
+  const closeTitle = language === 'en-US' ? 'Close' : '关闭';
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="confirm-dialog changelog-dialog" role="dialog" aria-modal="true" aria-labelledby="changelog-dialog-title" data-testid="changelog-dialog">
+        <div className="panel-head">
+          <div>
+            <h2 id="changelog-dialog-title">{title}</h2>
+            <p>{subtitle}</p>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} title={closeTitle}>×</button>
+        </div>
+        <div className="changelog-dialog-body">
+          {entries.map((entry) => <ChangelogEntryView entry={entry} language={language} key={`${entry.version}-${entry.date}`} />)}
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 

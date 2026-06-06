@@ -47,6 +47,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Added a manual service restart action in settings, with a full-screen recovery progress view and a restart success notice after refresh.
 - zh-CN: 新增访客功能，可在设置页开启登录页访客入口；访客页仅展示脱敏 GPU 总览，不开放进程、24 小时统计或管理接口，并在设置页提供含浏览器指纹摘要的访客记录弹窗。
 - en-US: Added guest access with a settings-controlled login entry; the guest page only shows a sanitized GPU overview without processes, 24-hour stats, or admin APIs, and settings now include guest visit records with browser fingerprint summaries.
+- zh-CN: 设置页更新记录默认只展示当前版本，更多更新记录改为弹窗查看完整 CHANGELOG；访客记录弹窗改为固定头部和内部滚动列表，长记录不会撑出屏幕。
+- en-US: Settings now shows only the current version by default, opens the full CHANGELOG in a dialog from the More changelog button, and keeps guest visit records scrollable inside the dialog without overflowing the viewport.
 
 ### Fixed / 修复
 

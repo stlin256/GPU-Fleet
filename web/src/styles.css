@@ -1804,6 +1804,30 @@ input:focus {
   width: fit-content;
 }
 
+.changelog-dialog,
+.guest-records-dialog {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.changelog-dialog {
+  width: min(820px, 100%);
+  max-height: min(820px, calc(100vh - 36px));
+  overflow: hidden;
+}
+
+.changelog-dialog-body {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  padding-right: 4px;
+}
+
+.changelog-dialog-body .changelog-entry + .changelog-entry {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+
 .changelog-entry > div:first-child {
   display: flex;
   justify-content: space-between;
@@ -1953,6 +1977,7 @@ input:focus {
 }
 
 .guest-records-list {
+  min-height: 0;
   display: grid;
   gap: 10px;
   overflow: auto;
