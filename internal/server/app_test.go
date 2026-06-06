@@ -403,7 +403,9 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 			Timestamp: time.Now().UTC(),
 			GPUs: []model.GPUStatus{{
 				GPUID:                 "0",
+				UUIDHash:              "sensitive-uuid",
 				Name:                  "NVIDIA Test GPU",
+				DriverVersion:         "999.1",
 				MemoryTotalBytes:      16 * 1024 * 1024 * 1024,
 				MemoryUsedBytes:       4 * 1024 * 1024 * 1024,
 				UtilizationGPUPercent: &util,
@@ -428,6 +430,42 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	doJSON(t, handler, http.MethodGet, "/api/v1/overview", nil, cookie, http.StatusOK, &beforeDelete)
 	if beforeDelete.GPUCount != 1 || len(beforeDelete.LatestProcesses) != 1 || beforeDelete.DatabaseSizeBytes == 0 {
 		t.Fatalf("expected created device snapshots before delete, got %+v", beforeDelete)
+	}
+	doJSON(t, handler, http.MethodGet, "/api/v1/guest/overview", nil, nil, http.StatusForbidden, nil)
+	var guestConfig struct {
+		OK      bool          `json:"ok"`
+		Service serviceStatus `json:"service"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/guest", map[string]bool{"enabled": true}, cookie, http.StatusOK, &guestConfig)
+	if !guestConfig.OK || !guestConfig.Service.GuestEnabled {
+		t.Fatalf("expected guest access enabled, got %+v", guestConfig)
+	}
+	var guestOverview overviewResponse
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/guest/overview", nil)
+	req.Header.Set("X-GPUFleet-Guest-Fingerprint", "fp-test")
+	req.Header.Set("X-GPUFleet-Guest-Language", "zh-CN")
+	req.Header.Set("X-GPUFleet-Guest-Platform", "test-platform")
+	req.Header.Set("X-GPUFleet-Guest-Screen", "1920x1080x24")
+	req.Header.Set("X-GPUFleet-Guest-Timezone", "Asia/Shanghai")
+	req.RemoteAddr = "203.0.113.9:4567"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected guest overview 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &guestOverview); err != nil {
+		t.Fatal(err)
+	}
+	if !guestOverview.Guest || len(guestOverview.LatestProcesses) != 0 || guestOverview.LatestGPUs[0].DeviceID == created.Device.ID || guestOverview.LatestGPUs[0].GPU.UUIDHash != "" || guestOverview.LatestGPUs[0].GPU.DriverVersion != "" {
+		t.Fatalf("guest overview leaked sensitive data: %+v", guestOverview)
+	}
+	var guestVisits struct {
+		OK     bool         `json:"ok"`
+		Visits []GuestVisit `json:"visits"`
+	}
+	doJSON(t, handler, http.MethodGet, "/api/v1/admin/guest/visits", nil, cookie, http.StatusOK, &guestVisits)
+	if !guestVisits.OK || len(guestVisits.Visits) == 0 || guestVisits.Visits[0].Fingerprint != "fp-test" || guestVisits.Visits[0].Platform != "test-platform" {
+		t.Fatalf("expected guest fingerprint visit, got %+v", guestVisits)
 	}
 
 	var deleted struct {

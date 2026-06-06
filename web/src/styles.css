@@ -1894,6 +1894,81 @@ input:focus {
   flex-wrap: wrap;
 }
 
+.switch-row {
+  width: fit-content;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.switch-row input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.guest-url {
+  overflow-wrap: anywhere;
+}
+
+.guest-records-dialog {
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: hidden;
+}
+
+.guest-records-list {
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.guest-record-row {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+
+.guest-record-row strong,
+.guest-record-row p {
+  overflow-wrap: anywhere;
+}
+
+.guest-record-meta {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.guest-record-meta span {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  background: var(--panel);
+}
+
+.guest-user-agent {
+  font-size: 12px;
+}
+
 .update-note {
   margin-top: -4px;
 }

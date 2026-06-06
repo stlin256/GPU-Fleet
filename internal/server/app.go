@@ -147,6 +147,8 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/", a.handleIndex)
 	mux.HandleFunc("/api/v1/setup/status", a.handleSetupStatus)
 	mux.HandleFunc("/api/v1/setup/apply", a.handleSetupApply)
+	mux.HandleFunc("/api/v1/guest/status", a.handleGuestStatus)
+	mux.HandleFunc("/api/v1/guest/overview", a.handleGuestOverview)
 	mux.HandleFunc("/api/v1/auth/login", a.handleLogin)
 	mux.HandleFunc("/api/v1/auth/logout", a.handleLogout)
 	mux.HandleFunc("/api/v1/version", a.requireSession(a.handleVersion))
@@ -160,6 +162,8 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/password", a.requireSession(a.handleAdminPassword))
 	mux.HandleFunc("/api/v1/admin/server-config", a.requireSession(a.handleAdminServerConfig))
 	mux.HandleFunc("/api/v1/admin/language", a.requireSession(a.handleAdminLanguage))
+	mux.HandleFunc("/api/v1/admin/guest", a.requireSession(a.handleAdminGuest))
+	mux.HandleFunc("/api/v1/admin/guest/visits", a.requireSession(a.handleAdminGuestVisits))
 	mux.HandleFunc("/api/v1/admin/update/proxy", a.requireSession(a.handleAdminUpdateProxy))
 	mux.HandleFunc("/api/v1/admin/update-proxy", a.requireSession(a.handleAdminUpdateProxy))
 	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
@@ -480,6 +484,41 @@ func (a *App) handleAdminLanguage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *App) handleAdminGuest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := decodeJSON(r, &body, 1<<20); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	config, err := a.meta.UpdateGuestEnabled(body.Enabled)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":               true,
+		"service":          a.serviceStatusFromConfig(config, r),
+		"restart_required": false,
+	})
+}
+
+func (a *App) handleAdminGuestVisits(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":     true,
+		"visits": a.meta.GuestVisits(100),
+	})
+}
+
 func (a *App) handleAdminUpdateProxy(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -649,35 +688,85 @@ func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, a.overviewResponse(r, false))
+}
+
+func (a *App) handleGuestStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":            true,
+		"guest_enabled": a.meta.ServiceConfig().GuestEnabled,
+		"service":       a.guestServiceStatus(),
+	})
+}
+
+func (a *App) handleGuestOverview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if !a.meta.ServiceConfig().GuestEnabled {
+		writeError(w, http.StatusForbidden, "guest access disabled")
+		return
+	}
+	now := time.Now().UTC()
+	_ = a.meta.RecordGuestVisit(GuestVisit{
+		At:          now,
+		RemoteIP:    clientIP(r),
+		UserAgent:   r.UserAgent(),
+		Path:        r.URL.Path,
+		Fingerprint: r.Header.Get("X-GPUFleet-Guest-Fingerprint"),
+		Language:    r.Header.Get("X-GPUFleet-Guest-Language"),
+		Platform:    r.Header.Get("X-GPUFleet-Guest-Platform"),
+		Screen:      r.Header.Get("X-GPUFleet-Guest-Screen"),
+		Timezone:    r.Header.Get("X-GPUFleet-Guest-Timezone"),
+	})
+	writeJSON(w, http.StatusOK, a.overviewResponse(r, true))
+}
+
+func (a *App) overviewResponse(r *http.Request, guest bool) overviewResponse {
 	devices := a.meta.ListDevices()
 	diskStatus, _ := a.metrics.DiskStatus()
 	databaseSize := databaseSizeBytes(a.config.DataDir)
 
 	deviceViews := make([]deviceView, 0, len(devices))
 	deviceIDs := make(map[string]bool, len(devices))
+	guestDeviceIDs := make(map[string]string, len(devices))
 	now := time.Now().UTC()
 	online := 0
-	for _, device := range devices {
+	for index, device := range devices {
 		deviceIDs[device.ID] = true
+		guestID := fmt.Sprintf("guest-device-%d", index+1)
+		guestDeviceIDs[device.ID] = guestID
+		alias := device.Alias
+		if guest && alias == "" {
+			alias = fmt.Sprintf("Device %d", len(deviceViews)+1)
+		}
 		status := "offline"
 		if device.Enabled && !device.LastSeenAt.IsZero() && now.Sub(device.LastSeenAt) <= 45*time.Second {
 			status = "online"
 			online++
 		}
 		deviceViews = append(deviceViews, deviceView{
-			ID:           device.ID,
-			Alias:        device.Alias,
+			ID:           chooseString(!guest, device.ID),
+			Alias:        alias,
 			Enabled:      device.Enabled,
 			Status:       status,
-			Hostname:     device.Hostname,
-			OS:           device.OS,
-			OSVersion:    device.OSVersion,
-			AgentVersion: device.AgentVersion,
+			Hostname:     chooseString(!guest, device.Hostname),
+			OS:           chooseString(!guest, device.OS),
+			OSVersion:    chooseString(!guest, device.OSVersion),
+			AgentVersion: chooseString(!guest, device.AgentVersion),
 			GPUCount:     device.GPUCount,
 			LastSeenAt:   device.LastSeenAt,
 			LastSampleAt: device.LastSampleAt,
-			LastError:    device.LastError,
+			LastError:    chooseString(!guest, device.LastError),
 		})
+		if guest {
+			deviceViews[len(deviceViews)-1].ID = guestID
+		}
 	}
 	sort.Slice(deviceViews, func(i, j int) bool { return deviceViews[i].Alias < deviceViews[j].Alias })
 
@@ -692,6 +781,13 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 	for _, item := range latest {
 		if !deviceIDs[item.DeviceID] {
 			continue
+		}
+		if guest {
+			item.DeviceID = guestDeviceIDs[item.DeviceID]
+			item.GPU.UUIDHash = ""
+			item.GPU.VBIOSVersion = ""
+			item.GPU.DriverVersion = ""
+			item.GPU.CollectionError = ""
 		}
 		filteredLatest = append(filteredLatest, item)
 		if item.GPU.UtilizationGPUPercent != nil {
@@ -712,7 +808,7 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		avgUtil = totalUtil / float64(utilCount)
 	}
 
-	writeJSON(w, http.StatusOK, overviewResponse{
+	response := overviewResponse{
 		ServerTime:         now,
 		DeviceCount:        len(devices),
 		OnlineDeviceCount:  online,
@@ -725,13 +821,27 @@ func (a *App) handleOverview(w http.ResponseWriter, r *http.Request) {
 		Disk:               diskStatus,
 		Devices:            deviceViews,
 		LatestGPUs:         filteredLatest,
-		LatestProcesses:    filterProcessesByDevices(a.processes.Latest("", ""), deviceIDs),
+		LatestProcesses:    nil,
 		RetentionHours:     int(a.config.Retention.Hours()),
 		MinFreeSpaceBytes:  a.config.MinFreeBytes,
 		DatabaseSizeBytes:  databaseSize,
 		SetupComplete:      a.meta.SetupComplete(),
-		Service:            a.serviceStatus(r),
-	})
+		Guest:              guest,
+	}
+	if !guest {
+		response.Service = a.serviceStatus(r)
+		response.LatestProcesses = filterProcessesByDevices(a.processes.Latest("", ""), deviceIDs)
+	} else {
+		response.Service = serviceStatusFromGuest(a.guestServiceStatus())
+	}
+	return response
+}
+
+func chooseString(allowed bool, value string) string {
+	if !allowed {
+		return ""
+	}
+	return value
 }
 
 func databaseSizeBytes(dataDir string) uint64 {
@@ -1228,6 +1338,23 @@ func (a *App) serviceStatus(r *http.Request) serviceStatus {
 	return a.serviceStatusFromConfig(a.meta.ServiceConfig(), r)
 }
 
+func (a *App) guestServiceStatus() guestServiceStatus {
+	config := a.meta.ServiceConfig()
+	return guestServiceStatus{
+		CurrentScheme: a.Scheme(),
+		Language:      config.Language,
+		GuestEnabled:  config.GuestEnabled,
+	}
+}
+
+func serviceStatusFromGuest(status guestServiceStatus) serviceStatus {
+	return serviceStatus{
+		CurrentScheme: status.CurrentScheme,
+		Language:      status.Language,
+		GuestEnabled:  status.GuestEnabled,
+	}
+}
+
 func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) serviceStatus {
 	currentPort, _ := portFromAddr(a.config.Addr)
 	if config.Port == 0 {
@@ -1246,6 +1373,7 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 		ConfiguredPort:    config.Port,
 		HTTPSEnabled:      config.HTTPS,
 		Language:          config.Language,
+		GuestEnabled:      config.GuestEnabled,
 		UpdateProxy:       config.UpdateProxy,
 		MinFreeBytes:      config.MinFreeBytes,
 		CertNotAfter:      config.CertNotAfter,
@@ -1294,6 +1422,7 @@ type overviewResponse struct {
 	DatabaseSizeBytes  uint64                  `json:"database_size_bytes"`
 	SetupComplete      bool                    `json:"setup_complete"`
 	Service            serviceStatus           `json:"service"`
+	Guest              bool                    `json:"guest,omitempty"`
 }
 
 type setupStatusResponse struct {
@@ -1309,6 +1438,7 @@ type serviceStatus struct {
 	ConfiguredPort    int       `json:"configured_port"`
 	HTTPSEnabled      bool      `json:"https_enabled"`
 	Language          string    `json:"language"`
+	GuestEnabled      bool      `json:"guest_enabled"`
 	UpdateProxy       string    `json:"update_proxy,omitempty"`
 	MinFreeBytes      uint64    `json:"min_free_bytes"`
 	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
@@ -1317,6 +1447,12 @@ type serviceStatus struct {
 	RestartRequired   bool      `json:"restart_required"`
 	FirstStartupHTTP  bool      `json:"first_startup_http"`
 	ManagementBaseURL string    `json:"management_base_url,omitempty"`
+}
+
+type guestServiceStatus struct {
+	CurrentScheme string `json:"current_scheme"`
+	Language      string `json:"language"`
+	GuestEnabled  bool   `json:"guest_enabled"`
 }
 
 type deviceView struct {

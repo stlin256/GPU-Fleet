@@ -48,6 +48,9 @@ import {
   deleteDevice,
   Device,
   getGPUSeries,
+  getGuestOverview,
+  getGuestStatus,
+  getGuestVisits,
   getOverview,
   getSetupStatus,
   getStats,
@@ -71,9 +74,11 @@ import {
   StoredProcess,
   UpdateStatus,
   updateLanguage,
+  updateGuest,
   updateProxy,
   updateServerConfig,
-  uploadCertificate
+  uploadCertificate,
+  GuestVisit
 } from './api';
 import { I18nContext, installDOMI18n, languages, makeTranslator, useI18n } from './i18n';
 import './styles.css';
@@ -82,7 +87,7 @@ echarts.use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRendere
 
 const queryClient = new QueryClient();
 type View = 'overview' | 'devices' | 'gpus' | 'settings';
-type AuthState = 'checking' | 'setup' | 'authenticated' | 'anonymous';
+type AuthState = 'checking' | 'setup' | 'authenticated' | 'anonymous' | 'guest';
 type Theme = 'light' | 'dark';
 type TrendTone = 'good' | 'warn' | 'bad' | 'accent';
 type DeviceActionKind = 'enable' | 'disable' | 'rotate' | 'delete';
@@ -294,6 +299,7 @@ function serviceFromOverview(data?: Overview): SetupStatus | undefined {
 function App() {
   const [authState, setAuthState] = useState<AuthState>('checking');
   const [setupStatus, setSetupStatus] = useState<SetupStatus>();
+  const [guestEnabled, setGuestEnabled] = useState(false);
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [language, setLanguageState] = useState<AppLanguage>(initialLanguage);
   const [updateNotice, setUpdateNotice] = useState<CompletedUpdateNotice | undefined>(() => takeCompletedUpdateNotice());
@@ -327,10 +333,26 @@ function App() {
       if (pending.kind === 'certificate' || pending.kind === 'restart') void waitForServerAfterRestart(pending);
       else void waitForServerAfterUpdate(pending);
     }
+    if (window.location.pathname === '/guest') {
+      getGuestStatus()
+        .then((status) => {
+          if (cancelled) return;
+          setGuestEnabled(status.guest_enabled);
+          setLanguage(status.service.language || initialLanguage());
+          setAuthState(status.guest_enabled ? 'guest' : 'anonymous');
+        })
+        .catch(() => {
+          if (!cancelled) setAuthState('anonymous');
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     getSetupStatus()
       .then((status) => {
         if (cancelled) return;
         setSetupStatus(status);
+        setGuestEnabled(status.service.guest_enabled);
         setLanguage(status.service.language || initialLanguage());
         if (status.setup_required) {
           setAuthState('setup');
@@ -370,8 +392,9 @@ function App() {
           }}
         />
       )}
-      {authState === 'anonymous' && <Login onSuccess={() => setAuthState('authenticated')} theme={theme} onToggleTheme={toggleTheme} />}
+      {authState === 'anonymous' && <Login onSuccess={() => setAuthState('authenticated')} theme={theme} onToggleTheme={toggleTheme} guestEnabled={guestEnabled} />}
       {authState === 'authenticated' && <Dashboard onUnauthorized={() => setAuthState('anonymous')} theme={theme} onToggleTheme={toggleTheme} />}
+      {authState === 'guest' && <GuestDashboard theme={theme} onToggleTheme={toggleTheme} />}
       <UpdateNoticeDialog notice={updateNotice} onClose={() => setUpdateNotice(undefined)} />
     </I18nContext.Provider>
   );
@@ -575,7 +598,8 @@ function SetupWizard({
   return mode === 'authenticated' ? createPortal(content, document.body) : content;
 }
 
-function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; theme: Theme; onToggleTheme: () => void }) {
+function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: () => void; theme: Theme; onToggleTheme: () => void; guestEnabled: boolean }) {
+  const { t } = useI18n();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -594,6 +618,10 @@ function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; the
     }
   }
 
+  function enterGuest() {
+    window.location.assign('/guest');
+  }
+
   return (
     <main className="login-shell">
       <form className="login-panel" onSubmit={submit}>
@@ -601,16 +629,22 @@ function Login({ onSuccess, theme, onToggleTheme }: { onSuccess: () => void; the
           <Brand />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
-        <h1>登录面板</h1>
-        <p>登录后记住当前设备 30 天</p>
+        <h1>{t('登录面板')}</h1>
+        <p>{t('登录后记住当前设备 30 天')}</p>
         <label>
-          密码
+          {t('密码')}
           <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" />
         </label>
         <button className="primary" disabled={loading}>
           <LogIn size={18} />
-          {loading ? '登录中' : '登录'}
+          {loading ? t('登录中') : t('登录')}
         </button>
+        {guestEnabled && (
+          <button className="secondary action-button" type="button" onClick={enterGuest}>
+            <Activity size={18} />
+            {t('访客访问')}
+          </button>
+        )}
         {error && <p className="error">{error}</p>}
       </form>
     </main>
@@ -729,9 +763,51 @@ function ThemeToggle({ theme, onToggle }: { theme: Theme; onToggle: () => void }
   );
 }
 
-function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
+function GuestDashboard({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
+  const { t } = useI18n();
+  const overview = useQuery({
+    queryKey: ['guest-overview'],
+    queryFn: getGuestOverview,
+    refetchInterval: 10000,
+    retry: 2
+  });
+  const data = overview.data;
+  return (
+    <div className="app guest-app">
+      <aside className="sidebar">
+        <Brand />
+        <nav>
+          <button className="active"><Activity size={17} />{t('访客总览')}</button>
+        </nav>
+      </aside>
+      <main className="content">
+        <header className="topbar">
+          <div>
+            <h1>{t('GPU 资源总览')}</h1>
+            <p>{data ? t('服务端时间 {time}', { time: new Date(data.server_time).toLocaleString() }) : t('等待服务端数据')}</p>
+          </div>
+          <div className="top-actions">
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+            <button className="icon-button" onClick={() => overview.refetch()} title={t('刷新')}>
+              <RefreshCw size={18} />
+            </button>
+            <button className="icon-button" onClick={() => window.location.assign('/')} title={t('登录')}>
+              <LogIn size={18} />
+            </button>
+          </div>
+        </header>
+        {overview.error && <div className="banner danger">{overview.error instanceof Error ? overview.error.message : 'guest access failed'}</div>}
+        <div className="view-shell" data-view="guest">
+          <OverviewPage data={data} statRows={[]} theme={theme} guest />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function OverviewPage({ data, statRows, theme, guest = false }: { data?: Overview; statRows: GPUStats[]; theme: Theme; guest?: boolean }) {
   const gpus = data?.latest_gpus ?? [];
-  const aggregateSeries = useAggregateSeries(gpus);
+  const aggregateSeries = useAggregateSeries(guest ? [] : gpus);
   const devices = data?.devices ?? [];
   const hotCount = gpus.filter((item) => (item.gpu.temperature_celsius ?? 0) >= 80).length;
   const busyCount = gpus.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) >= 80).length;
@@ -762,17 +838,19 @@ function OverviewPage({ data, statRows, theme }: { data?: Overview; statRows: GP
       </section>
 
       <section className="overview-layout">
-        <FleetBoard items={gpus} devices={devices} />
+        <FleetBoard items={gpus} devices={devices} guest={guest} />
         <div className="overview-side">
           <FleetUtilPanel items={gpus} theme={theme} />
           <DevicePanel data={data} />
         </div>
       </section>
 
-      <section className="overview-secondary">
-        <ProcessPanel items={data?.latest_processes ?? []} devices={devices} />
-        <StatsPanel statRows={statRows} devices={devices} />
-      </section>
+      {!guest && (
+        <section className="overview-secondary">
+          <ProcessPanel items={data?.latest_processes ?? []} devices={devices} />
+          <StatsPanel statRows={statRows} devices={devices} />
+        </section>
+      )}
     </>
   );
 }
@@ -832,7 +910,7 @@ function FleetKPI({ label, value, tone, spark }: { label: string; value: string;
   );
 }
 
-function FleetBoard({ items, devices }: { items: StoredGPU[]; devices: Device[] }) {
+function FleetBoard({ items, devices, guest = false }: { items: StoredGPU[]; devices: Device[]; guest?: boolean }) {
   const deviceMap = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
   const cards = items.map((item) => ({ item, device: deviceMap.get(item.device_id), health: gpuHealth(item, deviceMap.get(item.device_id)) }));
 
@@ -847,7 +925,7 @@ function FleetBoard({ items, devices }: { items: StoredGPU[]; devices: Device[] 
       </div>
       <div className="fleet-card-grid">
         {cards.map(({ item, device, health }) => (
-          <FleetGPUCard item={item} device={device} health={health} key={`${item.device_id}-${item.gpu.gpu_id}`} />
+          <FleetGPUCard item={item} device={device} health={health} guest={guest} key={`${item.device_id}-${item.gpu.gpu_id}`} />
         ))}
         {cards.length === 0 && <p className="empty">暂无 GPU 上报</p>}
       </div>
@@ -855,7 +933,7 @@ function FleetBoard({ items, devices }: { items: StoredGPU[]; devices: Device[] 
   );
 }
 
-function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Device; health: ReturnType<typeof gpuHealth> }) {
+function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU; device?: Device; health: ReturnType<typeof gpuHealth>; guest?: boolean }) {
   const { language } = useI18n();
   const gpu = item.gpu;
   const util = gpu.utilization_gpu_percent;
@@ -867,6 +945,7 @@ function FleetGPUCard({ item, device, health }: { item: StoredGPU; device?: Devi
     queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
     staleTime: 20_000,
     refetchInterval: 30000,
+    enabled: !guest,
     retry: false
   });
   const points = series.data ?? [];
@@ -1261,6 +1340,8 @@ function GPUCard({ item }: { item: StoredGPU }) {
 }
 
 function DevicePanel({ data }: { data?: Overview }) {
+  const { t } = useI18n();
+  const isGuest = Boolean(data?.guest);
   return (
     <section className="panel">
       <div className="panel-head">
@@ -1271,7 +1352,7 @@ function DevicePanel({ data }: { data?: Overview }) {
         <div className="list-row" key={device.id}>
           <div>
             <strong>{device.alias || device.id}</strong>
-            <p>{[device.hostname, device.os, device.agent_version].filter(Boolean).join(' · ') || device.id}</p>
+            <p>{[device.hostname, device.os, device.agent_version].filter(Boolean).join(' · ') || (isGuest ? t('访客视图') : device.id)}</p>
           </div>
           <span className={`pill ${device.enabled ? (device.status ?? 'offline') : 'disabled'}`}>{device.enabled ? (device.status ?? 'offline') : 'disabled'}</span>
         </div>
@@ -1803,6 +1884,8 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
             </button>
             {message && <p className="error">{message}</p>}
           </article>
+          <GuestSettings service={service} onDone={refreshOverview} />
+          <RestartSettings service={service} />
         </div>
 
         <div className="settings-column settings-column-operations">
@@ -1814,7 +1897,6 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           </div>
           <DatabaseSettings data={data} />
           <DiskReserveSettings data={data} onDone={refreshOverview} />
-          <RestartSettings service={service} />
           <UpdateSettings service={service} onDone={refreshOverview} />
           <ProjectInfoSettings release={release.data} loading={release.isLoading} error={release.error instanceof Error ? release.error.message : ''} />
         </div>
@@ -2447,6 +2529,114 @@ function CertificateSettings({ service, onDone }: { service?: ServiceStatus; onD
       </form>
       {message && <p className={message.includes('已') || message.includes('saved') ? 'notice' : 'error'}>{message}</p>}
     </article>
+  );
+}
+
+function GuestSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const { t } = useI18n();
+  const [enabled, setEnabled] = useState(Boolean(service?.guest_enabled));
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [recordsOpen, setRecordsOpen] = useState(false);
+
+  useEffect(() => {
+    setEnabled(Boolean(service?.guest_enabled));
+  }, [service?.guest_enabled]);
+
+  async function toggle(next: boolean) {
+    setEnabled(next);
+    setMessage('');
+    setBusy(true);
+    try {
+      await updateGuest(next);
+      setMessage(next ? t('访客功能已开启') : t('访客功能已关闭'));
+      await onDone();
+    } catch (err) {
+      setEnabled(!next);
+      setMessage(err instanceof Error ? err.message : 'guest update failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="panel setting-operation" data-testid="settings-guest">
+      <div className="operation-head">
+        <div className="operation-icon"><Activity size={18} /></div>
+        <div>
+          <h2>{t('访客功能')}</h2>
+          <p>{enabled ? t('登录页显示访客入口，仅开放脱敏总览') : t('关闭后访客入口和访客总览不可访问')}</p>
+        </div>
+        <span className={`pill ${enabled ? 'good' : 'warn'}`}>{enabled ? t('已开启') : t('已关闭')}</span>
+      </div>
+      <div className="settings-button-row">
+        <label className="switch-row">
+          <input type="checkbox" checked={enabled} disabled={busy} onChange={(event) => toggle(event.target.checked)} />
+          <span>{t('允许访客访问')}</span>
+        </label>
+        <button className="secondary" type="button" onClick={() => setRecordsOpen(true)}>
+          <BookOpenText size={16} />
+          {t('访客记录')}
+        </button>
+      </div>
+      {enabled && <p className="notice guest-url">/guest</p>}
+      {message && <p className={message.includes('已') || message.includes('enabled') || message.includes('disabled') ? 'notice' : 'error'}>{message}</p>}
+      {recordsOpen && <GuestRecordsDialog onClose={() => setRecordsOpen(false)} />}
+    </article>
+  );
+}
+
+function GuestRecordsDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useI18n();
+  const visits = useQuery({
+    queryKey: ['guest-visits'],
+    queryFn: getGuestVisits
+  });
+  const rows = visits.data?.visits ?? [];
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="confirm-dialog guest-records-dialog" role="dialog" aria-modal="true" aria-labelledby="guest-records-title" data-testid="guest-records-dialog">
+        <div className="panel-head">
+          <div>
+            <h2 id="guest-records-title">{t('访客记录')}</h2>
+            <p>{t('记录最近 100 次访客总览访问')}</p>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} title={t('关闭')}>×</button>
+        </div>
+        <div className="guest-records-list">
+          {visits.isLoading && <p className="empty">{t('加载中')}</p>}
+          {visits.error instanceof Error && <p className="error">{visits.error.message}</p>}
+          {!visits.isLoading && rows.length === 0 && <p className="empty">{t('暂无访客记录')}</p>}
+          {rows.map((visit) => (
+            <div className="guest-record-row" key={`${visit.at}-${visit.remote_ip}-${visit.fingerprint}`}>
+              <div>
+                <strong>{visit.remote_ip || '-'}</strong>
+                <p>{fmtDateTime(visit.at)} · {visit.fingerprint || '-'}</p>
+              </div>
+              <div className="guest-record-meta">
+                <span>{visit.platform || '-'}</span>
+                <span>{visit.language || '-'}</span>
+                <span>{visit.screen || '-'}</span>
+                <span>{visit.timezone || '-'}</span>
+              </div>
+              <p className="guest-user-agent">{visit.user_agent || '-'}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 

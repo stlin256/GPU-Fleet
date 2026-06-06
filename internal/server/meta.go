@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +35,7 @@ type metadataFile struct {
 	Service        ServiceConfig         `json:"service"`
 	Devices        map[string]*Device    `json:"devices"`
 	WebSessions    map[string]WebSession `json:"web_sessions,omitempty"`
+	GuestVisits    []GuestVisit          `json:"guest_visits,omitempty"`
 	AuditEvents    []AuditEvent          `json:"audit_events"`
 	LastProcessSet map[string]time.Time  `json:"last_process_set,omitempty"`
 }
@@ -50,6 +52,7 @@ type ServiceConfig struct {
 	Port           int       `json:"port"`
 	HTTPS          bool      `json:"https"`
 	Language       string    `json:"language,omitempty"`
+	GuestEnabled   bool      `json:"guest_enabled,omitempty"`
 	UpdateProxy    string    `json:"update_proxy,omitempty"`
 	MinFreeBytes   uint64    `json:"min_free_bytes,omitempty"`
 	CertPath       string    `json:"cert_path,omitempty"`
@@ -82,6 +85,18 @@ type WebSession struct {
 	ExpiresAt  time.Time `json:"expires_at"`
 }
 
+type GuestVisit struct {
+	At          time.Time `json:"at"`
+	RemoteIP    string    `json:"remote_ip"`
+	UserAgent   string    `json:"user_agent,omitempty"`
+	Path        string    `json:"path,omitempty"`
+	Fingerprint string    `json:"fingerprint,omitempty"`
+	Language    string    `json:"language,omitempty"`
+	Platform    string    `json:"platform,omitempty"`
+	Screen      string    `json:"screen,omitempty"`
+	Timezone    string    `json:"timezone,omitempty"`
+}
+
 type AuditEvent struct {
 	At      time.Time `json:"at"`
 	Type    string    `json:"type"`
@@ -110,6 +125,9 @@ func OpenMetadataStore(path string, adminPassword string, bootstrapDeviceID stri
 	}
 	if store.data.WebSessions == nil {
 		store.data.WebSessions = map[string]WebSession{}
+	}
+	if store.data.GuestVisits == nil {
+		store.data.GuestVisits = []GuestVisit{}
 	}
 	if store.data.LastProcessSet == nil {
 		store.data.LastProcessSet = map[string]time.Time{}
@@ -363,6 +381,19 @@ func (s *MetadataStore) UpdateLanguage(language string) (ServiceConfig, error) {
 	return s.data.Service, s.saveLocked()
 }
 
+func (s *MetadataStore) UpdateGuestEnabled(enabled bool) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.Service.GuestEnabled = enabled
+	s.bumpServiceConfigLocked()
+	if enabled {
+		s.addAuditLocked("guest_access_enabled", "enabled guest overview access")
+	} else {
+		s.addAuditLocked("guest_access_disabled", "disabled guest overview access")
+	}
+	return s.data.Service, s.saveLocked()
+}
+
 func (s *MetadataStore) UpdateProxy(proxyURL string) (ServiceConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -378,6 +409,52 @@ func (s *MetadataStore) UpdateProxy(proxyURL string) (ServiceConfig, error) {
 		s.addAuditLocked("update_proxy_changed", "changed update proxy")
 	}
 	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) RecordGuestVisit(visit GuestVisit) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	visit.At = visit.At.UTC()
+	if visit.At.IsZero() {
+		visit.At = time.Now().UTC()
+	}
+	visit.UserAgent = limitText(strings.TrimSpace(visit.UserAgent), 240)
+	visit.Path = limitText(strings.TrimSpace(visit.Path), 120)
+	visit.Fingerprint = limitText(strings.TrimSpace(visit.Fingerprint), 80)
+	visit.Language = limitText(strings.TrimSpace(visit.Language), 80)
+	visit.Platform = limitText(strings.TrimSpace(visit.Platform), 80)
+	visit.Screen = limitText(strings.TrimSpace(visit.Screen), 80)
+	visit.Timezone = limitText(strings.TrimSpace(visit.Timezone), 80)
+	s.data.GuestVisits = append(s.data.GuestVisits, GuestVisit{
+		At:          visit.At,
+		RemoteIP:    visit.RemoteIP,
+		UserAgent:   visit.UserAgent,
+		Path:        visit.Path,
+		Fingerprint: visit.Fingerprint,
+		Language:    visit.Language,
+		Platform:    visit.Platform,
+		Screen:      visit.Screen,
+		Timezone:    visit.Timezone,
+	})
+	if len(s.data.GuestVisits) > 300 {
+		s.data.GuestVisits = s.data.GuestVisits[len(s.data.GuestVisits)-300:]
+	}
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) GuestVisits(limit int) []GuestVisit {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit <= 0 || limit > 300 {
+		limit = 100
+	}
+	start := len(s.data.GuestVisits) - limit
+	if start < 0 {
+		start = 0
+	}
+	visits := append([]GuestVisit(nil), s.data.GuestVisits[start:]...)
+	sort.Slice(visits, func(i, j int) bool { return visits[i].At.After(visits[j].At) })
+	return visits
 }
 
 func (s *MetadataStore) SaveCertificate(certPEM, keyPEM []byte) (ServiceConfig, error) {

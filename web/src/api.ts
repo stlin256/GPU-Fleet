@@ -107,6 +107,7 @@ export type ServiceStatus = {
   configured_port: number;
   https_enabled: boolean;
   language: AppLanguage;
+  guest_enabled: boolean;
   update_proxy?: string;
   min_free_bytes: number;
   cert_not_after?: string;
@@ -117,10 +118,30 @@ export type ServiceStatus = {
   management_base_url?: string;
 };
 
+export type GuestServiceStatus = Pick<ServiceStatus, 'current_scheme' | 'language' | 'guest_enabled'>;
+
 export type SetupStatus = {
   setup_required: boolean;
   setup_complete: boolean;
   service: ServiceStatus;
+};
+
+export type GuestStatus = {
+  ok: boolean;
+  guest_enabled: boolean;
+  service: GuestServiceStatus;
+};
+
+export type GuestVisit = {
+  at: string;
+  remote_ip: string;
+  user_agent?: string;
+  path?: string;
+  fingerprint?: string;
+  language?: string;
+  platform?: string;
+  screen?: string;
+  timezone?: string;
 };
 
 export type SetupPayload = {
@@ -204,6 +225,7 @@ export type UpdateApplyResponse = {
 
 export type Overview = {
   server_time: string;
+  guest?: boolean;
   device_count: number;
   online_device_count: number;
   gpu_count: number;
@@ -332,6 +354,50 @@ export function getOverview() {
   return request<Overview>('/api/v1/overview');
 }
 
+export function getGuestStatus() {
+  return request<GuestStatus>('/api/v1/guest/status');
+}
+
+export function getGuestOverview() {
+  return request<Overview>('/api/v1/guest/overview', {
+    headers: guestFingerprintHeaders()
+  });
+}
+
+function guestFingerprintHeaders(): Record<string, string> {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return {};
+  const screenText = typeof screen === 'undefined' ? '' : `${screen.width}x${screen.height}x${screen.colorDepth}`;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+  const parts = [
+    navigator.userAgent,
+    navigator.language,
+    navigator.languages?.join(',') ?? '',
+    navigator.platform,
+    screenText,
+    timezone,
+    String(new Date().getTimezoneOffset()),
+    String(navigator.hardwareConcurrency ?? ''),
+    String((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? '')
+  ];
+  const fingerprint = fnv1a(parts.join('|'));
+  return {
+    'X-GPUFleet-Guest-Fingerprint': fingerprint,
+    'X-GPUFleet-Guest-Language': navigator.languages?.join(',') || navigator.language || '',
+    'X-GPUFleet-Guest-Platform': navigator.platform || '',
+    'X-GPUFleet-Guest-Screen': screenText,
+    'X-GPUFleet-Guest-Timezone': timezone
+  };
+}
+
+function fnv1a(value: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
 export function getVersion() {
   return request<ReleaseInfo>('/api/v1/version');
 }
@@ -405,6 +471,17 @@ export function updateLanguage(language: AppLanguage) {
     method: 'POST',
     body: JSON.stringify({ language })
   });
+}
+
+export function updateGuest(enabled: boolean) {
+  return request<ServiceMutationResponse>('/api/v1/admin/guest', {
+    method: 'POST',
+    body: JSON.stringify({ enabled })
+  });
+}
+
+export function getGuestVisits() {
+  return request<{ ok: boolean; visits: GuestVisit[] }>('/api/v1/admin/guest/visits');
 }
 
 export function updateProxy(proxyURL: string) {

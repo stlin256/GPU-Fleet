@@ -45,6 +45,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: First-time setup and the settings-page setup wizard now share the same full-screen branded flow, with reopened setup prefilled from the existing port, language, and certificate state.
 - zh-CN: 设置页新增手动重启服务操作，确认后以全屏进度等待服务恢复，并在恢复刷新后弹出重启成功提示。
 - en-US: Added a manual service restart action in settings, with a full-screen recovery progress view and a restart success notice after refresh.
+- zh-CN: 新增访客功能，可在设置页开启登录页访客入口；访客页仅展示脱敏 GPU 总览，不开放进程、24 小时统计或管理接口，并在设置页提供含浏览器指纹摘要的访客记录弹窗。
+- en-US: Added guest access with a settings-controlled login entry; the guest page only shows a sanitized GPU overview without processes, 24-hour stats, or admin APIs, and settings now include guest visit records with browser fingerprint summaries.
 
 ### Fixed / 修复
 
