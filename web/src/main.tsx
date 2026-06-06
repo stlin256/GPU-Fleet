@@ -492,58 +492,82 @@ function SetupWizard({
   }
 
   return (
-    <main className={mode === 'initial' ? 'login-shell' : 'setup-inline'} data-testid={mode === 'initial' ? 'setup-wizard' : 'setup-wizard-inline'}>
-      <form className={`setup-panel ${mode === 'initial' ? 'panel' : ''}`} onSubmit={submit}>
-        <div className="login-head">
-          <Brand />
-          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-        </div>
-        <div className="setup-title">
-          <span className="pill good">{service?.current_scheme?.toUpperCase() ?? 'HTTP'}</span>
-          <h1>{mode === 'initial' ? t('首次配置') : t('配置引导')}</h1>
-          <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : t('初始化服务访问参数')}</p>
-        </div>
-
-        <div className="setup-grid">
-          <label>
-            {mode === 'initial' ? t('访问密码') : t('新密码')}
-            <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? t('至少 8 位') : t('留空则不变')} />
-          </label>
-          <label>
-            {t('确认密码')}
-            <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? t('再次输入密码') : t('仅修改密码时填写')} />
-          </label>
-          <label>
-            {t('访问端口')}
-            <input value={port} onChange={(event) => setPort(event.target.value)} type="number" min={1} max={65535} inputMode="numeric" />
-          </label>
-          <label>
-            {t('界面语言')}
-            <select value={selectedLanguage} onChange={(event) => {
-              const next = event.target.value as AppLanguage;
-              setSelectedLanguage(next);
-              setLanguage(next);
-            }}>
-              {languages.map((item) => <option key={item.code} value={item.code}>{item.nativeLabel}</option>)}
-            </select>
-          </label>
-          <div className="setup-file-row">
-            <FilePicker label={t('HTTPS 证书')} accept=".pem,.crt,.cer" fileName={certificateName} onChange={(event) => loadPEM(event, 'cert')} />
-            <FilePicker label={t('私钥文件')} accept=".pem,.key" fileName={keyName} onChange={(event) => loadPEM(event, 'key')} />
+    <main className="setup-shell" data-testid={mode === 'initial' ? 'setup-wizard' : 'setup-wizard-inline'}>
+      <section className="setup-stage" aria-label={t('配置引导')}>
+        <aside className="setup-hero">
+          <div className="setup-hero-top">
+            <Brand />
+            <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           </div>
-        </div>
+          <div className="setup-hero-copy">
+            <span className="pill good">{service?.current_scheme?.toUpperCase() ?? 'HTTP'}</span>
+            <h1>{mode === 'initial' ? t('首次配置') : t('配置引导')}</h1>
+            <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : t('初始化服务访问参数')}</p>
+          </div>
+          <div className="setup-hero-facts">
+            <div>
+              <span>{t('访问端口')}</span>
+              <strong>{port || '-'}</strong>
+            </div>
+            <div>
+              <span>{t('界面语言')}</span>
+              <strong>{languages.find((item) => item.code === selectedLanguage)?.nativeLabel ?? selectedLanguage}</strong>
+            </div>
+            <div>
+              <span>HTTPS</span>
+              <strong>{certificateName || service?.cert_not_after ? t('证书已配置') : t('可选')}</strong>
+            </div>
+          </div>
+        </aside>
 
-        <div className="setup-actions">
-          {onCancel && <button className="secondary" type="button" onClick={onCancel}>{t('取消')}</button>}
-          <button className="primary compact" disabled={loading}>
-            <Save size={17} />
-            {loading ? t('保存中') : t('保存配置')}
-          </button>
-        </div>
-        {service?.cert_not_after && <p className="notice">{t('当前证书到期：{date}', { date: fmtDateTime(service.cert_not_after) })}</p>}
-        {message && <p className="notice">{message}</p>}
-        {error && <p className="error">{error}</p>}
-      </form>
+        <form className="setup-panel" onSubmit={submit}>
+          <div className="setup-title">
+            <span>{t('凭据、端口、语言和 HTTPS 证书')}</span>
+            <h2>{t('保存配置')}</h2>
+            <p>{mode === 'initial' ? t('设置服务端访问方式后即可进入控制台') : t('此前配置已预填，可只修改需要变更的项目')}</p>
+          </div>
+
+          <div className="setup-grid">
+            <label>
+              {mode === 'initial' ? t('访问密码') : t('新密码')}
+              <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? t('至少 8 位') : t('留空则不变')} />
+            </label>
+            <label>
+              {t('确认密码')}
+              <input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" placeholder={mode === 'initial' ? t('再次输入密码') : t('仅修改密码时填写')} />
+            </label>
+            <label>
+              {t('访问端口')}
+              <input value={port} onChange={(event) => setPort(event.target.value)} type="number" min={1} max={65535} inputMode="numeric" />
+            </label>
+            <label>
+              {t('界面语言')}
+              <select value={selectedLanguage} onChange={(event) => {
+                const next = event.target.value as AppLanguage;
+                setSelectedLanguage(next);
+                setLanguage(next);
+              }}>
+                {languages.map((item) => <option key={item.code} value={item.code}>{item.nativeLabel}</option>)}
+              </select>
+            </label>
+            <div className="setup-file-row">
+              <FilePicker label={t('HTTPS 证书')} accept=".pem,.crt,.cer" fileName={certificateName} onChange={(event) => loadPEM(event, 'cert')} />
+              <FilePicker label={t('私钥文件')} accept=".pem,.key" fileName={keyName} onChange={(event) => loadPEM(event, 'key')} />
+            </div>
+          </div>
+
+          <div className="setup-actions">
+            {onCancel && <button className="secondary" type="button" onClick={onCancel}>{t('取消')}</button>}
+            <button className="primary compact" disabled={loading}>
+              <Save size={17} />
+              {loading ? t('保存中') : t('保存配置')}
+            </button>
+          </div>
+          {service?.cert_not_after && <p className="notice">{t('当前证书到期：{date}', { date: fmtDateTime(service.cert_not_after) })}</p>}
+          {message && <p className="notice">{message}</p>}
+          {error && <p className="error">{error}</p>}
+        </form>
+      </section>
     </main>
   );
 }

@@ -1394,24 +1394,128 @@ input:focus {
   flex-wrap: wrap;
 }
 
-.setup-panel {
-  width: min(780px, 100%);
+.setup-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
   padding: 24px;
+  background:
+    radial-gradient(circle at 16% 12%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 34%),
+    linear-gradient(135deg, color-mix(in srgb, var(--bg-strong) 76%, var(--panel)) 0%, var(--bg) 64%);
+  overflow: auto;
+  animation: fade-in var(--motion-slow) var(--ease) both;
 }
 
-.setup-inline .setup-panel {
-  width: 100%;
+.setup-stage {
+  width: min(1080px, 100%);
+  min-height: min(680px, calc(100vh - 48px));
+  display: grid;
+  grid-template-columns: minmax(300px, .82fr) minmax(420px, 1fr);
   border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  box-shadow: 0 28px 70px rgba(18, 28, 38, .18);
+  overflow: hidden;
+  animation: panel-pop var(--motion-slow) var(--ease-spring) both;
+}
+
+.setup-hero {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 24px;
+  padding: 28px;
+  color: white;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--accent-strong) 88%, #0a3037) 0%, color-mix(in srgb, var(--accent) 86%, #153f46) 58%, #26353f 100%);
+}
+
+.setup-hero .brand {
+  margin-bottom: 0;
+}
+
+.setup-hero .brand-mark {
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .22);
+}
+
+.setup-hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setup-hero-copy {
+  align-self: center;
+  display: grid;
+  gap: 12px;
+}
+
+.setup-hero-copy h1 {
+  font-size: clamp(32px, 4vw, 48px);
+  line-height: 1.02;
+}
+
+.setup-hero-copy p {
+  color: color-mix(in srgb, white 78%, transparent);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.setup-hero-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.setup-hero-facts div {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, .2);
   border-radius: 8px;
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  animation: panel-pop var(--motion-slow) var(--ease) both;
+  padding: 10px;
+  background: rgba(255, 255, 255, .1);
+}
+
+.setup-hero-facts span,
+.setup-title span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.setup-hero-facts span {
+  color: color-mix(in srgb, white 70%, transparent);
+}
+
+.setup-hero-facts strong {
+  display: block;
+  margin-top: 6px;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setup-panel {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  padding: 32px;
 }
 
 .setup-title {
   display: grid;
   gap: 8px;
-  margin-top: 22px;
+}
+
+.setup-title h2 {
+  font-size: 26px;
+  line-height: 1.1;
 }
 
 .setup-grid {
@@ -1905,7 +2009,8 @@ input:focus {
 
 .settings-form input,
 .settings-form select,
-.setup-grid input {
+.setup-grid input,
+.setup-grid select {
   width: 100%;
 }
 
@@ -2175,6 +2280,30 @@ input[type="file"] {
   nav {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+  .setup-shell {
+    padding: 14px;
+  }
+  .setup-stage {
+    min-height: calc(100vh - 28px);
+    grid-template-columns: 1fr;
+  }
+  .setup-hero {
+    grid-template-rows: auto auto;
+    padding: 20px;
+  }
+  .setup-hero-copy {
+    align-self: auto;
+  }
+  .setup-hero-copy h1 {
+    font-size: 30px;
+  }
+  .setup-hero-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .setup-panel {
+    align-content: flex-start;
+    padding: 22px;
+  }
   .setup-grid,
   .setup-file-row,
   .settings-workbench,
@@ -2211,6 +2340,28 @@ input[type="file"] {
   }
   .fleet-card-grid {
     gap: 10px;
+  }
+  .setup-shell {
+    padding: 0;
+  }
+  .setup-stage {
+    min-height: 100vh;
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+  .setup-hero,
+  .setup-panel {
+    padding: 16px;
+  }
+  .setup-hero-top {
+    align-items: flex-start;
+  }
+  .setup-hero-facts {
+    grid-template-columns: 1fr;
+  }
+  .setup-title h2 {
+    font-size: 22px;
   }
   .fleet-board,
   .panel {

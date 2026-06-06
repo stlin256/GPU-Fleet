@@ -41,6 +41,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: GPU detail cards now keep their parameter grid in a compact two-column layout on mobile, reducing vertical space per GPU card.
 - zh-CN: 在线更新卡片移除超前、运行提交和远端字段，更新按钮改为二次确认后执行，并新增可立即生效的磁盘预留空间设置。
 - en-US: The online update card now removes ahead, running commit, and remote fields, requires confirmation before updating, and adds an immediately applied disk reserve setting.
+- zh-CN: 首次配置和设置页重新打开配置引导统一为同一套全屏品牌化向导，重新打开时会预填此前端口、语言和证书状态。
+- en-US: First-time setup and the settings-page setup wizard now share the same full-screen branded flow, with reopened setup prefilled from the existing port, language, and certificate state.
 
 ### Fixed / 修复
 
