@@ -784,7 +784,7 @@ function GuestDashboard({ theme, onToggleTheme }: { theme: Theme; onToggleTheme:
       <main className="content">
         <header className="topbar">
           <div>
-            <h1>{t('GPU 资源总览')}</h1>
+            <h1>{t('访客总览')}</h1>
             <p>{data ? t('服务端时间 {time}', { time: new Date(data.server_time).toLocaleString() }) : t('等待服务端数据')}</p>
           </div>
           <div className="top-actions">
@@ -1352,7 +1352,7 @@ function DevicePanel({ data }: { data?: Overview }) {
         <div className="list-row" key={device.id}>
           <div>
             <strong>{device.alias || device.id}</strong>
-            <p>{[device.hostname, device.os, device.agent_version].filter(Boolean).join(' · ') || (isGuest ? t('访客视图') : device.id)}</p>
+            {!isGuest && <p>{[device.hostname, device.os, device.agent_version].filter(Boolean).join(' · ') || device.id}</p>}
           </div>
           <span className={`pill ${device.enabled ? (device.status ?? 'offline') : 'disabled'}`}>{device.enabled ? (device.status ?? 'offline') : 'disabled'}</span>
         </div>

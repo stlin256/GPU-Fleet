@@ -2291,6 +2291,12 @@ input[type="file"] {
   .content {
     padding: 16px 16px calc(92px + env(safe-area-inset-bottom));
   }
+  .guest-app .sidebar {
+    display: none;
+  }
+  .guest-app .content {
+    padding-bottom: 16px;
+  }
   .table-row {
     grid-template-columns: 1fr 1fr;
     align-items: start;
