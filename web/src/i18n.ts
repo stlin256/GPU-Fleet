@@ -307,6 +307,11 @@ const en: Record<string, string> = {
   '保存预留': 'Save reserve',
   '磁盘预留至少 64 MiB': 'Disk reserve must be at least 64 MiB',
   '磁盘预留已保存': 'Disk reserve saved',
+  '查看 Git 原始错误': 'View raw Git error',
+  'Git 原始错误': 'Raw Git error',
+  '用于诊断服务器网络、代理或 Git 上游问题。': 'Use this to diagnose server network, proxy, or Git upstream issues.',
+  '在线更新失败，请查看详情并检查服务器网络、Git 上游或更新代理配置。': 'Online update failed. View details and check the server network, Git upstream, or update proxy settings.',
+  '检查 Git 上游失败': 'Git upstream check failed',
   '请求过于频繁，请等待 {duration} 后再试': 'Too many requests. Retry after {duration}.',
   'language endpoint not found; rebuild and restart the server binary': 'Language endpoint not found; rebuild and restart the server binary.'
 };

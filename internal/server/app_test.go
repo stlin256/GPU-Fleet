@@ -177,6 +177,18 @@ func TestUpdateAPIRequiresSessionAndHandlesUnsupportedRepo(t *testing.T) {
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusBadRequest, nil)
 }
 
+func TestGitFailureMessageKeepsDiagnosticDetail(t *testing.T) {
+	raw := "fetch --quiet --prune: fatal: unable to access 'https://github.com/stlin256/GPU-Fleet.git/': GnuTLS, handshake failed: The TLS connection was non-properly terminated."
+	message := gitFailureMessage("fetch", raw, "")
+	if !strings.Contains(message, "TLS") || !strings.Contains(message, "更新代理") {
+		t.Fatalf("expected actionable TLS/proxy message, got %q", message)
+	}
+	status := updateStatus{Supported: true, Upstream: "origin/main", Failed: true, Message: message, Detail: raw}
+	if updateMessage(status) != message || status.Detail != raw {
+		t.Fatalf("expected friendly message and raw detail to be preserved, got %+v", status)
+	}
+}
+
 func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git executable is not available")

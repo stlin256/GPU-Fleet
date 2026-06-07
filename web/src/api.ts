@@ -202,7 +202,9 @@ export type UpdateStatus = {
   behind: number;
   ahead: number;
   checked_at: string;
+  failed?: boolean;
   message?: string;
+  detail?: string;
 };
 
 export type UpdateDependencyStatus = {

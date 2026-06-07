@@ -10,6 +10,7 @@ import {
   Activity,
   BookOpenText,
   CheckCircle2,
+  CircleHelp,
   Clipboard,
   Cpu,
   Database,
@@ -2072,6 +2073,8 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   const [proxyMessage, setProxyMessage] = useState('');
   const [savingProxy, setSavingProxy] = useState(false);
   const [progressStep, setProgressStep] = useState(0);
+  const [updateDetail, setUpdateDetail] = useState('');
+  const [detailOpen, setDetailOpen] = useState(false);
   const cachedUpdate = readCachedUpdateStatus();
   const cachedUpdateAge = cachedUpdate ? Date.now() - new Date(cachedUpdate.cached_at).getTime() : Number.POSITIVE_INFINITY;
   const release = useQuery({
@@ -2107,10 +2110,14 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
 
   async function check() {
     setMessage('');
+    setUpdateDetail('');
     setProgressStep(0);
     setWaitingForRestart(false);
     const result = await update.refetch();
-    if (result.data) storeCachedUpdateStatus(result.data);
+    if (result.data) {
+      storeCachedUpdateStatus(result.data);
+      setUpdateDetail(result.data.detail || '');
+    }
   }
 
   async function saveProxy(event: React.FormEvent) {
@@ -2133,6 +2140,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   async function pull() {
     setConfirmOpen(false);
     setMessage('');
+    setUpdateDetail('');
     setBusy(true);
     setProgressStep(1);
     const timer = window.setTimeout(() => setProgressStep(2), 1200);
@@ -2178,11 +2186,17 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
     } catch (err) {
       window.clearTimeout(timer);
       setProgressStep(0);
-      setMessage(err instanceof Error ? err.message : 'update failed');
+      const detail = err instanceof Error ? err.message : 'update failed';
+      setMessage(friendlyUpdateFailure(detail, Boolean(proxyURL.trim())));
+      setUpdateDetail(detail);
     } finally {
       setBusy(false);
     }
   }
+  const visibleMessage = message || state.message;
+  const visibleDetail = updateDetail || status?.detail || '';
+  const messageIsSuccess = message ? (message.includes('已') || message.includes('正在自动重启') || message.includes('当前已经是最新版本')) : state.tone === 'good';
+  const messageClass = messageIsSuccess ? 'notice update-note' : 'error update-note';
 
   return (
     <article className={`panel setting-operation update-card ${state.tone}`} data-testid="settings-update">
@@ -2256,8 +2270,48 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
         />
       )}
       {progressStep > 0 && <UpdateProgress step={progressStep} />}
-      {(message || state.message) && <p className={message.includes('已') || message.includes('正在自动重启') || state.tone === 'good' ? 'notice update-note' : 'error update-note'}>{message || state.message}</p>}
+      {visibleMessage && (
+        <div className={`update-note-row ${messageClass}`}>
+          <p>{visibleMessage}</p>
+          {visibleDetail && (
+            <button className="icon-button inline-help" type="button" onClick={() => setDetailOpen(true)} title="查看 Git 原始错误">
+              <CircleHelp size={16} />
+            </button>
+          )}
+        </div>
+      )}
+      {detailOpen && <UpdateDetailDialog detail={visibleDetail} onClose={() => setDetailOpen(false)} />}
     </article>
+  );
+}
+
+function UpdateDetailDialog({ detail, onClose }: { detail: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="confirm-dialog update-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="update-detail-title" data-testid="update-detail-dialog">
+        <div className="confirm-copy">
+          <span className="confirm-icon"><CircleHelp size={22} /></span>
+          <div>
+            <h2 id="update-detail-title">Git 原始错误</h2>
+            <p>用于诊断服务器网络、代理或 Git 上游问题。</p>
+          </div>
+        </div>
+        <pre>{detail || '-'}</pre>
+        <div className="dialog-actions">
+          <button className="primary narrow" type="button" onClick={onClose}>关闭</button>
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 
@@ -2343,6 +2397,7 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
   if (error) return { label: '失败', tone: 'bad', message: error };
   if (!status) return { label: '未知', tone: 'warn', message: '尚未读取更新状态' };
   if (!status.supported) return { label: '不可用', tone: 'bad', message: status.message || '服务端未运行在 Git 工作区' };
+  if (status.failed) return { label: '检查失败', tone: 'bad', message: status.message || '检查 Git 上游失败' };
   if (status.dirty) return { label: '已阻止', tone: 'bad', message: '服务端工作区存在未提交改动，已阻止自动拉取' };
   if (!status.upstream) return { label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream' };
   if (status.ahead > 0 && status.behind > 0) return { label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward' };
@@ -2350,6 +2405,24 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
   if (status.available) return { label: '有新版本', tone: 'good', message: `${status.behind} 个提交可拉取、构建并自动重启` };
   if (status.binary_outdated) return { label: '需重建', tone: 'warn', message: '运行中的服务端二进制与当前仓库不一致，可重建并自动重启' };
   return { label: '最新', tone: 'good', message: status.message || '已经是最新版本' };
+}
+
+function friendlyUpdateFailure(detail: string, hasProxy: boolean) {
+  const lower = detail.toLowerCase();
+  const proxyHint = hasProxy ? '请确认当前更新代理可由服务端访问。' : '请在设置页配置服务端可访问的更新代理，或检查服务器直连 GitHub 的网络。';
+  if (lower.includes('gnutls') || lower.includes('handshake') || lower.includes('tls')) {
+    return `在线更新失败：GitHub TLS 连接被中断。${proxyHint}`;
+  }
+  if (lower.includes('could not resolve host') || lower.includes('name resolution')) {
+    return '在线更新失败：服务器无法解析 GitHub 域名。请检查 DNS、网络或更新代理。';
+  }
+  if (lower.includes('connection timed out') || lower.includes('failed to connect') || lower.includes('connection refused')) {
+    return `在线更新失败：服务器连接 GitHub 超时或被拒绝。${proxyHint}`;
+  }
+  if (lower.includes('authentication failed') || lower.includes('could not read username')) {
+    return '在线更新失败：远端仓库认证失败。请检查仓库地址、访问权限或凭据配置。';
+  }
+  return '在线更新失败，请查看详情并检查服务器网络、Git 上游或更新代理配置。';
 }
 
 function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInfo; loading: boolean; error: string }) {

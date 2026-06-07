@@ -478,6 +478,9 @@ const dashboardHTML = `<!doctype html>
     .metric-spark .spark-tooltip { min-width: 78px; max-width: 112px; padding: 5px 6px; }
     .metric-spark .spark-tooltip span, .metric-spark .spark-tooltip small { font-size: 10px; }
     .metric-spark .spark-tooltip strong { font-size: 12px; line-height: 1.05; }
+    .update-note-row { display: flex; align-items: flex-start; gap: 8px; margin-top: -4px; }
+    .update-note-row p { flex: 1; min-width: 0; margin: 0; }
+    .inline-help { width: 28px; height: 28px; flex: 0 0 auto; }
     .trend-tile.good .spark-line { stroke: var(--good); }
     .trend-tile.warn .spark-line { stroke: var(--warn); }
     .trend-tile.bad .spark-line { stroke: var(--bad); }
@@ -1077,6 +1080,9 @@ const dashboardHTML = `<!doctype html>
         '拉取并重启': 'Pull and restart',
         '更新代理': 'Update proxy',
         '保存代理': 'Save proxy',
+        '查看 Git 原始错误': 'View raw Git error',
+        '在线更新失败，请查看详情并检查服务器网络、Git 上游或更新代理配置。': 'Online update failed. View details and check the server network, Git upstream, or update proxy settings.',
+        '检查 Git 上游失败': 'Git upstream check failed',
         '当前提交': 'Current commit',
         '远端提交': 'Remote commit',
         '运行版本': 'Running version',
@@ -1174,6 +1180,7 @@ const dashboardHTML = `<!doctype html>
       confirmBusy: false,
       editingDevice: null,
       updateCheckTimer: null,
+      updateDetail: '',
       theme: initialTheme()
     };
     const updateStatusCacheKey = 'gpufleet-update-status-cache';
@@ -1777,7 +1784,7 @@ const dashboardHTML = `<!doctype html>
     }
     function updatePanel() {
       const service = state.data && state.data.service || {};
-      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div></div><div class="update-meta"><div><span>运行版本</span><strong id="updateRunningVersion">-</strong></div><div><span>仓库版本</span><strong id="updateRepoVersion">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><form class="settings-form inline update-proxy-form" onsubmit="saveUpdateProxy(event)"><label>更新代理<input id="updateProxyInput" value="' + esc(service.update_proxy || '') + '" placeholder="http://127.0.0.1:7890"></label><button class="secondary" type="submit">保存代理</button></form><p class="update-note" id="updateProxyMessage"></p><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>更新</button></div><div class="update-progress hidden" id="updateProgress"></div><p class="update-note" id="updateMessage">服务端会先检查依赖，再拉取、构建并自动重启。</p></article>';
+      return '<article class="panel setting-operation update-card" data-testid="settings-update"><div class="operation-head"><div class="operation-icon">UP</div><div><h2>在线更新</h2><p>检查 Git 上游版本</p></div><span class="pill warn" id="updateState">未检查</span></div><div class="update-compare"><div><span>当前提交</span><strong id="updateLocal">-</strong></div><div><span>远端提交</span><strong id="updateRemote">-</strong></div><div><span>落后</span><strong id="updateBehind">0</strong></div></div><div class="update-meta"><div><span>运行版本</span><strong id="updateRunningVersion">-</strong></div><div><span>仓库版本</span><strong id="updateRepoVersion">-</strong></div><div><span>检查时间</span><strong id="updateChecked">-</strong></div></div><form class="settings-form inline update-proxy-form" onsubmit="saveUpdateProxy(event)"><label>更新代理<input id="updateProxyInput" value="' + esc(service.update_proxy || '') + '" placeholder="http://127.0.0.1:7890"></label><button class="secondary" type="submit">保存代理</button></form><p class="update-note" id="updateProxyMessage"></p><div class="settings-button-row"><button class="secondary" type="button" onclick="checkUpdateStatus()">检查更新</button><button class="primary narrow" type="button" id="updateApplyButton" onclick="applyUpdate()" disabled>更新</button></div><div class="update-progress hidden" id="updateProgress"></div><div class="update-note-row notice update-note" id="updateMessageRow"><p id="updateMessage">服务端会先检查依赖，再拉取、构建并自动重启。</p><button class="icon-button inline-help hidden" type="button" id="updateDetailButton" onclick="showUpdateDetail()" title="查看 Git 原始错误">?</button></div></article>';
     }
     async function saveUpdateProxy(event) {
       event.preventDefault();
@@ -1855,7 +1862,7 @@ const dashboardHTML = `<!doctype html>
       } catch (err) {
         clearTimeout(timer);
         renderUpdateProgress(0);
-        renderUpdateError(err.message || 'update failed');
+        renderUpdateError('在线更新失败，请查看详情并检查服务器网络、Git 上游或更新代理配置。', err.message || 'update failed');
       }
     }
     function renderUpdateProgress(step) {
@@ -1883,39 +1890,51 @@ const dashboardHTML = `<!doctype html>
       if (runningVersion) runningVersion.textContent = status.running_version ? 'v' + status.running_version : '-';
       if (repoVersion) repoVersion.textContent = status.repo_version ? 'v' + status.repo_version : '-';
       if (checked) checked.textContent = status.checked_at ? new Date(status.checked_at).toLocaleString() : '-';
-      const state = updateState(status);
+      const viewState = updateState(status);
       const stateNode = document.getElementById('updateState');
       const message = document.getElementById('updateMessage');
+      const messageRow = document.getElementById('updateMessageRow');
+      const detailButton = document.getElementById('updateDetailButton');
       const button = document.getElementById('updateApplyButton');
+      state.updateDetail = status.detail || '';
       if (stateNode) {
-        stateNode.className = 'pill ' + state.tone;
-        stateNode.textContent = state.label;
+        stateNode.className = 'pill ' + viewState.tone;
+        stateNode.textContent = viewState.label;
       }
       if (message) {
-        message.className = state.tone === 'bad' ? 'error update-note' : 'notice update-note';
-        message.textContent = state.message;
+        message.textContent = viewState.message;
       }
+      if (messageRow) messageRow.className = 'update-note-row update-note ' + (viewState.tone === 'bad' ? 'error' : 'notice');
+      if (detailButton) detailButton.classList.toggle('hidden', !state.updateDetail);
       if (button) {
         button.disabled = !(status.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && !status.ahead);
         button.textContent = '更新';
       }
     }
-    function renderUpdateError(message) {
+    function renderUpdateError(message, detail) {
       const stateNode = document.getElementById('updateState');
       const messageNode = document.getElementById('updateMessage');
+      const messageRow = document.getElementById('updateMessageRow');
+      const detailButton = document.getElementById('updateDetailButton');
       const button = document.getElementById('updateApplyButton');
+      state.updateDetail = detail || message || '';
       if (stateNode) {
         stateNode.className = 'pill bad';
         stateNode.textContent = '失败';
       }
       if (messageNode) {
-        messageNode.className = 'error update-note';
         messageNode.textContent = message;
       }
+      if (messageRow) messageRow.className = 'update-note-row update-note error';
+      if (detailButton) detailButton.classList.toggle('hidden', !state.updateDetail);
       if (button) button.disabled = true;
+    }
+    function showUpdateDetail() {
+      window.alert(state.updateDetail || '没有可用的 Git 原始错误');
     }
     function updateState(status) {
       if (!status || !status.supported) return {label: '不可用', tone: 'bad', message: (status && status.message) || '服务端未运行在 Git 工作区'};
+      if (status.failed) return {label: '检查失败', tone: 'bad', message: status.message || '检查 Git 上游失败'};
       if (status.dirty) return {label: '已阻止', tone: 'bad', message: '服务端工作区存在未提交改动，已阻止自动拉取'};
       if (!status.upstream) return {label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream'};
       if (status.ahead > 0 && status.behind > 0) return {label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward'};

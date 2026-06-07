@@ -2088,6 +2088,46 @@ input:focus {
   margin-top: -4px;
 }
 
+.update-note-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: -4px;
+}
+
+.update-note-row p {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+}
+
+.inline-help {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.update-detail-dialog {
+  width: min(680px, 100%);
+}
+
+.update-detail-dialog pre {
+  max-height: min(48vh, 360px);
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-soft);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .update-progress-backdrop {
   z-index: 86;
 }

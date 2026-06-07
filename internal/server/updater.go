@@ -45,7 +45,9 @@ type updateStatus struct {
 	Behind         int       `json:"behind"`
 	Ahead          int       `json:"ahead"`
 	CheckedAt      time.Time `json:"checked_at"`
+	Failed         bool      `json:"failed,omitempty"`
 	Message        string    `json:"message,omitempty"`
+	Detail         string    `json:"detail,omitempty"`
 }
 
 type updateDependencyStatus struct {
@@ -286,7 +288,10 @@ func (a *App) gitUpdateStatus(ctx context.Context) updateStatus {
 	status.Upstream = strings.TrimSpace(upstream)
 
 	if _, err := a.runGit(ctx, "fetch", "--quiet", "--prune"); err != nil {
-		status.Message = "fetch failed: " + limitText(cleanCommandError(err), 500)
+		detail := limitText(cleanCommandError(err), updateOutputLimit)
+		status.Failed = true
+		status.Message = gitFailureMessage("fetch", detail, a.meta.ServiceConfig().UpdateProxy)
+		status.Detail = detail
 		return status
 	}
 	if remoteCommit, err := a.runGit(ctx, "rev-parse", "@{u}"); err == nil {
@@ -713,6 +718,8 @@ func parseAheadBehind(raw string) (int, int) {
 
 func updateMessage(status updateStatus) string {
 	switch {
+	case status.Failed:
+		return status.Message
 	case status.Dirty:
 		return "server working tree has uncommitted changes"
 	case status.Ahead > 0 && status.Behind > 0:
@@ -733,6 +740,28 @@ func cleanCommandError(err error) string {
 		return ""
 	}
 	return strings.TrimSpace(err.Error())
+}
+
+func gitFailureMessage(action, detail, proxyURL string) string {
+	lower := strings.ToLower(detail)
+	proxyHint := "请检查服务器到 GitHub 的网络连通性"
+	if strings.TrimSpace(proxyURL) == "" {
+		proxyHint += "，或在设置页配置服务端可访问的更新代理"
+	} else {
+		proxyHint += "，并确认当前更新代理可由服务端访问"
+	}
+	switch {
+	case strings.Contains(lower, "gnutls") || strings.Contains(lower, "handshake") || strings.Contains(lower, "tls"):
+		return fmt.Sprintf("Git %s 失败：GitHub TLS 连接被中断。%s。", action, proxyHint)
+	case strings.Contains(lower, "could not resolve host") || strings.Contains(lower, "name resolution"):
+		return fmt.Sprintf("Git %s 失败：服务器无法解析 GitHub 域名。请检查 DNS、网络或更新代理。", action)
+	case strings.Contains(lower, "connection timed out") || strings.Contains(lower, "failed to connect") || strings.Contains(lower, "connection refused"):
+		return fmt.Sprintf("Git %s 失败：服务器连接 GitHub 超时或被拒绝。%s。", action, proxyHint)
+	case strings.Contains(lower, "authentication failed") || strings.Contains(lower, "could not read username"):
+		return fmt.Sprintf("Git %s 失败：远端仓库认证失败。请检查仓库地址、访问权限或凭据配置。", action)
+	default:
+		return fmt.Sprintf("Git %s 失败。%s；点击详情可查看 Git 原始错误。", action, proxyHint)
+	}
 }
 
 func limitText(value string, max int) string {
