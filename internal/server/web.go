@@ -475,6 +475,9 @@ const dashboardHTML = `<!doctype html>
     .spark-tooltip.show { display: grid; }
     .spark-tooltip span, .spark-tooltip small { color: var(--muted); font-size: 11px; line-height: 1.2; }
     .spark-tooltip strong { color: var(--text); font-size: 14px; line-height: 1.15; }
+    .metric-spark .spark-tooltip { min-width: 78px; max-width: 112px; padding: 5px 6px; }
+    .metric-spark .spark-tooltip span, .metric-spark .spark-tooltip small { font-size: 10px; }
+    .metric-spark .spark-tooltip strong { font-size: 12px; line-height: 1.05; }
     .trend-tile.good .spark-line { stroke: var(--good); }
     .trend-tile.warn .spark-line { stroke: var(--warn); }
     .trend-tile.bad .spark-line { stroke: var(--bad); }
@@ -1128,6 +1131,7 @@ const dashboardHTML = `<!doctype html>
       return String(value)
         .replace(/(\d+) 台设备，(\d+) 块 GPU，按最新上报状态汇总。/, '$1 devices, $2 GPUs, summarized from latest reports.')
         .replace(/服务端时间 (.+)/, 'Server time $1')
+        .replace(/数据库大小 (.+) · 已存储 (.+) 天 · (.+) 空闲/, 'Database size $1 · stored $2 days · $3 free')
         .replace(/数据库大小 (.+)/, 'Database size $1')
         .replace(/空闲 (.+)/, '$1 free')
         .replace(/当前证书到期：(.+)/, 'Current certificate expires: $1')
@@ -1221,11 +1225,10 @@ const dashboardHTML = `<!doctype html>
     const watts = (n) => typeof n === 'number' && Number.isFinite(n) ? n.toFixed(1) + ' W' : '-';
     const temp = (n) => typeof n === 'number' && Number.isFinite(n) ? Math.round(n) + '°C' : '-';
     const mhz = (n) => typeof n === 'number' && Number.isFinite(n) ? Math.round(n) + ' MHz' : '-';
-    const fmtHours = (n) => {
-      if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return '-';
-      if (n % 24 === 0) return Math.round(n / 24) + ' 天';
-      if (n > 24) return Math.floor(n / 24) + ' 天 ' + (n % 24) + ' 小时';
-      return n + ' 小时';
+    const fmtStoredDays = (days, fallbackHours) => {
+      const fallbackDays = typeof fallbackHours === 'number' && Number.isFinite(fallbackHours) && fallbackHours > 0 ? Math.ceil(fallbackHours / 24) : 0;
+      const value = typeof days === 'number' && Number.isFinite(days) ? days : fallbackDays;
+      return '已存储 ' + Math.max(0, value) + ' 天';
     };
     const esc = (value) => String(value == null ? '' : value).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -1755,7 +1758,7 @@ const dashboardHTML = `<!doctype html>
             '</div>' +
             '<div class="settings-column settings-column-operations">' +
               settingsSectionHead('维护与发布', '数据库、在线更新和版本信息') +
-              operationPanel('数据库下载', '数据库大小 ' + fmtBytes(data.database_size_bytes || 0) + ' · ' + fmtHours(data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
+              operationPanel('数据库下载', '数据库大小 ' + fmtBytes(data.database_size_bytes || 0) + ' · ' + fmtStoredDays(data.metric_stored_days, data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
               updatePanel() +
               projectPanel() +
             '</div>' +

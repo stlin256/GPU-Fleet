@@ -20,6 +20,11 @@ import (
 
 var ErrInsufficientStorage = errors.New("insufficient storage")
 
+const (
+	coldSegmentAge        = 7 * 24 * time.Hour
+	compactSegmentComment = "gpufleet-compact-v1"
+)
+
 type MetricsStore struct {
 	dir         string
 	minFree     uint64
@@ -278,6 +283,39 @@ func (s *MetricsStore) ensureWritable() error {
 	return nil
 }
 
+func (s *MetricsStore) StoredDays() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	files, err := s.segmentFiles()
+	if err != nil {
+		return 0
+	}
+	var first time.Time
+	var last time.Time
+	for _, path := range files {
+		at, ok := segmentStart(path)
+		if !ok {
+			continue
+		}
+		if first.IsZero() || at.Before(first) {
+			first = at
+		}
+		end := at.Add(time.Hour)
+		if last.IsZero() || end.After(last) {
+			last = end
+		}
+	}
+	if first.IsZero() || last.IsZero() || !last.After(first) {
+		return 0
+	}
+	days := int(last.Sub(first).Hours()+23) / 24
+	if days < 1 {
+		return 1
+	}
+	return days
+}
+
 func (s *MetricsStore) appendSegmentLocked(segment string, samples []StoredSample) error {
 	path := filepath.Join(s.dir, "samples-"+segment+".jsonl.gz")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
@@ -330,17 +368,24 @@ func (s *MetricsStore) cleanupLocked() error {
 		return nil
 	}
 	cutoff := time.Now().Add(-s.retention)
+	compactBefore := time.Now().Add(-coldSegmentAge)
 	files, err := s.segmentFiles()
 	if err != nil {
 		return err
 	}
 	for _, path := range files {
-		info, err := os.Stat(path)
-		if err != nil {
+		at, ok := segmentStart(path)
+		if !ok {
 			continue
 		}
-		if info.ModTime().Before(cutoff) {
+		if !at.Add(time.Hour).After(cutoff) {
 			_ = os.Remove(path)
+			continue
+		}
+		if at.Add(time.Hour).Before(compactBefore) {
+			if err := compactSegment(path, at); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -386,14 +431,96 @@ func scanSegment(path string, visit func(StoredSample)) error {
 	return nil
 }
 
-func segmentMayOverlap(path string, since time.Time) bool {
-	base := filepath.Base(path)
-	segment := strings.TrimSuffix(strings.TrimPrefix(base, "samples-"), ".jsonl.gz")
-	at, err := time.Parse("2006010215", segment)
+func compactSegment(path string, segmentAt time.Time) error {
+	info, err := os.Stat(path)
 	if err != nil {
+		return err
+	}
+	if isCompactedSegment(path, segmentAt, info) {
+		return nil
+	}
+
+	tmp := path + ".tmp"
+	_ = os.Remove(tmp)
+	file, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	gw, err := gzip.NewWriterLevel(file, gzip.BestCompression)
+	if err != nil {
+		_ = file.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	gw.Name = filepath.Base(path)
+	gw.Comment = compactSegmentComment
+	gw.ModTime = segmentAt
+	enc := json.NewEncoder(gw)
+	var encodeErr error
+	err = scanSegment(path, func(sample StoredSample) {
+		if encodeErr != nil {
+			return
+		}
+		if err := enc.Encode(sample); err != nil {
+			encodeErr = err
+		}
+	})
+	closeErr := gw.Close()
+	fileErr := file.Close()
+	if err != nil || encodeErr != nil || closeErr != nil || fileErr != nil {
+		_ = os.Remove(tmp)
+		if err != nil {
+			return err
+		}
+		if encodeErr != nil {
+			return encodeErr
+		}
+		if closeErr != nil {
+			return closeErr
+		}
+		return fileErr
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return os.Chtimes(path, segmentAt, segmentAt)
+}
+
+func isCompactedSegment(path string, segmentAt time.Time, info os.FileInfo) bool {
+	if info.ModTime().After(segmentAt.Add(time.Hour)) {
+		return false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	gr, err := gzip.NewReader(file)
+	if err != nil {
+		return false
+	}
+	defer gr.Close()
+	return gr.Header.Comment == compactSegmentComment
+}
+
+func segmentMayOverlap(path string, since time.Time) bool {
+	at, ok := segmentStart(path)
+	if !ok {
 		return true
 	}
 	return at.Add(time.Hour).After(since)
+}
+
+func segmentStart(path string) (time.Time, bool) {
+	base := filepath.Base(path)
+	segment := strings.TrimSuffix(strings.TrimPrefix(base, "samples-"), ".jsonl.gz")
+	at, err := time.Parse("2006010215", segment)
+	return at, err == nil
 }
 
 func latestKey(deviceID, gpuID string) string {

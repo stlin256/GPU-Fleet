@@ -4,12 +4,12 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in the MVP preview stage.
 
-## [0.1.7] - 2026-06-05
+## [0.1.7] - 2026-06-08
 
 ### Title / 标题
 
-- zh-CN: 修复 Linux 自动更新重启竞态
-- en-US: Fix Linux automatic update restart race
+- zh-CN: 安装更新、GPU 监控、设置与存储优化
+- en-US: Installation, update, GPU monitoring, settings, and storage improvements
 
 ### Changed / 变更
 
@@ -25,6 +25,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: GPU process and 24-hour stats metadata now prefer device names, reducing direct device ID display.
 - zh-CN: 总览和 GPU 监控页的汇总指标卡新增右侧迷你曲线，用于展示各 GPU 当前利用率、显存和功耗分布。
 - en-US: Overview and GPU monitoring aggregate metric cards now include right-side sparklines for current per-GPU utilization, memory, and power distribution.
+- zh-CN: 设置页数据库下载卡片改为显示实际已存储天数，并将 7 天外指标分段重压缩为单个高压缩率 gzip 成员以降低长期存储占用。
+- en-US: The settings database download card now shows actual stored days, and metric segments older than 7 days are recompressed into single high-compression gzip members to reduce long-term storage use.
 - zh-CN: 在线更新进度改为背景模糊加前景进度面板展示，并加入百分比、进度条和阶段动画以提升更新体验。
 - en-US: Online update progress now uses a blurred backdrop with a foreground progress panel, percentage, progress bar, and staged animation for a clearer update experience.
 - zh-CN: 24 小时统计列表支持点击 GPU 展开过去 24H 的利用率、显存、温度和功耗曲线，GPU 监控页统计面板宽度与详情卡片主列对齐。
@@ -62,6 +64,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed overview and GPU monitoring sparklines potentially reusing empty series caches after an offline GPU comes back online, and aligned GPU detail value hover tooltips with the chart tooltip style.
 - zh-CN: 修复 GPU 最新快照变化时小图表反复重建刷新的问题，并将当前快照补入曲线末端，让总览和 GPU 监控页的总功耗曲线与当前数值保持一致。
 - en-US: Fixed sparklines repeatedly rebuilding as GPU snapshots changed, and appends the current snapshot to chart tails so overview and GPU monitoring power trends match the current value.
+- zh-CN: 调小总览和 GPU 监控页顶部迷你图表悬浮提示的数值字号，避免提示层遮挡时过于突兀。
+- en-US: Reduced the value font size in top metric sparkline hover tooltips on Overview and GPU monitoring so the overlay feels less intrusive.
 
 ## [0.1.6] - 2026-06-05
 

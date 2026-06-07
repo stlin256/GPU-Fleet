@@ -317,6 +317,7 @@ const enPatterns: Array<[RegExp, string]> = [
   [/^总量 (.+)$/, 'Total $1'],
   [/^上限 (.+)$/, 'Limit $1'],
   [/^峰值 (.+)$/, 'Peak $1'],
+  [/^数据库大小 (.+) · 已存储 (.+) 天 · (.+) 空闲$/, 'Database size $1 · stored $2 days · $3 free'],
   [/^数据库大小 (.+)$/, 'Database size $1'],
   [/^空闲 (.+)$/, '$1 free'],
   [/^当前证书到期：(.+)$/, 'Current certificate expires: $1'],

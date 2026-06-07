@@ -806,6 +806,7 @@ func (a *App) overviewResponse(r *http.Request, guest bool) overviewResponse {
 	devices := a.meta.ListDevices()
 	diskStatus, _ := a.metrics.DiskStatus()
 	databaseSize := databaseSizeBytes(a.config.DataDir)
+	metricStoredDays := a.metrics.StoredDays()
 
 	deviceViews := make([]deviceView, 0, len(devices))
 	deviceIDs := make(map[string]bool, len(devices))
@@ -898,6 +899,7 @@ func (a *App) overviewResponse(r *http.Request, guest bool) overviewResponse {
 		LatestGPUs:         filteredLatest,
 		LatestProcesses:    nil,
 		RetentionHours:     int(a.config.Retention.Hours()),
+		MetricStoredDays:   metricStoredDays,
 		MinFreeSpaceBytes:  a.config.MinFreeBytes,
 		DatabaseSizeBytes:  databaseSize,
 		SetupComplete:      a.meta.SetupComplete(),
@@ -1503,6 +1505,7 @@ type overviewResponse struct {
 	LatestGPUs         []StoredGPU             `json:"latest_gpus"`
 	LatestProcesses    []StoredProcessSnapshot `json:"latest_processes"`
 	RetentionHours     int                     `json:"retention_hours"`
+	MetricStoredDays   int                     `json:"metric_stored_days"`
 	MinFreeSpaceBytes  uint64                  `json:"min_free_space_bytes"`
 	DatabaseSizeBytes  uint64                  `json:"database_size_bytes"`
 	SetupComplete      bool                    `json:"setup_complete"`

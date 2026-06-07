@@ -740,6 +740,26 @@ input:focus-visible {
   line-height: 1.15;
 }
 
+.metric-spark .spark-tooltip,
+.fleet-kpi-spark .spark-tooltip {
+  min-width: 78px;
+  max-width: 112px;
+  padding: 5px 6px;
+}
+
+.metric-spark .spark-tooltip span,
+.metric-spark .spark-tooltip small,
+.fleet-kpi-spark .spark-tooltip span,
+.fleet-kpi-spark .spark-tooltip small {
+  font-size: 10px;
+}
+
+.metric-spark .spark-tooltip strong,
+.fleet-kpi-spark .spark-tooltip strong {
+  font-size: 12px;
+  line-height: 1.05;
+}
+
 .trend-tile.good .spark-line { stroke: var(--good); }
 .trend-tile.warn .spark-line { stroke: var(--warn); }
 .trend-tile.bad .spark-line { stroke: var(--bad); }

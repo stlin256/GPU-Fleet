@@ -175,11 +175,10 @@ function temp(value?: number) {
   return `${Math.round(value)}°C`;
 }
 
-function fmtHours(value?: number) {
-  if (typeof value !== 'number' || Number.isNaN(value) || value <= 0) return '-';
-  if (value % 24 === 0) return `${Math.round(value / 24)} 天`;
-  if (value > 24) return `${Math.floor(value / 24)} 天 ${value % 24} 小时`;
-  return `${value} 小时`;
+function fmtStoredDays(days?: number, fallbackHours?: number) {
+  const fallbackDays = typeof fallbackHours === 'number' && Number.isFinite(fallbackHours) && fallbackHours > 0 ? Math.ceil(fallbackHours / 24) : 0;
+  const value = typeof days === 'number' && Number.isFinite(days) ? days : fallbackDays;
+  return `已存储 ${Math.max(0, value)} 天`;
 }
 
 function fmtDateTime(value?: string) {
@@ -2971,7 +2970,7 @@ function DatabaseSettings({ data }: { data?: Overview }) {
         <div className="operation-icon"><Database size={18} /></div>
         <div>
           <h2>数据库下载</h2>
-          <p>数据库大小 {fmtBytes(data?.database_size_bytes ?? 0)} · {fmtHours(data?.retention_hours ?? 0)} · {fmtBytes(data?.disk.free_bytes)} 空闲</p>
+          <p>数据库大小 {fmtBytes(data?.database_size_bytes ?? 0)} · {fmtStoredDays(data?.metric_stored_days, data?.retention_hours)} · {fmtBytes(data?.disk.free_bytes)} 空闲</p>
         </div>
       </div>
       <a className="secondary action-button" href={databaseDownloadURL()} download>

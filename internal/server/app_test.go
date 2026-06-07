@@ -3,6 +3,7 @@ package server
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
@@ -10,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"io"
 	"math/big"
 	"net/http"
@@ -789,6 +791,89 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 		if strings.HasPrefix(name, "certs/") {
 			t.Fatalf("database download must not include certificate private material, got %s", name)
 		}
+	}
+}
+
+func TestMetricsStoreCompactsColdSegmentsAndCleansBySegmentTime(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Hour)
+	oldAt := now.Add(-8 * 24 * time.Hour)
+	expiredAt := now.Add(-31 * 24 * time.Hour)
+	util := 42.0
+	power := 188.5
+	batchFor := func(at time.Time) model.SampleBatch {
+		return model.SampleBatch{
+			DeviceID:     "rig-compact",
+			AgentVersion: model.AgentVersion,
+			Samples: []model.GPUSample{{
+				Timestamp: at,
+				GPUs: []model.GPUStatus{{
+					GPUID:                 "0",
+					UUIDHash:              "uuid-compact",
+					Name:                  "NVIDIA Test GPU",
+					DriverVersion:         "999.1",
+					MemoryTotalBytes:      24 * 1024 * 1024 * 1024,
+					MemoryUsedBytes:       6 * 1024 * 1024 * 1024,
+					UtilizationGPUPercent: &util,
+					PowerDrawWatts:        &power,
+				}},
+			}},
+		}
+	}
+
+	if err := store.AppendBatch(batchFor(oldAt)); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendBatch(batchFor(oldAt.Add(10 * time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AppendBatch(batchFor(expiredAt)); err != nil {
+		t.Fatal(err)
+	}
+	expiredPath := filepath.Join(root, "metrics", "samples-"+expiredAt.Format("2006010215")+".jsonl.gz")
+	if err := os.Chtimes(expiredPath, now, now); err != nil {
+		t.Fatal(err)
+	}
+
+	store.lastCleanup = now.Add(-2 * time.Hour)
+	if err := store.AppendBatch(batchFor(now)); err != nil {
+		t.Fatal(err)
+	}
+
+	oldPath := filepath.Join(root, "metrics", "samples-"+oldAt.Format("2006010215")+".jsonl.gz")
+	file, err := os.Open(oldPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gr, err := gzip.NewReader(file)
+	if err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if gr.Header.Comment != compactSegmentComment {
+		_ = gr.Close()
+		_ = file.Close()
+		t.Fatalf("expected cold segment to be compacted, got comment %q", gr.Header.Comment)
+	}
+	_ = gr.Close()
+	_ = file.Close()
+
+	points, err := store.Series("rig-compact", "0", oldAt.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) < 3 {
+		t.Fatalf("expected compacted data to remain readable, got %d points", len(points))
+	}
+	if _, err := os.Stat(expiredPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected expired segment to be deleted by segment time, got err=%v", err)
+	}
+	if days := store.StoredDays(); days < 8 || days > 10 {
+		t.Fatalf("expected stored days to reflect metric segment span, got %d", days)
 	}
 }
 
