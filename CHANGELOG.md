@@ -60,6 +60,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed missing offline masks on GPU monitoring cards; the mask now also shows how long the GPU has been offline.
 - zh-CN: 修复离线 GPU 重新上线后，总览和 GPU 监控页小图表可能继续沿用空曲线缓存的问题，并统一 GPU 详情数值悬浮提示样式。
 - en-US: Fixed overview and GPU monitoring sparklines potentially reusing empty series caches after an offline GPU comes back online, and aligned GPU detail value hover tooltips with the chart tooltip style.
+- zh-CN: 修复 GPU 最新快照变化时小图表反复重建刷新的问题，并将当前快照补入曲线末端，让总览和 GPU 监控页的总功耗曲线与当前数值保持一致。
+- en-US: Fixed sparklines repeatedly rebuilding as GPU snapshots changed, and appends the current snapshot to chart tails so overview and GPU monitoring power trends match the current value.
 
 ## [0.1.6] - 2026-06-05
 

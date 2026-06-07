@@ -944,13 +944,14 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
   const deviceColor = deviceBorderColor(item.device_id);
   const offlineText = offlineMaskText(item, device, language);
   const series = useQuery({
-    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1, guest, item.timestamp),
+    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1, guest),
     queryFn: () => guest ? getGuestGPUSeries(item.device_id, gpu.gpu_id, 1) : getGPUSeries(item.device_id, gpu.gpu_id, 1),
     staleTime: 20_000,
     refetchInterval: 30000,
-    retry: false
+    retry: false,
+    placeholderData: (previous) => previous
   });
-  const points = series.data ?? [];
+  const points = mergeSeriesWithLatest(series.data ?? [], item);
 
   return (
     <article
@@ -1106,14 +1107,14 @@ type AggregateSeries = AggregateSeriesData & {
 
 function useAggregateSeries(items: StoredGPU[], guest = false): AggregateSeries {
   const query = useQueryClient();
-  const keys = useMemo(() => items.map((item) => `${item.device_id}/${item.gpu.gpu_id}/${item.timestamp}`).sort(), [items]);
+  const keys = useMemo(() => items.map((item) => `${item.device_id}/${item.gpu.gpu_id}`).sort(), [items]);
   const series = useQuery({
     queryKey: ['aggregate-gpu-series', guest ? 'guest' : 'admin', keys],
     queryFn: async () => {
       const batches = await Promise.all(items.map(async (item) => ({
         item,
         points: await query.fetchQuery({
-          queryKey: gpuSeriesQueryKey(item.device_id, item.gpu.gpu_id, 1, guest, item.timestamp),
+          queryKey: gpuSeriesQueryKey(item.device_id, item.gpu.gpu_id, 1, guest),
           queryFn: () => guest ? getGuestGPUSeries(item.device_id, item.gpu.gpu_id, 1) : getGPUSeries(item.device_id, item.gpu.gpu_id, 1),
           staleTime: 20_000
         })
@@ -1123,23 +1124,32 @@ function useAggregateSeries(items: StoredGPU[], guest = false): AggregateSeries 
     enabled: items.length > 0,
     staleTime: 20_000,
     refetchInterval: 30000,
-    retry: false
+    retry: false,
+    placeholderData: (previous) => previous
   });
-  return series.data ? { ...series.data, ready: true } : { utilization: [], memory: [], power: [], ready: false };
+  const data = appendCurrentAggregateSample(series.data ?? { utilization: [], memory: [], power: [] }, items);
+  return series.data || items.length > 0 ? { ...data, ready: true } : { utilization: [], memory: [], power: [], ready: false };
 }
 
-function gpuSeriesQueryKey(deviceID: string, gpuID: string, hours: number, guest = false, snapshotAt = '') {
-  return ['gpu-series', guest ? 'guest' : 'admin', deviceID, gpuID, hours, snapshotAt] as const;
+function gpuSeriesQueryKey(deviceID: string, gpuID: string, hours: number, guest = false) {
+  return ['gpu-series', guest ? 'guest' : 'admin', deviceID, gpuID, hours] as const;
 }
 
 function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeriesData {
   const buckets = new Map<number, { timestamp?: string; utilizationTotal: number; utilizationCount: number; memory: number; power: number }>();
   for (const { points } of batches) {
-    const source: GPUSeriesPoint[] = points;
-    for (const [index, point] of source.entries()) {
+    const perGPUBuckets = new Map<number, GPUSeriesPoint>();
+    for (const point of points) {
       const time = new Date(point.timestamp).getTime();
       if (!Number.isFinite(time)) continue;
-      const row = buckets.get(index) ?? { timestamp: point.timestamp, utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
+      const bucket = aggregateBucketTime(time);
+      const previous = perGPUBuckets.get(bucket);
+      if (!previous || new Date(point.timestamp).getTime() >= new Date(previous.timestamp).getTime()) {
+        perGPUBuckets.set(bucket, point);
+      }
+    }
+    for (const [bucket, point] of perGPUBuckets) {
+      const row = buckets.get(bucket) ?? { timestamp: point.timestamp, utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
       if (!row.timestamp || new Date(point.timestamp).getTime() > new Date(row.timestamp).getTime()) {
         row.timestamp = point.timestamp;
       }
@@ -1153,7 +1163,7 @@ function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSerie
       if (typeof point.power_draw_watts === 'number' && Number.isFinite(point.power_draw_watts)) {
         row.power += point.power_draw_watts;
       }
-      buckets.set(index, row);
+      buckets.set(bucket, row);
     }
   }
   const rows = Array.from(buckets.entries()).sort(([left], [right]) => left - right).map(([, row]) => row);
@@ -1162,6 +1172,103 @@ function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSerie
     memory: rows.map((row) => ({ value: row.memory, timestamp: row.timestamp })),
     power: rows.map((row) => ({ value: row.power, timestamp: row.timestamp }))
   };
+}
+
+function mergeSeriesWithLatest(points: GPUSeriesPoint[], item: StoredGPU): GPUSeriesPoint[] {
+  const latest = latestPointFromItem(item);
+  const latestTime = new Date(latest.timestamp).getTime();
+  if (!Number.isFinite(latestTime)) return points;
+  const out = [...points];
+  const sameIndex = out.findIndex((point) => point.timestamp === latest.timestamp);
+  if (sameIndex >= 0) {
+    out[sameIndex] = latest;
+    return out.sort((left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime());
+  }
+  const last = out[out.length - 1];
+  const lastTime = last ? new Date(last.timestamp).getTime() : Number.NEGATIVE_INFINITY;
+  if (!Number.isFinite(lastTime) || latestTime > lastTime) {
+    out.push(latest);
+    return out;
+  }
+  return out;
+}
+
+function latestPointFromItem(item: StoredGPU): GPUSeriesPoint {
+  return {
+    timestamp: item.timestamp,
+    utilization_gpu_percent: item.gpu.utilization_gpu_percent,
+    memory_used_bytes: item.gpu.memory_used_bytes,
+    memory_total_bytes: item.gpu.memory_total_bytes,
+    temperature_celsius: item.gpu.temperature_celsius,
+    power_draw_watts: item.gpu.power_draw_watts
+  };
+}
+
+function appendCurrentAggregateSample(data: AggregateSeriesData, items: StoredGPU[]): AggregateSeriesData {
+  if (!items.length) return data;
+  const current = aggregateCurrentSample(items);
+  if (!current.timestamp) return data;
+  return {
+    utilization: appendOrReplaceAggregatePoint(data.utilization, current.timestamp, current.utilization),
+    memory: appendOrReplaceAggregatePoint(data.memory, current.timestamp, current.memory),
+    power: appendOrReplaceAggregatePoint(data.power, current.timestamp, current.power)
+  };
+}
+
+function aggregateCurrentSample(items: StoredGPU[]) {
+  let timestamp = '';
+  let utilizationTotal = 0;
+  let utilizationCount = 0;
+  let memory = 0;
+  let power = 0;
+  for (const item of items) {
+    if (!timestamp || new Date(item.timestamp).getTime() > new Date(timestamp).getTime()) {
+      timestamp = item.timestamp;
+    }
+    if (typeof item.gpu.utilization_gpu_percent === 'number' && Number.isFinite(item.gpu.utilization_gpu_percent)) {
+      utilizationTotal += item.gpu.utilization_gpu_percent;
+      utilizationCount += 1;
+    }
+    if (typeof item.gpu.memory_used_bytes === 'number' && Number.isFinite(item.gpu.memory_used_bytes)) {
+      memory += item.gpu.memory_used_bytes;
+    }
+    if (typeof item.gpu.power_draw_watts === 'number' && Number.isFinite(item.gpu.power_draw_watts)) {
+      power += item.gpu.power_draw_watts;
+    }
+  }
+  return {
+    timestamp,
+    utilization: utilizationCount ? utilizationTotal / utilizationCount : 0,
+    memory,
+    power
+  };
+}
+
+function appendOrReplaceAggregatePoint(samples: Array<{ value: number; timestamp?: string }>, timestamp: string, value: number) {
+  const next = [...samples];
+  const currentTime = new Date(timestamp).getTime();
+  if (!Number.isFinite(currentTime)) return next;
+  const currentBucket = aggregateBucketTime(currentTime);
+  const replaceIndex = next.findIndex((sample) => {
+    if (!sample.timestamp) return false;
+    const time = new Date(sample.timestamp).getTime();
+    return Number.isFinite(time) && aggregateBucketTime(time) === currentBucket;
+  });
+  const sample = { value, timestamp };
+  if (replaceIndex >= 0) {
+    next[replaceIndex] = sample;
+    return next.sort((left, right) => new Date(left.timestamp ?? 0).getTime() - new Date(right.timestamp ?? 0).getTime());
+  }
+  const last = next[next.length - 1];
+  const lastTime = last?.timestamp ? new Date(last.timestamp).getTime() : Number.NEGATIVE_INFINITY;
+  if (!Number.isFinite(lastTime) || currentTime >= lastTime) {
+    next.push(sample);
+  }
+  return next;
+}
+
+function aggregateBucketTime(time: number) {
+  return Math.floor(time / 60000) * 60000;
 }
 
 function Sparkline({ samples, max, label, formatValue, className = '' }: { samples: Array<{ value: number; timestamp?: string }>; max: number; label: string; formatValue: (value?: number) => string; className?: string }) {
@@ -1316,13 +1423,14 @@ function GPUCard({ item, device }: { item: StoredGPU; device?: Device }) {
   const deviceColor = deviceBorderColor(item.device_id);
   const offlineText = offlineMaskText(item, device, language);
   const series = useQuery({
-    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1, false, item.timestamp),
+    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1),
     queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
     staleTime: 20_000,
     refetchInterval: 30000,
-    retry: false
+    retry: false,
+    placeholderData: (previous) => previous
   });
-  const points = series.data ?? [];
+  const points = mergeSeriesWithLatest(series.data ?? [], item);
   const detailRows = [
     ['显存空闲', fmtBytes(gpu.memory_free_bytes)],
     ['显存保留', fmtBytes(gpu.memory_reserved_bytes)],
