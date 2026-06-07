@@ -56,6 +56,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 
 - zh-CN: 修复 0.1.5 到后续版本自动更新时，Git 仓库已更新但 systemd 仍可能继续运行旧服务端二进制的问题。
 - en-US: Fixed automatic updates from 0.1.5 and later where the Git checkout updated but systemd could continue running the old server binary.
+- zh-CN: 修复 GPU 监控页离线 GPU 卡片没有遮罩的问题，离线遮罩现在会同时显示离线时长。
+- en-US: Fixed missing offline masks on GPU monitoring cards; the mask now also shows how long the GPU has been offline.
+- zh-CN: 修复离线 GPU 重新上线后，总览和 GPU 监控页小图表可能继续沿用空曲线缓存的问题，并统一 GPU 详情数值悬浮提示样式。
+- en-US: Fixed overview and GPU monitoring sparklines potentially reusing empty series caches after an offline GPU comes back online, and aligned GPU detail value hover tooltips with the chart tooltip style.
 
 ## [0.1.6] - 2026-06-05
 

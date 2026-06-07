@@ -858,6 +858,7 @@ function OverviewPage({ data, statRows, theme, guest = false }: { data?: Overvie
 
 function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: GPUStats[]; theme: Theme }) {
   const gpus = data?.latest_gpus ?? [];
+  const deviceMap = useMemo(() => new Map((data?.devices ?? []).map((device) => [device.id, device])), [data?.devices]);
   const aggregateSeries = useAggregateSeries(gpus);
   const powerValue = data?.power_draw_watts;
   const utilizationSpark = aggregateSeries.ready ? aggregateSeries.utilization : [];
@@ -882,7 +883,7 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
               <span>{data?.latest_gpus.length ?? 0}</span>
             </div>
             <div className="gpu-grid">
-              {(data?.latest_gpus ?? []).map((item) => <GPUCard key={`${item.device_id}-${item.gpu.gpu_id}`} item={item} />)}
+              {(data?.latest_gpus ?? []).map((item) => <GPUCard key={`${item.device_id}-${item.gpu.gpu_id}`} item={item} device={deviceMap.get(item.device_id)} />)}
             </div>
             <UtilChart items={data?.latest_gpus ?? []} theme={theme} />
           </div>
@@ -941,8 +942,9 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
   const mem = memoryUsagePercent(item);
   const powerLimit = gpu.power_limit_watts ?? gpu.power_enforced_limit_watts;
   const deviceColor = deviceBorderColor(item.device_id);
+  const offlineText = offlineMaskText(item, device, language);
   const series = useQuery({
-    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1, guest),
+    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1, guest, item.timestamp),
     queryFn: () => guest ? getGuestGPUSeries(item.device_id, gpu.gpu_id, 1) : getGPUSeries(item.device_id, gpu.gpu_id, 1),
     staleTime: 20_000,
     refetchInterval: 30000,
@@ -958,7 +960,7 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
       data-device-color={deviceColor}
       style={{ '--device-color': deviceColor } as React.CSSProperties}
     >
-      {health.tone === 'offline' && <div className="offline-mask">离线</div>}
+      {health.tone === 'offline' && <OfflineMask text={offlineText} />}
       <div className="fleet-card-top">
         <div className="fleet-device-cell">
           <span className={`status-dot ${health.tone}`} />
@@ -1002,21 +1004,30 @@ function GPUTrendGrid({ item, points, className = 'gpu-trend-grid' }: { item: St
 }
 
 function TrendTile({ label, value, caption, values, timestamps, max, tone, formatValue }: { label: string; value: string; caption: string; values: Array<number | undefined>; timestamps: string[]; max: number; tone: TrendTone; formatValue: (value?: number) => string }) {
+  const [valueHover, setValueHover] = useState(false);
   const clean: Array<{ value: number; timestamp?: string }> = [];
   values.forEach((item, index) => {
     if (typeof item === 'number' && Number.isFinite(item)) {
       clean.push({ value: item, timestamp: timestamps[index] });
     }
   });
+  const latest = clean[clean.length - 1];
   return (
     <div className={`trend-tile ${tone}`} data-testid="gpu-trend-tile">
       <div className="trend-head">
         <div>
           <span>{label}</span>
-          <strong>{value}</strong>
+          <strong onPointerEnter={() => setValueHover(true)} onPointerLeave={() => setValueHover(false)}>{value}</strong>
         </div>
         <p>{caption}</p>
       </div>
+      {valueHover && latest && (
+        <div className="spark-tooltip trend-value-tooltip" data-testid="spark-tooltip">
+          <span>{label}</span>
+          <strong>{formatValue(latest.value)}</strong>
+          <small>{latest.timestamp ? fmtDateTime(latest.timestamp) : '-'}</small>
+        </div>
+      )}
       <Sparkline samples={clean} max={max} label={label} formatValue={formatValue} />
     </div>
   );
@@ -1045,6 +1056,22 @@ function FleetUtilPanel({ items, theme }: { items: StoredGPU[]; theme: Theme }) 
 
 function deviceName(device: Device | undefined, fallback: string) {
   return device?.alias || device?.hostname || fallback;
+}
+
+function offlineMaskText(item: StoredGPU, device: Device | undefined, language: AppLanguage) {
+  const offlineAt = device?.last_seen_at || device?.last_sample_at || item.timestamp;
+  const prefix = language === 'en-US' ? 'Offline' : '离线';
+  return offlineAt ? `${prefix} · ${timeAgo(offlineAt, language)}` : prefix;
+}
+
+function OfflineMask({ text }: { text: string }) {
+  const [title, detail] = text.split(' · ');
+  return (
+    <div className="offline-mask">
+      <strong>{title}</strong>
+      {detail && <small>{detail}</small>}
+    </div>
+  );
 }
 
 function shortGPUName(name: string) {
@@ -1079,14 +1106,14 @@ type AggregateSeries = AggregateSeriesData & {
 
 function useAggregateSeries(items: StoredGPU[], guest = false): AggregateSeries {
   const query = useQueryClient();
-  const keys = useMemo(() => items.map((item) => `${item.device_id}/${item.gpu.gpu_id}`).sort(), [items]);
+  const keys = useMemo(() => items.map((item) => `${item.device_id}/${item.gpu.gpu_id}/${item.timestamp}`).sort(), [items]);
   const series = useQuery({
     queryKey: ['aggregate-gpu-series', guest ? 'guest' : 'admin', keys],
     queryFn: async () => {
       const batches = await Promise.all(items.map(async (item) => ({
         item,
         points: await query.fetchQuery({
-          queryKey: gpuSeriesQueryKey(item.device_id, item.gpu.gpu_id, 1, guest),
+          queryKey: gpuSeriesQueryKey(item.device_id, item.gpu.gpu_id, 1, guest, item.timestamp),
           queryFn: () => guest ? getGuestGPUSeries(item.device_id, item.gpu.gpu_id, 1) : getGPUSeries(item.device_id, item.gpu.gpu_id, 1),
           staleTime: 20_000
         })
@@ -1101,8 +1128,8 @@ function useAggregateSeries(items: StoredGPU[], guest = false): AggregateSeries 
   return series.data ? { ...series.data, ready: true } : { utilization: [], memory: [], power: [], ready: false };
 }
 
-function gpuSeriesQueryKey(deviceID: string, gpuID: string, hours: number, guest = false) {
-  return ['gpu-series', guest ? 'guest' : 'admin', deviceID, gpuID, hours] as const;
+function gpuSeriesQueryKey(deviceID: string, gpuID: string, hours: number, guest = false, snapshotAt = '') {
+  return ['gpu-series', guest ? 'guest' : 'admin', deviceID, gpuID, hours, snapshotAt] as const;
 }
 
 function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeriesData {
@@ -1280,13 +1307,16 @@ function Metric({ icon, label, value, tone, spark }: { icon: React.ReactNode; la
   );
 }
 
-function GPUCard({ item }: { item: StoredGPU }) {
+function GPUCard({ item, device }: { item: StoredGPU; device?: Device }) {
+  const { language } = useI18n();
   const gpu = item.gpu;
+  const health = gpuHealth(item, device);
   const pcie = [gpu.pcie_link_generation ? `Gen ${gpu.pcie_link_generation}` : '', gpu.pcie_link_width ? `x${gpu.pcie_link_width}` : ''].filter(Boolean).join(' ');
   const pcieMax = [gpu.pcie_link_generation_max ? `Gen ${gpu.pcie_link_generation_max}` : '', gpu.pcie_link_width_max ? `x${gpu.pcie_link_width_max}` : ''].filter(Boolean).join(' ');
   const deviceColor = deviceBorderColor(item.device_id);
+  const offlineText = offlineMaskText(item, device, language);
   const series = useQuery({
-    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1),
+    queryKey: gpuSeriesQueryKey(item.device_id, gpu.gpu_id, 1, false, item.timestamp),
     queryFn: () => getGPUSeries(item.device_id, gpu.gpu_id, 1),
     staleTime: 20_000,
     refetchInterval: 30000,
@@ -1317,7 +1347,8 @@ function GPUCard({ item }: { item: StoredGPU }) {
   ].filter(([, value]) => value !== '-');
 
   return (
-    <article className="gpu-card" data-device-id={item.device_id} data-device-color={deviceColor} style={{ '--device-color': deviceColor } as React.CSSProperties}>
+    <article className={`gpu-card ${health.tone}`} data-device-id={item.device_id} data-device-color={deviceColor} style={{ '--device-color': deviceColor } as React.CSSProperties}>
+      {health.tone === 'offline' && <OfflineMask text={offlineText} />}
       <div className="card-title">
         <div>
           <h3>{gpu.name || gpu.gpu_id}</h3>

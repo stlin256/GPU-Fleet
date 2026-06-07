@@ -469,7 +469,8 @@ input:focus-visible {
 .fleet-gpu-card.bad { box-shadow: var(--shadow-soft), inset 0 3px 0 var(--bad); }
 .fleet-gpu-card.offline { box-shadow: var(--shadow-soft), inset 0 3px 0 var(--offline); }
 
-.fleet-gpu-card.offline > :not(.offline-mask) {
+.fleet-gpu-card.offline > :not(.offline-mask),
+.gpu-card.offline > :not(.offline-mask) {
   filter: grayscale(.95);
   opacity: .48;
 }
@@ -483,11 +484,23 @@ input:focus-visible {
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 62%, rgba(123, 135, 148, .28));
   color: var(--offline);
-  font-size: 22px;
-  font-weight: 900;
   letter-spacing: 0;
   pointer-events: none;
   animation: mask-in var(--motion-base) var(--ease) both;
+}
+
+.offline-mask strong {
+  color: var(--offline);
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.offline-mask small {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .fleet-card-top {
@@ -861,6 +874,8 @@ input:focus-visible {
 }
 
 .gpu-card {
+  position: relative;
+  overflow: hidden;
   border: 2px solid var(--device-color, var(--line));
   border-radius: 8px;
   padding: 12px;
@@ -952,6 +967,32 @@ input:focus-visible {
 
 .gpu-detail-trend-grid .sparkline-wrap {
   height: 68px;
+}
+
+.gpu-detail-trend-grid .spark-tooltip,
+.stats-trend-grid .spark-tooltip {
+  min-width: 148px;
+  max-width: 190px;
+  padding: 8px 10px;
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--line-strong));
+}
+
+.gpu-detail-trend-grid .spark-tooltip strong,
+.stats-trend-grid .spark-tooltip strong {
+  font-size: 15px;
+}
+
+.gpu-detail-trend-grid .spark-tooltip small,
+.stats-trend-grid .spark-tooltip small {
+  white-space: nowrap;
+}
+
+.trend-value-tooltip {
+  left: 10px;
+  top: 42px;
+  bottom: auto;
+  transform: none;
+  z-index: 6;
 }
 
 .kv, .list-row, .table-row {
