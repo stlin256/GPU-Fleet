@@ -133,15 +133,7 @@ func (s *ProcessStore) saveLocked() error {
 		}
 		return file.Latest[i].DeviceID < file.Latest[j].DeviceID
 	})
-	raw, err := json.MarshalIndent(file, "", "  ")
-	if err != nil {
-		return err
-	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, raw, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
+	return writeJSONFileAtomicSync(s.path, file, 0600)
 }
 
 func processKey(deviceID, gpuID string, pid int) string {

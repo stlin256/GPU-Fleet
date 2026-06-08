@@ -34,8 +34,8 @@ English documentation: [README-en.md](README-en.md)<br>
 | Web 面板 | 已实现 | React + Vite + TypeScript + TanStack Query + ECharts + lucide-react |
 | i18n | 已实现 | 首次配置语言选择、设置页语言切换、服务端语言持久化、可扩展词表、中文/英文 |
 | 设备管理 | 已实现 | 创建设备、一次性密钥、改名、禁用/启用、删除、轮换密钥、危险操作确认 |
-| 数据存储 | 已实现 | gzip JSONL 分段指标、JSON 元数据、保留期清理、数据库下载 |
-| 安全防护 | 已实现 | HMAC 签名、nonce 重放保护、登录限流、递进锁定、30 天会话 |
+| 数据存储 | 已实现 | gzip JSONL 分段指标、内存 rollup/索引、带 schema version 的 JSON 元数据、保留期清理、数据库下载 |
+| 安全防护 | 已实现 | HMAC 签名、原子 nonce 重放保护、管理写接口 Origin/Referer 校验、登录限流、递进锁定、30 天会话 |
 | 访客模式 | 已实现 | 登录页访客入口、脱敏总览、访客专用曲线接口、访客记录和浏览器指纹摘要 |
 | 版本机制 | 已实现 | `-version` 命令、`/api/v1/version`、设置页当前版本摘要、完整 Changelog 弹窗、`CHANGELOG.md` |
 | 在线更新 | 已实现 | 默认开启 30 分钟自动检查、设置页手动检查、1 小时缓存、代理配置、二次确认、远端构建、fast-forward 拉取、自动重启、完成通知和全屏进度 |
@@ -63,8 +63,8 @@ flowchart LR
   subgraph "公网服务端"
     API["Go Server\nHTTP/HTTPS + Web API"]
     Auth["认证与限流\nHMAC / Session / Lockout"]
-    Store["压缩指标存储\ngzip JSONL segments"]
-    Meta["元数据\nJSON files"]
+    Store["压缩指标存储\ngzip JSONL + rollup index"]
+    Meta["元数据\nversioned JSON files"]
     Web["Web Dashboard\nReact build or fallback"]
   end
 
@@ -366,7 +366,7 @@ flowchart TD
 
 ## 服务端在线更新
 
-服务端在线更新默认开启，每 30 分钟检查当前 Git 上游是否有可 fast-forward 的新提交；存在更新时会自动构建、拉取并调度服务端重启。管理员也可以在设置页手动检查并点击“更新”。该机制只操作服务端自身仓库和当前服务端进程，不会连接或修改任何客户端 Agent。更新状态会缓存 1 小时，打开设置页时优先显示缓存；管理员仍可点击检查更新立即刷新。更新支持配置代理地址，并在手动执行前显示全屏模糊确认弹窗。
+服务端在线更新默认开启，每 30 分钟检查当前 Git 上游是否有可 fast-forward 的新提交；存在更新时会自动构建、拉取并调度服务端重启。管理员也可以在设置页手动检查并点击“更新”。该机制只操作服务端自身仓库和当前服务端进程，不会连接或修改任何客户端 Agent。更新状态会缓存 1 小时，打开设置页时优先显示缓存；管理员仍可点击检查更新立即刷新。更新支持配置代理地址，并在手动执行前显示全屏模糊确认弹窗。替换服务端二进制前会保留上一版 `.bak` 文件，重启脚本在替换或启动阶段失败时会尽量恢复旧二进制。
 
 ```mermaid
 sequenceDiagram

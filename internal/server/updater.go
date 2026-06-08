@@ -86,6 +86,7 @@ type updateBuildResult struct {
 type updateRestartRequest struct {
 	CurrentExe        string
 	NextExe           string
+	BackupExe         string
 	Args              []string
 	WorkDir           string
 	PID               int
@@ -128,6 +129,7 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 		writeError(w, statusCode, message)
 		return
 	}
+	_ = a.addAuditForRequest(r, "server_update_requested", "manual server update requested from settings", "")
 	writeJSON(w, statusCode, response)
 }
 
@@ -200,6 +202,7 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 		return updateApplyResponse{}, http.StatusPreconditionFailed, err.Error()
 	}
 	nextPath := exePath + ".next"
+	backupPath := exePath + ".bak"
 	_ = os.Remove(nextPath)
 
 	buildCtx, buildCancel := context.WithTimeout(ctx, updateBuildTimeout)
@@ -245,6 +248,7 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 		restartReq := updateRestartRequest{
 			CurrentExe:        exePath,
 			NextExe:           buildResult.OutputPath,
+			BackupExe:         backupPath,
 			Args:              append([]string(nil), os.Args[1:]...),
 			WorkDir:           mustGetwd(),
 			PID:               os.Getpid(),
@@ -725,6 +729,9 @@ func defaultScheduleRestartAfterUpdate(req updateRestartRequest) error {
 		if _, err := os.Stat(req.NextExe); err != nil {
 			return fmt.Errorf("new server executable is not available: %w", err)
 		}
+		if req.BackupExe == "" {
+			req.BackupExe = req.CurrentExe + ".bak"
+		}
 	}
 	if req.RestartAt.IsZero() {
 		req.RestartAt = time.Now().UTC().Add(updateRestartDelay)
@@ -798,10 +805,16 @@ func windowsRestartScript(req updateRestartRequest, logPath, helperPath string) 
 		delayMs = 0
 	}
 	replace := ""
+	rollback := ""
 	if req.ReplaceExecutable {
 		replace = fmt.Sprintf(`  Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue
+  Copy-Item -LiteralPath %s -Destination %s -Force
   Move-Item -LiteralPath %s -Destination %s -Force
-`, psQuote(req.CurrentExe), psQuote(req.NextExe), psQuote(req.CurrentExe))
+`, psQuote(req.BackupExe), psQuote(req.CurrentExe), psQuote(req.BackupExe), psQuote(req.NextExe), psQuote(req.CurrentExe))
+		rollback = fmt.Sprintf(`  if (Test-Path -LiteralPath %s) {
+    Copy-Item -LiteralPath %s -Destination %s -Force
+  }
+`, psQuote(req.BackupExe), psQuote(req.BackupExe), psQuote(req.CurrentExe))
 	}
 	return fmt.Sprintf(`$ErrorActionPreference = 'Stop'
 Start-Sleep -Milliseconds %d
@@ -811,6 +824,7 @@ try {
   Start-Process -FilePath %s -ArgumentList @(%s) -WorkingDirectory %s -WindowStyle Hidden
   "restarted at $(Get-Date -Format o)" | Out-File -FilePath %s -Append -Encoding utf8
 } catch {
+%s
   "restart failed at $(Get-Date -Format o): $($_.Exception.Message)" | Out-File -FilePath %s -Append -Encoding utf8
   exit 1
 } finally {
@@ -824,6 +838,7 @@ try {
 		strings.Join(args, ", "),
 		psQuote(req.WorkDir),
 		psQuote(logPath),
+		rollback,
 		psQuote(logPath),
 		psQuote(helperPath),
 	)
@@ -840,7 +855,15 @@ func linuxRestartScript(req updateRestartRequest, logPath, helperPath string) st
 	}
 	replace := ""
 	if req.ReplaceExecutable {
-		replace = fmt.Sprintf("mv -f %s %s\nchmod 0755 %s\n", shQuote(req.NextExe), shQuote(req.CurrentExe), shQuote(req.CurrentExe))
+		replace = fmt.Sprintf(`rm -f %s
+cp -p %s %s
+if ! mv -f %s %s; then
+  cp -p %s %s
+  printf 'rollback restored previous executable at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
+  exit 1
+fi
+chmod 0755 %s
+`, shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.NextExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(logPath), shQuote(req.CurrentExe))
 	}
 	return fmt.Sprintf(`#!/bin/sh
 set -eu

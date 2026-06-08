@@ -241,6 +241,10 @@ func Changelog() []ChangelogEntry {
 				"自动更新与普通更新检测统一为同一套后台监测逻辑：启动时立即检查，关闭自动更新时每 1 小时检查并在设置入口提示，开启自动更新时每 30 分钟检查并可立即自动更新。",
 				"移动端配置引导顶部加入浏览器安全区间距，并改用动态视口高度，避免窄屏浏览器顶部内容被裁切。",
 				"指标趋势和统计查询改为分段级读写锁，读取 gzip 分段时不再持有全局指标锁，减少多卡趋势查询对写入上报的阻塞。",
+				"指标存储新增内存索引和 rollup：最近 1 小时趋势使用原始点索引，24 小时统计优先使用分钟级汇总，7/30 天窗口可使用小时级汇总，降低前端多卡统计反复扫描压缩分段的压力。",
+				"`metadata.json` 增加 `schema_version` 并在启动时统一迁移旧字段默认值，后续元数据演进不再完全依赖零值兼容。",
+				"在线更新替换服务端二进制前会保留上一版 `.bak`，重启脚本在替换或启动阶段失败时会尽量恢复旧二进制。",
+				"关键 JSON 和证书文件写入改为临时文件、文件 flush、rename，并尽量同步目录，提升异常断电或进程中断时的数据文件可靠性。",
 			},
 			ChangedEN: []string{
 				"Mobile setup now uses a more compact first-screen summary and form layout, reducing hero height on narrow screens while keeping save actions easy to reach.",
@@ -263,16 +267,24 @@ func Changelog() []ChangelogEntry {
 				"Automatic updates and regular update checks now share one background monitor: startup checks immediately, disabled auto-update checks hourly and flags Settings, and enabled auto-update checks every 30 minutes with immediate automatic application when available.",
 				"Mobile setup now adds browser safe-area spacing and dynamic viewport height so the top of the wizard is not clipped in narrow mobile browsers.",
 				"Metric trend and stats queries now use per-segment read/write locks, so gzip segment scans no longer hold the global metrics lock and multi-GPU trend reads block writes less.",
+				"Metrics now maintain in-memory indexes and rollups: recent 1-hour trends use raw point indexes, 24-hour stats prefer minute rollups, and 7/30-day windows can use hourly rollups to reduce repeated compressed-segment scans.",
+				"`metadata.json` now includes `schema_version` and startup migrations for legacy defaults, so future metadata changes no longer rely solely on zero-value compatibility.",
+				"Online updates now keep a `.bak` copy of the previous server binary before replacement, and restart helpers try to restore it if replacement or startup fails.",
+				"Critical JSON and certificate writes now use temporary files, file flush, rename, and best-effort directory sync for better resilience against power loss or process interruption.",
 			},
 			Security: []string{
 				"管理员密码派生改为 PBKDF2-SHA256，旧版自定义 SHA-256 多轮 hash 会在登录成功后自动迁移。",
 				"Agent 上报改为先校验时间戳和 HMAC 签名，再原子记录 nonce，避免无效请求污染 nonce 集合。",
 				"默认 CSP 移除脚本侧 `unsafe-inline`；仅在缺少 web/dist、使用内置 fallback 面板时保留内联脚本兼容策略。",
+				"已登录管理写接口新增 Origin/Referer 同源校验，重启、在线更新、证书上传、设备删除等高风险 POST/PATCH/DELETE 请求不再只依赖 SameSite Cookie。",
+				"审计日志扩展 actor、remote_ip、device_id 和 request_id 字段，高风险管理操作会额外记录结构化上下文。",
 			},
 			SecurityEN: []string{
 				"Admin password derivation now uses PBKDF2-SHA256, and legacy custom multi-round SHA-256 hashes are migrated after a successful login.",
 				"Agent reports now verify timestamp and HMAC signatures before atomically recording nonces, preventing invalid requests from polluting the nonce set.",
 				"The default CSP now removes script-side `unsafe-inline`; inline script compatibility is kept only for the built-in fallback panel when web/dist is unavailable.",
+				"Authenticated management write APIs now validate same-origin Origin/Referer headers, so high-risk POST/PATCH/DELETE actions such as restart, online update, certificate upload, and device deletion no longer rely only on SameSite cookies.",
+				"Audit logs now include actor, remote_ip, device_id, and request_id fields, and high-risk management actions record additional structured context.",
 			},
 			Fixed: []string{
 				"修复 0.1.5 到后续版本自动更新时，Git 仓库已更新但 systemd 仍可能继续运行旧服务端二进制的问题。",
@@ -286,6 +298,7 @@ func Changelog() []ChangelogEntry {
 				"修复手动在线更新重启后只显示版本更新、不显示变更内容的问题，手动更新现在也会复用服务端 changelog 差异摘要。",
 				"修复系统更新重启后仍沿用浏览器旧更新状态缓存，导致设置入口继续提示有新版本的问题；更新恢复后会立即刷新并写入最新检查状态。",
 				"修复仅重建落后服务端二进制时更新说明仍显示“无更新说明”的问题，现在会按运行中的 commit 到目标 commit 计算 changelog 差异，并在前端保留更新响应里的说明作为重启回退。",
+				"修复访客脱敏设备 ID 由 map 顺序生成导致访客 GPU 曲线偶发查不到真实设备的问题。",
 			},
 			FixedEN: []string{
 				"Fixed automatic updates from 0.1.5 and later where the Git checkout updated but systemd could continue running the old server binary.",
@@ -299,6 +312,7 @@ func Changelog() []ChangelogEntry {
 				"Fixed manual online updates only showing a version-updated dialog after restart; manual updates now reuse the server-side changelog diff summary too.",
 				"Fixed stale browser update-status caches after a system update restart that kept Settings flagged as having an update; recovery now refreshes and stores the latest check immediately.",
 				"Fixed rebuild-only updates for stale server binaries still showing \"No update notes\"; changelog diffs now compare the running commit to the target commit, and the frontend keeps response notes as a restart fallback.",
+				"Fixed guest GPU series occasionally resolving to the wrong real device because sanitized guest device IDs were generated from map iteration order.",
 			},
 		},
 		{

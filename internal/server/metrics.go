@@ -23,6 +23,9 @@ var ErrInsufficientStorage = errors.New("insufficient storage")
 const (
 	coldSegmentAge        = 7 * 24 * time.Hour
 	compactSegmentComment = "gpufleet-compact-v1"
+	rawIndexAge           = time.Hour
+	minuteRollupAge       = 24 * time.Hour
+	hourRollupAge         = 30 * 24 * time.Hour
 )
 
 type MetricsStore struct {
@@ -34,6 +37,10 @@ type MetricsStore struct {
 	segmentLocksMu sync.Mutex
 	segmentLocks   map[string]*sync.RWMutex
 	latest         map[string]StoredGPU
+	rawIndex       map[string][]SeriesPoint
+	minuteRollups  map[string]map[int64]*metricRollupBucket
+	hourRollups    map[string]map[int64]*metricRollupBucket
+	indexReady     bool
 	lastCleanup    time.Time
 }
 
@@ -82,11 +89,14 @@ func NewMetricsStore(dir string, minFreeBytes uint64, retention time.Duration) (
 		return nil, err
 	}
 	store := &MetricsStore{
-		dir:          dir,
-		minFree:      minFreeBytes,
-		retention:    retention,
-		latest:       map[string]StoredGPU{},
-		segmentLocks: map[string]*sync.RWMutex{},
+		dir:           dir,
+		minFree:       minFreeBytes,
+		retention:     retention,
+		latest:        map[string]StoredGPU{},
+		rawIndex:      map[string][]SeriesPoint{},
+		minuteRollups: map[string]map[int64]*metricRollupBucket{},
+		hourRollups:   map[string]map[int64]*metricRollupBucket{},
+		segmentLocks:  map[string]*sync.RWMutex{},
 	}
 	if err := store.loadLatest(); err != nil {
 		return nil, err
@@ -145,6 +155,13 @@ func (s *MetricsStore) AppendBatch(batch model.SampleBatch) error {
 			s.latest[key] = next
 		}
 	}
+	for _, samples := range bySegment {
+		for _, sample := range samples {
+			s.indexSampleLocked(sample)
+		}
+	}
+	s.pruneIndexLocked(time.Now().UTC())
+	s.indexReady = true
 	s.mu.Unlock()
 	return nil
 }
@@ -176,6 +193,9 @@ func (s *MetricsStore) RemoveDevice(deviceID string) {
 }
 
 func (s *MetricsStore) Series(deviceID, gpuID string, since time.Time) ([]SeriesPoint, error) {
+	if points, ok := s.seriesFromIndex(deviceID, gpuID, since); ok {
+		return points, nil
+	}
 	files, err := s.segmentFiles()
 	if err != nil {
 		return nil, err
@@ -206,13 +226,14 @@ func (s *MetricsStore) Series(deviceID, gpuID string, since time.Time) ([]Series
 			return nil, err
 		}
 	}
-	sort.Slice(points, func(i, j int) bool {
-		return points[i].Timestamp.Before(points[j].Timestamp)
-	})
+	sortSeriesPoints(points)
 	return points, nil
 }
 
 func (s *MetricsStore) Stats(deviceID string, since time.Time) ([]GPUStats, error) {
+	if stats, ok := s.statsFromIndex(deviceID, since); ok {
+		return stats, nil
+	}
 	files, err := s.segmentFiles()
 	if err != nil {
 		return nil, err
@@ -247,17 +268,7 @@ func (s *MetricsStore) Stats(deviceID string, since time.Time) ([]GPUStats, erro
 		}
 	}
 
-	out := make([]GPUStats, 0, len(accumulators))
-	for _, acc := range accumulators {
-		out = append(out, acc.finish())
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].DeviceID == out[j].DeviceID {
-			return out[i].GPUID < out[j].GPUID
-		}
-		return out[i].DeviceID < out[j].DeviceID
-	})
-	return out, nil
+	return finishStats(accumulators), nil
 }
 
 func (s *MetricsStore) DiskStatus() (DiskStatus, error) {
@@ -328,6 +339,148 @@ func (s *MetricsStore) StoredDays() int {
 	return days
 }
 
+func (s *MetricsStore) indexSampleLocked(sample StoredSample) {
+	for _, gpu := range sample.GPUs {
+		key := latestKey(sample.DeviceID, gpu.GPUID)
+		point := SeriesPoint{
+			Timestamp:             sample.Timestamp,
+			UtilizationGPUPercent: gpu.UtilizationGPUPercent,
+			MemoryUsedBytes:       gpu.MemoryUsedBytes,
+			MemoryTotalBytes:      gpu.MemoryTotalBytes,
+			TemperatureCelsius:    gpu.TemperatureCelsius,
+			PowerDrawWatts:        gpu.PowerDrawWatts,
+		}
+		s.rawIndex[key] = append(s.rawIndex[key], point)
+		minuteBucket := sample.Timestamp.UTC().Truncate(time.Minute).Unix()
+		hourBucket := sample.Timestamp.UTC().Truncate(time.Hour).Unix()
+		s.rollupForLocked(s.minuteRollups, key, minuteBucket, sample.DeviceID, gpu.GPUID).add(sample.Timestamp, gpu)
+		s.rollupForLocked(s.hourRollups, key, hourBucket, sample.DeviceID, gpu.GPUID).add(sample.Timestamp, gpu)
+	}
+}
+
+func (s *MetricsStore) rollupForLocked(index map[string]map[int64]*metricRollupBucket, key string, bucketAt int64, deviceID, gpuID string) *metricRollupBucket {
+	buckets := index[key]
+	if buckets == nil {
+		buckets = map[int64]*metricRollupBucket{}
+		index[key] = buckets
+	}
+	bucket := buckets[bucketAt]
+	if bucket == nil {
+		bucket = &metricRollupBucket{
+			DeviceID:  deviceID,
+			GPUID:     gpuID,
+			Timestamp: time.Unix(bucketAt, 0).UTC(),
+		}
+		buckets[bucketAt] = bucket
+	}
+	return bucket
+}
+
+func (s *MetricsStore) pruneIndexLocked(now time.Time) {
+	rawCutoff := now.Add(-rawIndexAge)
+	for key, points := range s.rawIndex {
+		kept := points[:0]
+		for _, point := range points {
+			if !point.Timestamp.Before(rawCutoff) {
+				kept = append(kept, point)
+			}
+		}
+		if len(kept) == 0 {
+			delete(s.rawIndex, key)
+		} else {
+			s.rawIndex[key] = kept
+		}
+	}
+	pruneRollups(s.minuteRollups, now.Add(-minuteRollupAge))
+	pruneRollups(s.hourRollups, now.Add(-hourRollupAge))
+}
+
+func pruneRollups(index map[string]map[int64]*metricRollupBucket, cutoff time.Time) {
+	cutoffUnix := cutoff.Unix()
+	for key, buckets := range index {
+		for bucketAt := range buckets {
+			if bucketAt < cutoffUnix {
+				delete(buckets, bucketAt)
+			}
+		}
+		if len(buckets) == 0 {
+			delete(index, key)
+		}
+	}
+}
+
+func (s *MetricsStore) seriesFromIndex(deviceID, gpuID string, since time.Time) ([]SeriesPoint, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.indexReady {
+		return nil, false
+	}
+	now := time.Now().UTC()
+	key := latestKey(deviceID, gpuID)
+	if !since.Before(now.Add(-rawIndexAge)) {
+		points := make([]SeriesPoint, 0, len(s.rawIndex[key]))
+		for _, point := range s.rawIndex[key] {
+			if !point.Timestamp.Before(since) {
+				points = append(points, point)
+			}
+		}
+		sortSeriesPoints(points)
+		return points, true
+	}
+	return nil, false
+}
+
+func seriesFromRollups(buckets map[int64]*metricRollupBucket, since time.Time) []SeriesPoint {
+	points := make([]SeriesPoint, 0, len(buckets))
+	for _, bucket := range buckets {
+		if bucket.Last.Before(since) {
+			continue
+		}
+		points = append(points, bucket.seriesPoint())
+	}
+	sortSeriesPoints(points)
+	return points
+}
+
+func (s *MetricsStore) statsFromIndex(deviceID string, since time.Time) ([]GPUStats, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.indexReady {
+		return nil, false
+	}
+	now := time.Now().UTC()
+	var source map[string]map[int64]*metricRollupBucket
+	if !since.Before(now.Add(-minuteRollupAge)) {
+		source = s.minuteRollups
+	} else if !since.Before(now.Add(-hourRollupAge)) {
+		source = s.hourRollups
+	} else {
+		return nil, false
+	}
+	accumulators := map[string]*gpuStatsAccumulator{}
+	for key, buckets := range source {
+		for _, bucket := range buckets {
+			if bucket.Last.Before(since) {
+				continue
+			}
+			if deviceID != "" && bucket.DeviceID != deviceID {
+				continue
+			}
+			acc := accumulators[key]
+			if acc == nil {
+				acc = &gpuStatsAccumulator{
+					DeviceID: bucket.DeviceID,
+					GPUID:    bucket.GPUID,
+					GPUName:  bucket.GPUName,
+				}
+				accumulators[key] = acc
+			}
+			acc.addBucket(bucket)
+		}
+	}
+	return finishStats(accumulators), true
+}
+
 func (s *MetricsStore) appendSegmentLocked(segment string, samples []StoredSample) error {
 	lock := s.segmentLockForName(segment)
 	lock.Lock()
@@ -357,11 +510,23 @@ func (s *MetricsStore) loadLatest() error {
 		return err
 	}
 	cutoff := time.Now().Add(-s.retention)
+	indexCutoff := time.Now().Add(-hourRollupAge)
+	if s.retention > 0 && cutoff.After(indexCutoff) {
+		indexCutoff = cutoff
+	}
 	for _, path := range files {
-		if !segmentMayOverlap(path, cutoff) {
+		if !segmentMayOverlap(path, minTime(cutoff, indexCutoff)) {
 			continue
 		}
 		if err := scanSegment(path, func(sample StoredSample) {
+			if sample.Timestamp.Before(cutoff) {
+				if sample.Timestamp.Before(indexCutoff) {
+					return
+				}
+			}
+			if !sample.Timestamp.Before(indexCutoff) {
+				s.indexSampleLocked(sample)
+			}
 			if sample.Timestamp.Before(cutoff) {
 				return
 			}
@@ -376,6 +541,8 @@ func (s *MetricsStore) loadLatest() error {
 			return err
 		}
 	}
+	s.pruneIndexLocked(time.Now().UTC())
+	s.indexReady = true
 	return nil
 }
 
@@ -579,10 +746,133 @@ func latestKey(deviceID, gpuID string) string {
 	return fmt.Sprintf("%s/%s", deviceID, gpuID)
 }
 
+func sortSeriesPoints(points []SeriesPoint) {
+	sort.Slice(points, func(i, j int) bool {
+		return points[i].Timestamp.Before(points[j].Timestamp)
+	})
+}
+
+func finishStats(accumulators map[string]*gpuStatsAccumulator) []GPUStats {
+	out := make([]GPUStats, 0, len(accumulators))
+	for _, acc := range accumulators {
+		out = append(out, acc.finish())
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].DeviceID == out[j].DeviceID {
+			return out[i].GPUID < out[j].GPUID
+		}
+		return out[i].DeviceID < out[j].DeviceID
+	})
+	return out
+}
+
+func minTime(left, right time.Time) time.Time {
+	if left.Before(right) {
+		return left
+	}
+	return right
+}
+
 type DiskStatus struct {
 	FreeBytes    uint64 `json:"free_bytes"`
 	MinFreeBytes uint64 `json:"min_free_bytes"`
 	Status       string `json:"status"`
+}
+
+type metricRollupBucket struct {
+	DeviceID   string
+	GPUID      string
+	GPUName    string
+	Timestamp  time.Time
+	Count      int
+	First      time.Time
+	Last       time.Time
+	UtilCount  int
+	UtilSum    float64
+	UtilPeak   *float64
+	IdleCount  int
+	MemSum     uint64
+	MemPeak    uint64
+	MemTotal   uint64
+	TempCount  int
+	TempSum    float64
+	TempPeak   *float64
+	PowerCount int
+	PowerSum   float64
+	PowerPeak  *float64
+}
+
+func (b *metricRollupBucket) add(timestamp time.Time, gpu model.GPUStatus) {
+	b.Count++
+	if b.First.IsZero() || timestamp.Before(b.First) {
+		b.First = timestamp
+	}
+	if b.Last.IsZero() || timestamp.After(b.Last) {
+		b.Last = timestamp
+	}
+	if gpu.Name != "" {
+		b.GPUName = gpu.Name
+	}
+	if gpu.MemoryTotalBytes > 0 {
+		b.MemTotal = gpu.MemoryTotalBytes
+	}
+	b.MemSum += gpu.MemoryUsedBytes
+	if gpu.MemoryUsedBytes > b.MemPeak {
+		b.MemPeak = gpu.MemoryUsedBytes
+	}
+	if gpu.UtilizationGPUPercent != nil {
+		util := *gpu.UtilizationGPUPercent
+		b.UtilCount++
+		b.UtilSum += util
+		if util < 5 {
+			b.IdleCount++
+		}
+		if b.UtilPeak == nil || util > *b.UtilPeak {
+			value := util
+			b.UtilPeak = &value
+		}
+	}
+	if gpu.TemperatureCelsius != nil {
+		temp := *gpu.TemperatureCelsius
+		b.TempCount++
+		b.TempSum += temp
+		if b.TempPeak == nil || temp > *b.TempPeak {
+			value := temp
+			b.TempPeak = &value
+		}
+	}
+	if gpu.PowerDrawWatts != nil {
+		power := *gpu.PowerDrawWatts
+		b.PowerCount++
+		b.PowerSum += power
+		if b.PowerPeak == nil || power > *b.PowerPeak {
+			value := power
+			b.PowerPeak = &value
+		}
+	}
+}
+
+func (b *metricRollupBucket) seriesPoint() SeriesPoint {
+	point := SeriesPoint{
+		Timestamp:        b.Timestamp,
+		MemoryTotalBytes: b.MemTotal,
+	}
+	if b.Count > 0 {
+		point.MemoryUsedBytes = b.MemSum / uint64(b.Count)
+	}
+	if b.UtilCount > 0 {
+		value := b.UtilSum / float64(b.UtilCount)
+		point.UtilizationGPUPercent = &value
+	}
+	if b.TempCount > 0 {
+		value := b.TempSum / float64(b.TempCount)
+		point.TemperatureCelsius = &value
+	}
+	if b.PowerCount > 0 {
+		value := b.PowerSum / float64(b.PowerCount)
+		point.PowerDrawWatts = &value
+	}
+	return point
 }
 
 type gpuStatsAccumulator struct {
@@ -644,6 +934,41 @@ func (a *gpuStatsAccumulator) add(timestamp time.Time, gpu model.GPUStatus) {
 		if a.PowerPeak == nil || value > *a.PowerPeak {
 			a.PowerPeak = &value
 		}
+	}
+}
+
+func (a *gpuStatsAccumulator) addBucket(bucket *metricRollupBucket) {
+	a.Count += bucket.Count
+	if a.First.IsZero() || (!bucket.First.IsZero() && bucket.First.Before(a.First)) {
+		a.First = bucket.First
+	}
+	if a.Last.IsZero() || bucket.Last.After(a.Last) {
+		a.Last = bucket.Last
+	}
+	if bucket.GPUName != "" {
+		a.GPUName = bucket.GPUName
+	}
+	if bucket.MemTotal > 0 {
+		a.MemTotal = bucket.MemTotal
+	}
+	a.MemSum += bucket.MemSum
+	if bucket.MemPeak > a.MemPeak {
+		a.MemPeak = bucket.MemPeak
+	}
+	a.UtilCount += bucket.UtilCount
+	a.UtilSum += bucket.UtilSum
+	a.IdleCount += bucket.IdleCount
+	if bucket.UtilPeak != nil && (a.UtilPeak == nil || *bucket.UtilPeak > *a.UtilPeak) {
+		value := *bucket.UtilPeak
+		a.UtilPeak = &value
+	}
+	if bucket.TempPeak != nil && (a.TempPeak == nil || *bucket.TempPeak > *a.TempPeak) {
+		value := *bucket.TempPeak
+		a.TempPeak = &value
+	}
+	if bucket.PowerPeak != nil && (a.PowerPeak == nil || *bucket.PowerPeak > *a.PowerPeak) {
+		value := *bucket.PowerPeak
+		a.PowerPeak = &value
 	}
 }
 

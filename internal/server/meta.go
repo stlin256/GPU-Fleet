@@ -30,7 +30,10 @@ type MetadataStore struct {
 	data metadataFile
 }
 
+const metadataCurrentSchemaVersion = 1
+
 type metadataFile struct {
+	SchemaVersion       int                   `json:"schema_version"`
 	CreatedAt           time.Time             `json:"created_at"`
 	SetupComplete       *bool                 `json:"setup_complete,omitempty"`
 	Admin               AdminAccount          `json:"admin"`
@@ -122,9 +125,13 @@ type GuestVisit struct {
 }
 
 type AuditEvent struct {
-	At      time.Time `json:"at"`
-	Type    string    `json:"type"`
-	Message string    `json:"message"`
+	At        time.Time `json:"at"`
+	Type      string    `json:"type"`
+	Message   string    `json:"message"`
+	Actor     string    `json:"actor,omitempty"`
+	RemoteIP  string    `json:"remote_ip,omitempty"`
+	DeviceID  string    `json:"device_id,omitempty"`
+	RequestID string    `json:"request_id,omitempty"`
 }
 
 func OpenMetadataStore(path string, adminPassword string, bootstrapDeviceID string, bootstrapSecret string) (*MetadataStore, string, error) {
@@ -138,6 +145,7 @@ func OpenMetadataStore(path string, adminPassword string, bootstrapDeviceID stri
 			return nil, "", err
 		}
 		store.data = metadataFile{
+			SchemaVersion:  metadataCurrentSchemaVersion,
 			CreatedAt:      time.Now().UTC(),
 			Devices:        map[string]*Device{},
 			WebSessions:    map[string]WebSession{},
@@ -554,10 +562,10 @@ func (s *MetadataStore) saveCertificateLocked(certPEM, keyPEM []byte) error {
 	}
 	certPath := filepath.Join(certDir, "server.crt")
 	keyPath := filepath.Join(certDir, "server.key")
-	if err := os.WriteFile(certPath, certPEM, 0600); err != nil {
+	if err := writeFileAtomicSync(certPath, certPEM, 0600); err != nil {
 		return err
 	}
-	if err := os.WriteFile(keyPath, keyPEM, 0600); err != nil {
+	if err := writeFileAtomicSync(keyPath, keyPEM, 0600); err != nil {
 		return err
 	}
 	s.data.Service.HTTPS = true
@@ -613,19 +621,45 @@ func (s *MetadataStore) load() error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(raw, &s.data)
+	if err := json.Unmarshal(raw, &s.data); err != nil {
+		return err
+	}
+	s.migrateLocked()
+	return nil
+}
+
+func (s *MetadataStore) migrateLocked() {
+	if s.data.SchemaVersion <= 0 {
+		s.data.SchemaVersion = 1
+	}
+	if s.data.CreatedAt.IsZero() {
+		s.data.CreatedAt = time.Now().UTC()
+	}
+	if s.data.Devices == nil {
+		s.data.Devices = map[string]*Device{}
+	}
+	if s.data.WebSessions == nil {
+		s.data.WebSessions = map[string]WebSession{}
+	}
+	if s.data.GuestVisits == nil {
+		s.data.GuestVisits = []GuestVisit{}
+	}
+	if s.data.LastProcessSet == nil {
+		s.data.LastProcessSet = map[string]time.Time{}
+	}
+	if s.data.Admin.Username == "" && s.data.Admin.PasswordHash != "" {
+		s.data.Admin.Username = "admin"
+	}
+	if s.data.SetupComplete == nil {
+		complete := s.data.Admin.PasswordHash != ""
+		s.data.SetupComplete = &complete
+	}
+	s.data.SchemaVersion = metadataCurrentSchemaVersion
 }
 
 func (s *MetadataStore) saveLocked() error {
-	tmp := s.path + ".tmp"
-	raw, err := json.MarshalIndent(s.data, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(tmp, raw, 0600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
+	s.data.SchemaVersion = metadataCurrentSchemaVersion
+	return writeJSONFileAtomicSync(s.path, s.data, 0600)
 }
 
 func (s *MetadataStore) SaveWebSession(tokenHash string, createdAt, expiresAt time.Time) error {
@@ -848,6 +882,19 @@ func (s *MetadataStore) AddAudit(eventType, message string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.addAuditLocked(eventType, message)
+	if len(s.data.AuditEvents) > 1000 {
+		s.data.AuditEvents = s.data.AuditEvents[len(s.data.AuditEvents)-1000:]
+	}
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) AddAuditEvent(event AuditEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if event.At.IsZero() {
+		event.At = time.Now().UTC()
+	}
+	s.data.AuditEvents = append(s.data.AuditEvents, event)
 	if len(s.data.AuditEvents) > 1000 {
 		s.data.AuditEvents = s.data.AuditEvents[len(s.data.AuditEvents)-1000:]
 	}

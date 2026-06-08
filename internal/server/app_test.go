@@ -140,6 +140,34 @@ func TestVersionAPIRequiresSession(t *testing.T) {
 	}
 }
 
+func TestAdminWriteRequiresSameOrigin(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/guest", bytes.NewReader([]byte(`{"enabled":true}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected missing origin to be rejected, got %d with body %q", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/guest", bytes.NewReader([]byte(`{"enabled":true}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://evil.example")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected cross-origin request to be rejected, got %d with body %q", rec.Code, rec.Body.String())
+	}
+
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/guest", map[string]bool{"enabled": true}, cookie, http.StatusOK, nil)
+}
+
 func TestVersionAPIReadsRepoChangelog(t *testing.T) {
 	root := t.TempDir()
 	repoDir := filepath.Join(root, "repo")
@@ -1295,6 +1323,9 @@ func doJSONFrom(t *testing.T, handler http.Handler, remoteAddr, method, path str
 	req.Header.Set("Content-Type", "application/json")
 	if cookie != nil {
 		req.AddCookie(cookie)
+		if method == http.MethodPost || method == http.MethodPatch || method == http.MethodDelete || method == http.MethodPut {
+			req.Header.Set("Origin", "http://example.com")
+		}
 	}
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

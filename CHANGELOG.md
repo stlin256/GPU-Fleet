@@ -44,6 +44,14 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Mobile setup now adds browser safe-area spacing and dynamic viewport height so the top of the wizard is not clipped in narrow mobile browsers.
 - zh-CN: 指标趋势和统计查询改为分段级读写锁，读取 gzip 分段时不再持有全局指标锁，减少多卡趋势查询对写入上报的阻塞。
 - en-US: Metric trend and stats queries now use per-segment read/write locks, so gzip segment scans no longer hold the global metrics lock and multi-GPU trend reads block writes less.
+- zh-CN: 指标存储新增内存索引和 rollup：最近 1 小时趋势使用原始点索引，24 小时统计优先使用分钟级汇总，7/30 天窗口可使用小时级汇总，降低前端多卡统计反复扫描压缩分段的压力。
+- en-US: Metrics now maintain in-memory indexes and rollups: recent 1-hour trends use raw point indexes, 24-hour stats prefer minute rollups, and 7/30-day windows can use hourly rollups to reduce repeated compressed-segment scans.
+- zh-CN: `metadata.json` 增加 `schema_version` 并在启动时统一迁移旧字段默认值，后续元数据演进不再完全依赖零值兼容。
+- en-US: `metadata.json` now includes `schema_version` and startup migrations for legacy defaults, so future metadata changes no longer rely solely on zero-value compatibility.
+- zh-CN: 在线更新替换服务端二进制前会保留上一版 `.bak`，重启脚本在替换或启动阶段失败时会尽量恢复旧二进制。
+- en-US: Online updates now keep a `.bak` copy of the previous server binary before replacement, and restart helpers try to restore it if replacement or startup fails.
+- zh-CN: 关键 JSON 和证书文件写入改为临时文件、文件 flush、rename，并尽量同步目录，提升异常断电或进程中断时的数据文件可靠性。
+- en-US: Critical JSON and certificate writes now use temporary files, file flush, rename, and best-effort directory sync for better resilience against power loss or process interruption.
 - zh-CN: 在线更新进度改为背景模糊加前景进度面板展示，并加入百分比、进度条和阶段动画以提升更新体验。
 - en-US: Online update progress now uses a blurred backdrop with a foreground progress panel, percentage, progress bar, and staged animation for a clearer update experience.
 - zh-CN: 24 小时统计列表支持点击 GPU 展开过去 24H 的利用率、显存、温度和功耗曲线，GPU 监控页统计面板宽度与详情卡片主列对齐。
@@ -79,6 +87,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Agent reports now verify timestamp and HMAC signatures before atomically recording nonces, preventing invalid requests from polluting the nonce set.
 - zh-CN: 默认 CSP 移除脚本侧 `unsafe-inline`；仅在缺少 web/dist、使用内置 fallback 面板时保留内联脚本兼容策略。
 - en-US: The default CSP now removes script-side `unsafe-inline`; inline script compatibility is kept only for the built-in fallback panel when web/dist is unavailable.
+- zh-CN: 已登录管理写接口新增 Origin/Referer 同源校验，重启、在线更新、证书上传、设备删除等高风险 POST/PATCH/DELETE 请求不再只依赖 SameSite Cookie。
+- en-US: Authenticated management write APIs now validate same-origin Origin/Referer headers, so high-risk POST/PATCH/DELETE actions such as restart, online update, certificate upload, and device deletion no longer rely only on SameSite cookies.
+- zh-CN: 审计日志扩展 actor、remote_ip、device_id 和 request_id 字段，高风险管理操作会额外记录结构化上下文。
+- en-US: Audit logs now include actor, remote_ip, device_id, and request_id fields, and high-risk management actions record additional structured context.
 
 ### Fixed / 修复
 
@@ -104,6 +116,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed stale browser update-status caches after a system update restart that kept Settings flagged as having an update; recovery now refreshes and stores the latest check immediately.
 - zh-CN: 修复仅重建落后服务端二进制时更新说明仍显示“无更新说明”的问题，现在会按运行中的 commit 到目标 commit 计算 changelog 差异，并在前端保留更新响应里的说明作为重启回退。
 - en-US: Fixed rebuild-only updates for stale server binaries still showing "No update notes"; changelog diffs now compare the running commit to the target commit, and the frontend keeps response notes as a restart fallback.
+- zh-CN: 修复访客脱敏设备 ID 由 map 顺序生成导致访客 GPU 曲线偶发查不到真实设备的问题。
+- en-US: Fixed guest GPU series occasionally resolving to the wrong real device because sanitized guest device IDs were generated from map iteration order.
 
 ## [0.1.6] - 2026-06-05
 

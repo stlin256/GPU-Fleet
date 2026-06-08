@@ -11,6 +11,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -624,6 +625,7 @@ func (a *App) handleAdminCertificate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	_ = a.addAuditForRequest(r, "service_certificate_uploaded", "uploaded HTTPS certificate", "")
 	restartRequired := true
 	restartAt, err := a.scheduleServiceRestart()
 	if err != nil {
@@ -650,6 +652,7 @@ func (a *App) handleAdminRestart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500)))
 		return
 	}
+	_ = a.addAuditForRequest(r, "service_restart_scheduled", "manual service restart scheduled from settings", "")
 	_ = a.meta.AddAudit("service_restart_scheduled", "manual service restart scheduled from settings")
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":               true,
@@ -835,13 +838,12 @@ func (a *App) overviewResponse(r *http.Request, guest bool) overviewResponse {
 
 	deviceViews := make([]deviceView, 0, len(devices))
 	deviceIDs := make(map[string]bool, len(devices))
-	guestDeviceIDs := make(map[string]string, len(devices))
+	guestDeviceIDs := guestDeviceIDMap(devices)
 	now := time.Now().UTC()
 	online := 0
-	for index, device := range devices {
+	for _, device := range devices {
 		deviceIDs[device.ID] = true
-		guestID := fmt.Sprintf("guest-device-%d", index+1)
-		guestDeviceIDs[device.ID] = guestID
+		guestID := guestDeviceIDs[device.ID]
 		alias := device.Alias
 		if guest && alias == "" {
 			alias = fmt.Sprintf("Device %d", len(deviceViews)+1)
@@ -947,13 +949,34 @@ func chooseString(allowed bool, value string) string {
 }
 
 func (a *App) realDeviceIDForGuest(guestDeviceID string) (string, bool) {
-	devices := a.meta.ListDevices()
-	for index, device := range devices {
-		if guestDeviceID == fmt.Sprintf("guest-device-%d", index+1) {
-			return device.ID, true
+	for deviceID, maskedID := range guestDeviceIDMap(a.meta.ListDevices()) {
+		if guestDeviceID == maskedID {
+			return deviceID, true
 		}
 	}
 	return "", false
+}
+
+func guestDeviceIDMap(devices []Device) map[string]string {
+	sort.Slice(devices, func(i, j int) bool {
+		leftAlias := devices[i].Alias
+		if leftAlias == "" {
+			leftAlias = devices[i].ID
+		}
+		rightAlias := devices[j].Alias
+		if rightAlias == "" {
+			rightAlias = devices[j].ID
+		}
+		if leftAlias == rightAlias {
+			return devices[i].ID < devices[j].ID
+		}
+		return leftAlias < rightAlias
+	})
+	out := make(map[string]string, len(devices))
+	for index, device := range devices {
+		out[device.ID] = fmt.Sprintf("guest-device-%d", index+1)
+	}
+	return out
 }
 
 func databaseSizeBytes(dataDir string) uint64 {
@@ -1042,6 +1065,7 @@ func (a *App) handleCreateDevice(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = a.addAuditForRequest(r, "device_created", fmt.Sprintf("created device %s", device.ID), device.ID)
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"device": deviceView{ID: device.ID, Alias: device.Alias, Enabled: device.Enabled},
 		"secret": secret,
@@ -1065,6 +1089,7 @@ func (a *App) handleAdminDeviceAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		_ = a.addAuditForRequest(r, "device_deleted", fmt.Sprintf("deleted device %s", device.ID), device.ID)
 		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
 		return
 	}
@@ -1085,6 +1110,7 @@ func (a *App) handleAdminDeviceAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		_ = a.addAuditForRequest(r, "device_renamed", fmt.Sprintf("renamed device %s", device.ID), device.ID)
 		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
 		return
 	}
@@ -1104,6 +1130,7 @@ func (a *App) handleAdminDeviceAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
+		_ = a.addAuditForRequest(r, "device_enabled", fmt.Sprintf("enabled device %s", device.ID), device.ID)
 		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
 	case "disable":
 		device, err := a.meta.SetDeviceEnabled(deviceID, false)
@@ -1111,6 +1138,7 @@ func (a *App) handleAdminDeviceAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
+		_ = a.addAuditForRequest(r, "device_disabled", fmt.Sprintf("disabled device %s", device.ID), device.ID)
 		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device)})
 	case "rotate-secret":
 		device, secret, err := a.meta.RotateDeviceSecret(deviceID)
@@ -1118,6 +1146,7 @@ func (a *App) handleAdminDeviceAction(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
 		}
+		_ = a.addAuditForRequest(r, "device_secret_rotated", fmt.Sprintf("rotated device secret for %s", device.ID), device.ID)
 		writeJSON(w, http.StatusOK, map[string]any{"device": toDeviceView(device), "secret": secret})
 	default:
 		writeError(w, http.StatusNotFound, "not found")
@@ -1328,8 +1357,84 @@ func (a *App) requireSession(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "login required")
 			return
 		}
+		if unsafeBrowserMethod(r.Method) && !a.validSameOriginRequest(r) {
+			_ = a.addAuditForRequest(r, "csrf_rejected", "rejected management request with invalid origin", "")
+			writeError(w, http.StatusForbidden, "invalid request origin")
+			return
+		}
 		next(w, r)
 	}
+}
+
+func unsafeBrowserMethod(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *App) validSameOriginRequest(r *http.Request) bool {
+	if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" {
+		return a.sameOrigin(r, origin)
+	}
+	if referer := strings.TrimSpace(r.Header.Get("Referer")); referer != "" {
+		return a.sameOrigin(r, referer)
+	}
+	return false
+}
+
+func (a *App) sameOrigin(r *http.Request, raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return false
+	}
+	return strings.EqualFold(parsed.Scheme, requestScheme(r, a.scheme)) && sameHost(parsed.Host, r.Host)
+}
+
+func requestScheme(r *http.Request, fallback string) string {
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
+		if comma := strings.IndexByte(forwarded, ','); comma >= 0 {
+			forwarded = strings.TrimSpace(forwarded[:comma])
+		}
+		if forwarded == "http" || forwarded == "https" {
+			return forwarded
+		}
+	}
+	if r.TLS != nil {
+		return "https"
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "http"
+}
+
+func sameHost(left, right string) bool {
+	leftHost, leftPort, leftErr := net.SplitHostPort(left)
+	rightHost, rightPort, rightErr := net.SplitHostPort(right)
+	if leftErr == nil && rightErr == nil {
+		return strings.EqualFold(leftHost, rightHost) && leftPort == rightPort
+	}
+	return strings.EqualFold(strings.TrimSuffix(left, "."), strings.TrimSuffix(right, "."))
+}
+
+func (a *App) addAuditForRequest(r *http.Request, eventType, message, deviceID string) error {
+	requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+	if requestID == "" {
+		if generated, err := randomHex(8); err == nil {
+			requestID = generated
+		}
+	}
+	return a.meta.AddAuditEvent(AuditEvent{
+		Type:      eventType,
+		Message:   message,
+		Actor:     "admin",
+		RemoteIP:  clientIP(r),
+		DeviceID:  deviceID,
+		RequestID: requestID,
+	})
 }
 
 func readBody(r *http.Request, limit int64) ([]byte, error) {
