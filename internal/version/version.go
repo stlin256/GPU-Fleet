@@ -299,6 +299,7 @@ func Changelog() []ChangelogEntry {
 				"修复系统更新重启后仍沿用浏览器旧更新状态缓存，导致设置入口继续提示有新版本的问题；更新恢复后会立即刷新并写入最新检查状态。",
 				"修复仅重建落后服务端二进制时更新说明仍显示“无更新说明”的问题，现在会按运行中的 commit 到目标 commit 计算 changelog 差异，并在前端保留更新响应里的说明作为重启回退。",
 				"修复访客脱敏设备 ID 由 map 顺序生成导致访客 GPU 曲线偶发查不到真实设备的问题。",
+				"修复在线更新失败提示里的 Git 原始错误问号按钮被推到卡片右侧或单独换行的问题，现在会紧跟提示文本末尾显示。",
 			},
 			FixedEN: []string{
 				"Fixed automatic updates from 0.1.5 and later where the Git checkout updated but systemd could continue running the old server binary.",
@@ -313,6 +314,7 @@ func Changelog() []ChangelogEntry {
 				"Fixed stale browser update-status caches after a system update restart that kept Settings flagged as having an update; recovery now refreshes and stores the latest check immediately.",
 				"Fixed rebuild-only updates for stale server binaries still showing \"No update notes\"; changelog diffs now compare the running commit to the target commit, and the frontend keeps response notes as a restart fallback.",
 				"Fixed guest GPU series occasionally resolving to the wrong real device because sanitized guest device IDs were generated from map iteration order.",
+				"Fixed the raw Git error help button in online update failure messages being pushed to the card edge or onto its own line; it now stays inline after the message text.",
 			},
 		},
 		{

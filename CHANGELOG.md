@@ -118,6 +118,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed rebuild-only updates for stale server binaries still showing "No update notes"; changelog diffs now compare the running commit to the target commit, and the frontend keeps response notes as a restart fallback.
 - zh-CN: 修复访客脱敏设备 ID 由 map 顺序生成导致访客 GPU 曲线偶发查不到真实设备的问题。
 - en-US: Fixed guest GPU series occasionally resolving to the wrong real device because sanitized guest device IDs were generated from map iteration order.
+- zh-CN: 修复在线更新失败提示里的 Git 原始错误问号按钮被推到卡片右侧或单独换行的问题，现在会紧跟提示文本末尾显示。
+- en-US: Fixed the raw Git error help button in online update failure messages being pushed to the card edge or onto its own line; it now stays inline after the message text.
 
 ## [0.1.6] - 2026-06-05
 

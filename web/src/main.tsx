@@ -2404,12 +2404,14 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
       {progressStep > 0 && <UpdateProgress step={progressStep} />}
       {visibleMessage && (
         <div className={`update-note-row ${messageClass}`}>
-          <p>{visibleMessage}</p>
-          {visibleDetail && (
-            <button className="icon-button inline-help" type="button" onClick={() => setDetailOpen(true)} title="查看 Git 原始错误">
-              <CircleHelp size={16} />
-            </button>
-          )}
+          <p>
+            <span>{visibleMessage}</span>
+            {visibleDetail && (
+              <button className="icon-button inline-help" type="button" onClick={() => setDetailOpen(true)} title="查看 Git 原始错误">
+                <CircleHelp size={14} />
+              </button>
+            )}
+          </p>
         </div>
       )}
       {detailOpen && <UpdateDetailDialog detail={visibleDetail} onClose={() => setDetailOpen(false)} />}
