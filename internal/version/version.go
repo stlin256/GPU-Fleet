@@ -272,6 +272,7 @@ func Changelog() []ChangelogEntry {
 				"访客页面语言改为跟随访客浏览器语言，不再沿用管理员保存的界面语言。",
 				"修复自动更新完成提示始终显示“无更新说明”的问题，现在会在拉取前比较旧提交和目标提交的 changelog 差异。",
 				"修复手动在线更新重启后只显示版本更新、不显示变更内容的问题，手动更新现在也会复用服务端 changelog 差异摘要。",
+				"修复系统更新重启后仍沿用浏览器旧更新状态缓存，导致设置入口继续提示有新版本的问题；更新恢复后会立即刷新并写入最新检查状态。",
 			},
 			FixedEN: []string{
 				"Fixed automatic updates from 0.1.5 and later where the Git checkout updated but systemd could continue running the old server binary.",
@@ -283,6 +284,7 @@ func Changelog() []ChangelogEntry {
 				"Guest pages now follow the visitor browser language instead of inheriting the admin-saved interface language.",
 				"Fixed automatic update completion notices always showing \"No update notes\"; changelog differences are now compared before the pull using the old and target commits.",
 				"Fixed manual online updates only showing a version-updated dialog after restart; manual updates now reuse the server-side changelog diff summary too.",
+				"Fixed stale browser update-status caches after a system update restart that kept Settings flagged as having an update; recovery now refreshes and stores the latest check immediately.",
 			},
 		},
 		{

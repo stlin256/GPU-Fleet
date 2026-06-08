@@ -235,9 +235,16 @@ function storeCachedUpdateStatus(status: UpdateStatus) {
   writeJSON(updateStatusCacheKey, { status, cached_at: new Date().toISOString() } satisfies CachedUpdateStatus);
 }
 
+function clearCachedUpdateStatus() {
+  window.localStorage.removeItem(updateStatusCacheKey);
+}
+
 function takeCompletedUpdateNotice() {
   const notice = readJSON<CompletedUpdateNotice>(updateNoticeKey);
-  if (notice) window.localStorage.removeItem(updateNoticeKey);
+  if (notice) {
+    window.localStorage.removeItem(updateNoticeKey);
+    clearCachedUpdateStatus();
+  }
   return notice;
 }
 
@@ -266,11 +273,12 @@ async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
   while (Date.now() < deadline) {
     await new Promise((resolve) => window.setTimeout(resolve, 1800));
     try {
-      const status = await getUpdateStatus();
+      const status = await getUpdateStatus(true);
       const release = await getVersion().catch(() => undefined);
       const reachedTarget = !pending.target_commit || status.local_commit === pending.target_commit || status.remote_commit === pending.target_commit;
       if (Date.now() >= minimumWaitUntil && (sawFailure || reachedTarget)) {
         window.localStorage.removeItem(updatePendingKey);
+        storeCachedUpdateStatus(status);
         const serverNotice = await getUpdateNotice()
           .then((result) => completedNoticeFromServer(result.notice))
           .catch(() => undefined);
@@ -362,7 +370,11 @@ function App() {
     try {
       const result = await getUpdateNotice();
       const notice = completedNoticeFromServer(result.notice);
-      if (notice) setUpdateNotice(notice);
+      if (notice) {
+        clearCachedUpdateStatus();
+        queryClient.removeQueries({ queryKey: ['update-status'] });
+        setUpdateNotice(notice);
+      }
     } catch {
       // Older servers do not expose the notice endpoint; the local restart notice still works.
     }
