@@ -240,6 +240,7 @@ func Changelog() []ChangelogEntry {
 				"在线更新检查失败时会按 GitHub TLS、DNS、连接超时和认证等常见原因显示可操作提示，并保留 Git 原始错误供详情弹窗诊断。",
 				"自动更新与普通更新检测统一为同一套后台监测逻辑：启动时立即检查，关闭自动更新时每 1 小时检查并在设置入口提示，开启自动更新时每 30 分钟检查并可立即自动更新。",
 				"移动端配置引导顶部加入浏览器安全区间距，并改用动态视口高度，避免窄屏浏览器顶部内容被裁切。",
+				"指标趋势和统计查询改为分段级读写锁，读取 gzip 分段时不再持有全局指标锁，减少多卡趋势查询对写入上报的阻塞。",
 			},
 			ChangedEN: []string{
 				"Mobile setup now uses a more compact first-screen summary and form layout, reducing hero height on narrow screens while keeping save actions easy to reach.",
@@ -261,6 +262,17 @@ func Changelog() []ChangelogEntry {
 				"Online update check failures now show actionable messages for common GitHub TLS, DNS, timeout, and authentication issues while preserving raw Git errors in a details dialog for diagnosis.",
 				"Automatic updates and regular update checks now share one background monitor: startup checks immediately, disabled auto-update checks hourly and flags Settings, and enabled auto-update checks every 30 minutes with immediate automatic application when available.",
 				"Mobile setup now adds browser safe-area spacing and dynamic viewport height so the top of the wizard is not clipped in narrow mobile browsers.",
+				"Metric trend and stats queries now use per-segment read/write locks, so gzip segment scans no longer hold the global metrics lock and multi-GPU trend reads block writes less.",
+			},
+			Security: []string{
+				"管理员密码派生改为 PBKDF2-SHA256，旧版自定义 SHA-256 多轮 hash 会在登录成功后自动迁移。",
+				"Agent 上报改为先校验时间戳和 HMAC 签名，再原子记录 nonce，避免无效请求污染 nonce 集合。",
+				"默认 CSP 移除脚本侧 `unsafe-inline`；仅在缺少 web/dist、使用内置 fallback 面板时保留内联脚本兼容策略。",
+			},
+			SecurityEN: []string{
+				"Admin password derivation now uses PBKDF2-SHA256, and legacy custom multi-round SHA-256 hashes are migrated after a successful login.",
+				"Agent reports now verify timestamp and HMAC signatures before atomically recording nonces, preventing invalid requests from polluting the nonce set.",
+				"The default CSP now removes script-side `unsafe-inline`; inline script compatibility is kept only for the built-in fallback panel when web/dist is unavailable.",
 			},
 			Fixed: []string{
 				"修复 0.1.5 到后续版本自动更新时，Git 仓库已更新但 systemd 仍可能继续运行旧服务端二进制的问题。",

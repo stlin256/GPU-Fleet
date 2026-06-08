@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"golang.org/x/crypto/pbkdf2"
 )
 
 type MetadataStore struct {
@@ -336,7 +338,7 @@ func (s *MetadataStore) UpdatePassword(currentPassword, nextPassword string) err
 	if s.data.Admin.PasswordHash == "" {
 		return errors.New("admin password is not configured")
 	}
-	if !verifyPassword(currentPassword, s.data.Admin) {
+	if ok, _ := verifyPassword(currentPassword, s.data.Admin); !ok {
 		return errors.New("current password is incorrect")
 	}
 	if err := validatePassword(nextPassword); err != nil {
@@ -823,7 +825,23 @@ func (s *MetadataStore) VerifyAdmin(password string) bool {
 	if account.PasswordHash == "" {
 		return false
 	}
-	return verifyPassword(password, account)
+	ok, needsUpgrade := verifyPassword(password, account)
+	if !ok {
+		return false
+	}
+	if needsUpgrade {
+		upgraded, err := NewAdminAccount(account.Username, password)
+		if err == nil {
+			s.mu.Lock()
+			if s.data.Admin.PasswordHash == account.PasswordHash {
+				s.data.Admin = upgraded
+				s.addAuditLocked("admin_password_hash_upgraded", "upgraded admin password hash to PBKDF2-SHA256")
+				_ = s.saveLocked()
+			}
+			s.mu.Unlock()
+		}
+	}
+	return true
 }
 
 func (s *MetadataStore) AddAudit(eventType, message string) error {
@@ -852,18 +870,56 @@ func NewAdminAccount(username, password string) (AdminAccount, error) {
 	account := AdminAccount{
 		Username:   username,
 		Salt:       salt,
-		Iterations: 120000,
+		Iterations: passwordPBKDF2Iterations,
 	}
-	account.PasswordHash = derivePassword(password, account.Salt, account.Iterations)
+	account.PasswordHash = derivePBKDF2Password(password, account.Salt, account.Iterations)
 	return account, nil
 }
 
-func verifyPassword(password string, account AdminAccount) bool {
-	derived := derivePassword(password, account.Salt, account.Iterations)
-	return subtle.ConstantTimeCompare([]byte(derived), []byte(account.PasswordHash)) == 1
+const (
+	passwordHashPBKDF2Prefix = "pbkdf2-sha256"
+	passwordPBKDF2Iterations = 210000
+)
+
+func verifyPassword(password string, account AdminAccount) (bool, bool) {
+	if strings.HasPrefix(account.PasswordHash, passwordHashPBKDF2Prefix+"$") {
+		derived, iterations, ok := derivePBKDF2PasswordForStoredHash(password, account.PasswordHash)
+		if !ok {
+			return false, false
+		}
+		matched := subtle.ConstantTimeCompare([]byte(derived), []byte(account.PasswordHash)) == 1
+		return matched, matched && iterations < passwordPBKDF2Iterations
+	}
+	derived := deriveLegacyPassword(password, account.Salt, account.Iterations)
+	matched := subtle.ConstantTimeCompare([]byte(derived), []byte(account.PasswordHash)) == 1
+	return matched, matched
 }
 
-func derivePassword(password, salt string, iterations int) string {
+func derivePBKDF2Password(password, salt string, iterations int) string {
+	if iterations <= 0 {
+		iterations = passwordPBKDF2Iterations
+	}
+	saltBytes, err := hex.DecodeString(salt)
+	if err != nil {
+		saltBytes = []byte(salt)
+	}
+	key := pbkdf2.Key([]byte(password), saltBytes, iterations, 32, sha256.New)
+	return fmt.Sprintf("%s$%d$%s$%s", passwordHashPBKDF2Prefix, iterations, salt, hex.EncodeToString(key))
+}
+
+func derivePBKDF2PasswordForStoredHash(password, stored string) (string, int, bool) {
+	parts := strings.Split(stored, "$")
+	if len(parts) != 4 || parts[0] != passwordHashPBKDF2Prefix {
+		return "", 0, false
+	}
+	iterations, err := strconv.Atoi(parts[1])
+	if err != nil || iterations <= 0 {
+		return "", 0, false
+	}
+	return derivePBKDF2Password(password, parts[2], iterations), iterations, true
+}
+
+func deriveLegacyPassword(password, salt string, iterations int) string {
 	if iterations <= 0 {
 		iterations = 120000
 	}

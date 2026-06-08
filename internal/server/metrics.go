@@ -26,12 +26,15 @@ const (
 )
 
 type MetricsStore struct {
-	dir         string
-	minFree     uint64
-	retention   time.Duration
-	mu          sync.Mutex
-	latest      map[string]StoredGPU
-	lastCleanup time.Time
+	dir            string
+	minFree        uint64
+	retention      time.Duration
+	mu             sync.RWMutex
+	writeMu        sync.Mutex
+	segmentLocksMu sync.Mutex
+	segmentLocks   map[string]*sync.RWMutex
+	latest         map[string]StoredGPU
+	lastCleanup    time.Time
 }
 
 type StoredSample struct {
@@ -79,10 +82,11 @@ func NewMetricsStore(dir string, minFreeBytes uint64, retention time.Duration) (
 		return nil, err
 	}
 	store := &MetricsStore{
-		dir:       dir,
-		minFree:   minFreeBytes,
-		retention: retention,
-		latest:    map[string]StoredGPU{},
+		dir:          dir,
+		minFree:      minFreeBytes,
+		retention:    retention,
+		latest:       map[string]StoredGPU{},
+		segmentLocks: map[string]*sync.RWMutex{},
 	}
 	if err := store.loadLatest(); err != nil {
 		return nil, err
@@ -91,20 +95,26 @@ func NewMetricsStore(dir string, minFreeBytes uint64, retention time.Duration) (
 }
 
 func (s *MetricsStore) AppendBatch(batch model.SampleBatch) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 
-	if time.Since(s.lastCleanup) > time.Hour {
-		if err := s.cleanupLocked(); err != nil {
+	s.mu.RLock()
+	cleanupDue := time.Since(s.lastCleanup) > time.Hour
+	s.mu.RUnlock()
+	if cleanupDue {
+		if err := s.cleanup(); err != nil {
 			return err
 		}
+		s.mu.Lock()
 		s.lastCleanup = time.Now()
+		s.mu.Unlock()
 	}
 	if err := s.ensureWritable(); err != nil {
 		return err
 	}
 
 	bySegment := map[string][]StoredSample{}
+	latestUpdates := map[string]StoredGPU{}
 	for _, sample := range batch.Samples {
 		stored := StoredSample{
 			DeviceID:     batch.DeviceID,
@@ -116,9 +126,9 @@ func (s *MetricsStore) AppendBatch(batch model.SampleBatch) error {
 		bySegment[segment] = append(bySegment[segment], stored)
 		for _, gpu := range stored.GPUs {
 			key := latestKey(batch.DeviceID, gpu.GPUID)
-			current, ok := s.latest[key]
+			current, ok := latestUpdates[key]
 			if !ok || stored.Timestamp.After(current.Timestamp) {
-				s.latest[key] = StoredGPU{DeviceID: batch.DeviceID, Timestamp: stored.Timestamp, GPU: gpu}
+				latestUpdates[key] = StoredGPU{DeviceID: batch.DeviceID, Timestamp: stored.Timestamp, GPU: gpu}
 			}
 		}
 	}
@@ -128,12 +138,20 @@ func (s *MetricsStore) AppendBatch(batch model.SampleBatch) error {
 			return err
 		}
 	}
+	s.mu.Lock()
+	for key, next := range latestUpdates {
+		current, ok := s.latest[key]
+		if !ok || next.Timestamp.After(current.Timestamp) {
+			s.latest[key] = next
+		}
+	}
+	s.mu.Unlock()
 	return nil
 }
 
 func (s *MetricsStore) Latest() []StoredGPU {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	out := make([]StoredGPU, 0, len(s.latest))
 	for _, gpu := range s.latest {
 		out = append(out, gpu)
@@ -158,9 +176,6 @@ func (s *MetricsStore) RemoveDevice(deviceID string) {
 }
 
 func (s *MetricsStore) Series(deviceID, gpuID string, since time.Time) ([]SeriesPoint, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	files, err := s.segmentFiles()
 	if err != nil {
 		return nil, err
@@ -170,7 +185,7 @@ func (s *MetricsStore) Series(deviceID, gpuID string, since time.Time) ([]Series
 		if !segmentMayOverlap(path, since) {
 			continue
 		}
-		if err := scanSegment(path, func(sample StoredSample) {
+		if err := s.scanSegment(path, func(sample StoredSample) {
 			if sample.DeviceID != deviceID || sample.Timestamp.Before(since) {
 				return
 			}
@@ -187,7 +202,7 @@ func (s *MetricsStore) Series(deviceID, gpuID string, since time.Time) ([]Series
 					PowerDrawWatts:        gpu.PowerDrawWatts,
 				})
 			}
-		}); err != nil {
+		}); err != nil && !isIgnorableSegmentScanError(err) {
 			return nil, err
 		}
 	}
@@ -198,9 +213,6 @@ func (s *MetricsStore) Series(deviceID, gpuID string, since time.Time) ([]Series
 }
 
 func (s *MetricsStore) Stats(deviceID string, since time.Time) ([]GPUStats, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	files, err := s.segmentFiles()
 	if err != nil {
 		return nil, err
@@ -210,7 +222,7 @@ func (s *MetricsStore) Stats(deviceID string, since time.Time) ([]GPUStats, erro
 		if !segmentMayOverlap(path, since) {
 			continue
 		}
-		if err := scanSegment(path, func(sample StoredSample) {
+		if err := s.scanSegment(path, func(sample StoredSample) {
 			if sample.Timestamp.Before(since) {
 				return
 			}
@@ -230,7 +242,7 @@ func (s *MetricsStore) Stats(deviceID string, since time.Time) ([]GPUStats, erro
 				}
 				acc.add(sample.Timestamp, gpu)
 			}
-		}); err != nil {
+		}); err != nil && !isIgnorableSegmentScanError(err) {
 			return nil, err
 		}
 	}
@@ -253,15 +265,18 @@ func (s *MetricsStore) DiskStatus() (DiskStatus, error) {
 	if err != nil {
 		return DiskStatus{}, err
 	}
+	s.mu.RLock()
+	minFree := s.minFree
+	s.mu.RUnlock()
 	status := "ok"
-	if free < s.minFree {
+	if free < minFree {
 		status = "critical"
-	} else if free < s.minFree+256*1024*1024 {
+	} else if free < minFree+256*1024*1024 {
 		status = "warning"
 	}
 	return DiskStatus{
 		FreeBytes:    free,
-		MinFreeBytes: s.minFree,
+		MinFreeBytes: minFree,
 		Status:       status,
 	}, nil
 }
@@ -284,9 +299,6 @@ func (s *MetricsStore) ensureWritable() error {
 }
 
 func (s *MetricsStore) StoredDays() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	files, err := s.segmentFiles()
 	if err != nil {
 		return 0
@@ -317,6 +329,10 @@ func (s *MetricsStore) StoredDays() int {
 }
 
 func (s *MetricsStore) appendSegmentLocked(segment string, samples []StoredSample) error {
+	lock := s.segmentLockForName(segment)
+	lock.Lock()
+	defer lock.Unlock()
+
 	path := filepath.Join(s.dir, "samples-"+segment+".jsonl.gz")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
@@ -363,7 +379,7 @@ func (s *MetricsStore) loadLatest() error {
 	return nil
 }
 
-func (s *MetricsStore) cleanupLocked() error {
+func (s *MetricsStore) cleanup() error {
 	if s.retention <= 0 {
 		return nil
 	}
@@ -379,11 +395,18 @@ func (s *MetricsStore) cleanupLocked() error {
 			continue
 		}
 		if !at.Add(time.Hour).After(cutoff) {
+			lock := s.segmentLockForName(at.Format("2006010215"))
+			lock.Lock()
 			_ = os.Remove(path)
+			lock.Unlock()
 			continue
 		}
 		if at.Add(time.Hour).Before(compactBefore) {
-			if err := compactSegment(path, at); err != nil {
+			lock := s.segmentLockForName(at.Format("2006010215"))
+			lock.Lock()
+			err := compactSegment(path, at)
+			lock.Unlock()
+			if err != nil {
 				return err
 			}
 		}
@@ -399,6 +422,31 @@ func (s *MetricsStore) segmentFiles() ([]string, error) {
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+func (s *MetricsStore) scanSegment(path string, visit func(StoredSample)) error {
+	lock := s.segmentLockForPath(path)
+	lock.RLock()
+	defer lock.RUnlock()
+	return scanSegment(path, visit)
+}
+
+func (s *MetricsStore) segmentLockForPath(path string) *sync.RWMutex {
+	if at, ok := segmentStart(path); ok {
+		return s.segmentLockForName(at.Format("2006010215"))
+	}
+	return s.segmentLockForName(filepath.Base(path))
+}
+
+func (s *MetricsStore) segmentLockForName(segment string) *sync.RWMutex {
+	s.segmentLocksMu.Lock()
+	defer s.segmentLocksMu.Unlock()
+	lock := s.segmentLocks[segment]
+	if lock == nil {
+		lock = &sync.RWMutex{}
+		s.segmentLocks[segment] = lock
+	}
+	return lock
 }
 
 func scanSegment(path string, visit func(StoredSample)) error {
@@ -429,6 +477,10 @@ func scanSegment(path string, visit func(StoredSample)) error {
 		}
 	}
 	return nil
+}
+
+func isIgnorableSegmentScanError(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func compactSegment(path string, segmentAt time.Time) error {

@@ -53,10 +53,16 @@ func TestStaticDashboardRouting(t *testing.T) {
 	assertStatusAndBody(t, handler, "/assets/app.js", http.StatusOK, "console.log")
 	assertStatusAndBody(t, handler, "/devices/local-dev", http.StatusOK, "react-root")
 	assertStatusAndBody(t, handler, "/api/v1/unknown", http.StatusNotFound, `"not found"`)
-
-	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
-	req.URL.Path = "/../secret.txt"
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if csp := rec.Header().Get("Content-Security-Policy"); strings.Contains(csp, "script-src 'self' 'unsafe-inline'") {
+		t.Fatalf("web/dist responses should not allow inline scripts, got CSP %q", csp)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	req.URL.Path = "/../secret.txt"
+	rec = httptest.NewRecorder()
 	if !app.serveWebDist(rec, req) {
 		t.Fatal("expected static handler to handle traversal attempt")
 	}
@@ -108,6 +114,12 @@ func TestBuiltInDashboardFallback(t *testing.T) {
 		if strings.Contains(body, old) {
 			t.Fatalf("built-in dashboard should not contain old meter UI %q", old)
 		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rec, req)
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "script-src 'self' 'unsafe-inline'") {
+		t.Fatalf("fallback dashboard should keep inline script compatibility, got CSP %q", csp)
 	}
 }
 
@@ -681,6 +693,57 @@ func TestAdminDeviceLifecycleAndAgentAuth(t *testing.T) {
 	}
 }
 
+func TestInvalidAgentSignatureDoesNotConsumeNonce(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	var created struct {
+		Device deviceView `json:"device"`
+		Secret string     `json:"secret"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/devices", map[string]string{"alias": "worker"}, cookie, http.StatusCreated, &created)
+
+	heartbeat := model.Heartbeat{
+		AgentVersion: model.AgentVersion,
+		Hostname:     "test-host",
+		OS:           "linux",
+		GPUCount:     1,
+		Timestamp:    time.Now().UTC(),
+	}
+	body, err := json.Marshal(heartbeat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().UTC()
+	nonce := "nonce-reused-after-bad-signature"
+	path := "/api/v1/agent/heartbeat"
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(auth.HeaderDeviceID, created.Device.ID)
+	req.Header.Set(auth.HeaderTimestamp, at.Format(time.RFC3339))
+	req.Header.Set(auth.HeaderNonce, nonce)
+	req.Header.Set(auth.HeaderSignature, "bad-signature")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected bad signature to be unauthorized, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(auth.HeaderDeviceID, created.Device.ID)
+	req.Header.Set(auth.HeaderTimestamp, at.Format(time.RFC3339))
+	req.Header.Set(auth.HeaderNonce, nonce)
+	req.Header.Set(auth.HeaderSignature, auth.Sign(http.MethodPost, path, body, created.Device.ID, created.Secret, at, nonce))
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected valid retry with same nonce to succeed, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestLoginRateLimitShortWindow(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
@@ -722,6 +785,42 @@ func TestLoginSuccessClearsFailureState(t *testing.T) {
 	doJSONFrom(t, handler, "203.0.113.12:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "admin-test"}, nil, http.StatusOK, nil)
 	for i := 0; i < 4; i++ {
 		doJSONFrom(t, handler, "203.0.113.12:39000", http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "wrong"}, nil, http.StatusUnauthorized, nil)
+	}
+}
+
+func TestPasswordHashUsesPBKDF2AndMigratesLegacyHashes(t *testing.T) {
+	account, err := NewAdminAccount("admin", "admin-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(account.PasswordHash, passwordHashPBKDF2Prefix+"$") {
+		t.Fatalf("expected PBKDF2 password hash, got %q", account.PasswordHash)
+	}
+	if ok, upgrade := verifyPassword("admin-test", account); !ok || upgrade {
+		t.Fatalf("expected PBKDF2 password to verify without upgrade, ok=%v upgrade=%v", ok, upgrade)
+	}
+
+	root := t.TempDir()
+	store := &MetadataStore{
+		path: filepath.Join(root, "metadata.json"),
+		data: metadataFile{
+			CreatedAt: time.Now().UTC(),
+			Admin: AdminAccount{
+				Username:     "admin",
+				Salt:         "legacy-salt",
+				Iterations:   120000,
+				PasswordHash: deriveLegacyPassword("admin-test", "legacy-salt", 120000),
+			},
+			Devices:        map[string]*Device{},
+			WebSessions:    map[string]WebSession{},
+			LastProcessSet: map[string]time.Time{},
+		},
+	}
+	if !store.VerifyAdmin("admin-test") {
+		t.Fatal("expected legacy password hash to verify")
+	}
+	if !strings.HasPrefix(store.data.Admin.PasswordHash, passwordHashPBKDF2Prefix+"$") {
+		t.Fatalf("expected legacy password hash to migrate, got %q", store.data.Admin.PasswordHash)
 	}
 }
 
@@ -1020,6 +1119,48 @@ func TestMetricsStoreCompactsColdSegmentsAndCleansBySegmentTime(t *testing.T) {
 	}
 	if days := store.StoredDays(); days < 8 || days > 10 {
 		t.Fatalf("expected stored days to reflect metric segment span, got %d", days)
+	}
+}
+
+func TestMetricsStoreSegmentLocksDoNotBlockUnrelatedWrites(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.mu.Lock()
+	store.lastCleanup = time.Now()
+	store.mu.Unlock()
+
+	oldSegment := time.Now().UTC().Add(-2 * time.Hour).Format("2006010215")
+	readLock := store.segmentLockForName(oldSegment)
+	readLock.RLock()
+	defer readLock.RUnlock()
+
+	done := make(chan error, 1)
+	go func() {
+		util := 33.0
+		done <- store.AppendBatch(model.SampleBatch{
+			DeviceID:     "rig-lock",
+			AgentVersion: model.AgentVersion,
+			Samples: []model.GPUSample{{
+				Timestamp: time.Now().UTC(),
+				GPUs: []model.GPUStatus{{
+					GPUID:                 "0",
+					Name:                  "NVIDIA Test GPU",
+					UtilizationGPUPercent: &util,
+				}},
+			}},
+		})
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("append to a different segment was blocked by an unrelated segment read lock")
 	}
 }
 

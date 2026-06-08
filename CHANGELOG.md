@@ -42,6 +42,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Automatic updates and regular update checks now share one background monitor: startup checks immediately, disabled auto-update checks hourly and flags Settings, and enabled auto-update checks every 30 minutes with immediate automatic application when available.
 - zh-CN: 移动端配置引导顶部加入浏览器安全区间距，并改用动态视口高度，避免窄屏浏览器顶部内容被裁切。
 - en-US: Mobile setup now adds browser safe-area spacing and dynamic viewport height so the top of the wizard is not clipped in narrow mobile browsers.
+- zh-CN: 指标趋势和统计查询改为分段级读写锁，读取 gzip 分段时不再持有全局指标锁，减少多卡趋势查询对写入上报的阻塞。
+- en-US: Metric trend and stats queries now use per-segment read/write locks, so gzip segment scans no longer hold the global metrics lock and multi-GPU trend reads block writes less.
 - zh-CN: 在线更新进度改为背景模糊加前景进度面板展示，并加入百分比、进度条和阶段动画以提升更新体验。
 - en-US: Online update progress now uses a blurred backdrop with a foreground progress panel, percentage, progress bar, and staged animation for a clearer update experience.
 - zh-CN: 24 小时统计列表支持点击 GPU 展开过去 24H 的利用率、显存、温度和功耗曲线，GPU 监控页统计面板宽度与详情卡片主列对齐。
@@ -68,6 +70,15 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Settings now shows only the current version by default, opens the full CHANGELOG in a dialog from the More changelog button, and keeps guest visit records scrollable inside the dialog without overflowing the viewport.
 - zh-CN: 全面统一设置页、设备操作、更新提示、更新进度、重启、访客记录和内置 fallback 面板的弹窗遮罩，确保弹窗始终挂载到全屏视口并使用一致的背景模糊。
 - en-US: Unified dialog backdrops for settings, device actions, update notices, update progress, restarts, guest records, and the built-in fallback panel so dialogs always cover the full viewport with consistent background blur.
+
+### Security / 安全
+
+- zh-CN: 管理员密码派生改为 PBKDF2-SHA256，旧版自定义 SHA-256 多轮 hash 会在登录成功后自动迁移。
+- en-US: Admin password derivation now uses PBKDF2-SHA256, and legacy custom multi-round SHA-256 hashes are migrated after a successful login.
+- zh-CN: Agent 上报改为先校验时间戳和 HMAC 签名，再原子记录 nonce，避免无效请求污染 nonce 集合。
+- en-US: Agent reports now verify timestamp and HMAC signatures before atomically recording nonces, preventing invalid requests from polluting the nonce set.
+- zh-CN: 默认 CSP 移除脚本侧 `unsafe-inline`；仅在缺少 web/dist、使用内置 fallback 面板时保留内联脚本兼容策略。
+- en-US: The default CSP now removes script-side `unsafe-inline`; inline script compatibility is kept only for the built-in fallback panel when web/dist is unavailable.
 
 ### Fixed / 修复
 

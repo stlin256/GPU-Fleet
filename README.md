@@ -95,7 +95,7 @@ flowchart TB
 
   subgraph "服务端"
     Receive["接收上报"]
-    Verify["签名、时间戳、nonce、限流"]
+    Verify["签名、时间戳、原子 nonce、限流"]
     Admin["管理 API\n仅修改服务端记录"]
   end
 
@@ -124,7 +124,7 @@ sequenceDiagram
   Agent->>Server: POST /api/v1/agent/heartbeat
   Agent->>Server: POST /api/v1/agent/samples
   Agent->>Server: POST /api/v1/agent/process-snapshots
-  Server->>Auth: 校验设备、签名、时间戳、nonce、限流
+  Server->>Auth: 校验设备、签名、时间戳、原子记录 nonce、限流
   Auth-->>Server: accepted
   Server->>Store: 写入 gzip JSONL 分段
   Web->>Server: GET /api/v1/overview
