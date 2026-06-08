@@ -40,6 +40,16 @@ Repository: `https://github.com/stlin256/GPU-Fleet`
 | Release info | Implemented | `-version`, `/api/v1/version`, current release summary, full changelog dialog, `CHANGELOG.md` |
 | Online update | Implemented | Default-on 30-minute automatic checks, manual checks, 1-hour status cache, proxy setting, confirmation dialog, dependency preflight, remote build, fast-forward pull, automatic restart, and completion notices |
 
+## Product Screenshots
+
+![GPUFleet Overview Dashboard](imgs/1-en.png)
+
+![GPUFleet Device Management](imgs/2-en.png)
+
+![GPUFleet GPU Monitoring](imgs/3-en.png)
+
+![GPUFleet Service Settings](imgs/4-en.png)
+
 ## First Startup
 
 The first browser visit opens a setup flow:
