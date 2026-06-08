@@ -38,6 +38,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: The settings database download card now shows actual stored days, and metric segments older than 7 days are recompressed into single high-compression gzip members to reduce long-term storage use.
 - zh-CN: 在线更新检查失败时会按 GitHub TLS、DNS、连接超时和认证等常见原因显示可操作提示，并保留 Git 原始错误供详情弹窗诊断。
 - en-US: Online update check failures now show actionable messages for common GitHub TLS, DNS, timeout, and authentication issues while preserving raw Git errors in a details dialog for diagnosis.
+- zh-CN: 自动更新与普通更新检测统一为同一套后台监测逻辑：启动时立即检查，关闭自动更新时每 1 小时检查并在设置入口提示，开启自动更新时每 30 分钟检查并可立即自动更新。
+- en-US: Automatic updates and regular update checks now share one background monitor: startup checks immediately, disabled auto-update checks hourly and flags Settings, and enabled auto-update checks every 30 minutes with immediate automatic application when available.
+- zh-CN: 移动端配置引导顶部加入浏览器安全区间距，并改用动态视口高度，避免窄屏浏览器顶部内容被裁切。
+- en-US: Mobile setup now adds browser safe-area spacing and dynamic viewport height so the top of the wizard is not clipped in narrow mobile browsers.
 - zh-CN: 在线更新进度改为背景模糊加前景进度面板展示，并加入百分比、进度条和阶段动画以提升更新体验。
 - en-US: Online update progress now uses a blurred backdrop with a foreground progress panel, percentage, progress bar, and staged animation for a clearer update experience.
 - zh-CN: 24 小时统计列表支持点击 GPU 展开过去 24H 的利用率、显存、温度和功耗曲线，GPU 监控页统计面板宽度与详情卡片主列对齐。
@@ -81,6 +85,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed Database Download, Disk Reserve, and some update messages still showing Chinese in English mode, and made switching back to Chinese apply immediately.
 - zh-CN: 访客页面语言改为跟随访客浏览器语言，不再沿用管理员保存的界面语言。
 - en-US: Guest pages now follow the visitor browser language instead of inheriting the admin-saved interface language.
+- zh-CN: 修复自动更新完成提示始终显示“无更新说明”的问题，现在会在拉取前比较旧提交和目标提交的 changelog 差异。
+- en-US: Fixed automatic update completion notices always showing "No update notes"; changelog differences are now compared before the pull using the old and target commits.
 
 ## [0.1.6] - 2026-06-05
 

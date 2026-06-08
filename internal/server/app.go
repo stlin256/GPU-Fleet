@@ -25,16 +25,17 @@ import (
 )
 
 type Config struct {
-	Addr              string
-	AddrExplicit      bool
-	DataDir           string
-	MinFreeBytes      uint64
-	Retention         time.Duration
-	BootstrapDeviceID string
-	BootstrapSecret   string
-	AdminPassword     string
-	WebDir            string
-	RepoDir           string
+	Addr                 string
+	AddrExplicit         bool
+	DataDir              string
+	MinFreeBytes         uint64
+	Retention            time.Duration
+	BootstrapDeviceID    string
+	BootstrapSecret      string
+	AdminPassword        string
+	WebDir               string
+	RepoDir              string
+	DisableUpdateMonitor bool
 }
 
 type App struct {
@@ -48,6 +49,9 @@ type App struct {
 	loginGuard            *LoginGuard
 	agentRate             *RateLimiter
 	updateMu              sync.Mutex
+	updateStatusCache     updateStatus
+	updateStatusCacheOK   bool
+	updateMonitorWake     chan struct{}
 	updateBuildServer     updateBuildFunc
 	updateScheduleRestart updateRestartFunc
 	updateExit            func()
@@ -136,11 +140,14 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		agentRate:             NewRateLimiter(240, time.Minute),
 		updateBuildServer:     defaultBuildServerForUpdate,
 		updateScheduleRestart: defaultScheduleRestartAfterUpdate,
+		updateMonitorWake:     make(chan struct{}, 1),
 		updateExit:            func() { os.Exit(0) },
 		logger:                logger,
 		scheme:                scheme,
 	}
-	app.startAutoUpdateLoop()
+	if !config.DisableUpdateMonitor {
+		app.startUpdateMonitorLoop()
+	}
 	return app, generatedPassword, nil
 }
 
@@ -501,6 +508,7 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		a.wakeUpdateMonitor()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":               true,

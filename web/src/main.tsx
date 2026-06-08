@@ -121,6 +121,7 @@ const updatePendingKey = 'gpufleet-update-pending';
 const updateNoticeKey = 'gpufleet-update-notice';
 const updateStatusCacheKey = 'gpufleet-update-status-cache';
 const updateStatusCacheTTL = 60 * 60 * 1000;
+const autoUpdateStatusTTL = 30 * 60 * 1000;
 
 type CachedUpdateStatus = {
   status: UpdateStatus;
@@ -694,7 +695,6 @@ function Login({ onSuccess, theme, onToggleTheme, guestEnabled }: { onSuccess: (
 }
 
 function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: () => void; theme: Theme; onToggleTheme: () => void }) {
-  const query = useQueryClient();
   const [view, setView] = useState<View>('overview');
   const overview = useQuery({
     queryKey: ['overview'],
@@ -709,6 +709,23 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
     enabled: overview.isSuccess,
     refetchInterval: 30000
   });
+  const cachedUpdate = readCachedUpdateStatus();
+  const updatePollInterval = overview.data?.service.auto_update_enabled ? autoUpdateStatusTTL : updateStatusCacheTTL;
+  const update = useQuery({
+    queryKey: ['update-status'],
+    queryFn: async () => {
+      const next = await getUpdateStatus();
+      storeCachedUpdateStatus(next);
+      return next;
+    },
+    initialData: cachedUpdate?.status,
+    initialDataUpdatedAt: cachedUpdate ? new Date(cachedUpdate.cached_at).getTime() : undefined,
+    enabled: overview.isSuccess && !hasPendingUpdate(),
+    staleTime: updatePollInterval,
+    refetchInterval: hasPendingUpdate() ? false : updatePollInterval,
+    refetchOnWindowFocus: false,
+    retry: false
+  });
 
   useEffect(() => {
     if (overview.error instanceof Error && overview.error.message.includes('login')) {
@@ -716,24 +733,10 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
     }
   }, [overview.error, onUnauthorized]);
 
-  useEffect(() => {
-    if (hasPendingUpdate()) return undefined;
-    let cancelled = false;
-    getUpdateStatus()
-      .then((status) => {
-        if (!cancelled) {
-          storeCachedUpdateStatus(status);
-          query.setQueryData(['update-status'], status);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [query]);
-
   const data = overview.data;
   const statRows = stats.data?.stats ?? [];
+  const updateAttention = Boolean(update.data?.supported && !update.data.failed && (update.data.available || update.data.binary_outdated));
+  const settingsNavClass = [view === 'settings' ? 'active' : '', updateAttention && view !== 'settings' ? 'has-notice' : ''].filter(Boolean).join(' ');
   const titles: Record<View, string> = {
     overview: 'GPU 资源总览',
     devices: '设备管理',
@@ -754,7 +757,7 @@ function Dashboard({ onUnauthorized, theme, onToggleTheme }: { onUnauthorized: (
           <button className={view === 'overview' ? 'active' : ''} onClick={() => setView('overview')}><Activity size={17} />总览</button>
           <button className={view === 'gpus' ? 'active' : ''} onClick={() => setView('gpus')}><Cpu size={17} />GPU</button>
           <button className={view === 'devices' ? 'active' : ''} onClick={() => setView('devices')}><Server size={17} />设备</button>
-          <button className={view === 'settings' ? 'active' : ''} onClick={() => setView('settings')}><Settings size={17} />设置</button>
+          <button className={settingsNavClass} onClick={() => setView('settings')}><Settings size={17} />设置</button>
         </nav>
       </aside>
       <main className="content">
@@ -2123,6 +2126,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   const { t } = useI18n();
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [waitingForRestart, setWaitingForRestart] = useState(() => hasPendingUpdate());
   const [proxyURL, setProxyURL] = useState(service?.update_proxy || '');
@@ -2135,6 +2139,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   const [detailOpen, setDetailOpen] = useState(false);
   const cachedUpdate = readCachedUpdateStatus();
   const cachedUpdateAge = cachedUpdate ? Date.now() - new Date(cachedUpdate.cached_at).getTime() : Number.POSITIVE_INFINITY;
+  const updatePollInterval = autoUpdateEnabled ? autoUpdateStatusTTL : updateStatusCacheTTL;
   const release = useQuery({
     queryKey: ['version'],
     queryFn: getVersion,
@@ -2150,10 +2155,10 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
     initialData: cachedUpdate?.status,
     initialDataUpdatedAt: cachedUpdate ? new Date(cachedUpdate.cached_at).getTime() : undefined,
     enabled: !waitingForRestart,
-    staleTime: updateStatusCacheTTL,
-    refetchInterval: waitingForRestart ? false : updateStatusCacheTTL,
+    staleTime: updatePollInterval,
+    refetchInterval: waitingForRestart ? false : updatePollInterval,
     refetchOnWindowFocus: false,
-    refetchOnMount: !waitingForRestart && cachedUpdateAge >= updateStatusCacheTTL,
+    refetchOnMount: !waitingForRestart && cachedUpdateAge >= updatePollInterval,
     retry: false
   });
   const status = update.data;
@@ -2175,10 +2180,18 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
     setUpdateDetail('');
     setProgressStep(0);
     setWaitingForRestart(false);
-    const result = await update.refetch();
-    if (result.data) {
-      storeCachedUpdateStatus(result.data);
-      setUpdateDetail(result.data.detail || '');
+    setChecking(true);
+    try {
+      const next = await getUpdateStatus(true);
+      storeCachedUpdateStatus(next);
+      query.setQueryData(['update-status'], next);
+      setUpdateDetail(next.detail || '');
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'update check failed';
+      setMessage(friendlyUpdateFailure(detail, Boolean(proxyURL.trim())));
+      setUpdateDetail(detail);
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -2207,6 +2220,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
       await updateServerConfig({ auto_update_enabled: enabled });
       setProxyMessage(enabled ? '自动更新已开启' : '自动更新已关闭');
       await onDone();
+      await query.invalidateQueries({ queryKey: ['update-status'] });
     } catch (err) {
       setAutoUpdateEnabled(!enabled);
       setProxyMessage(err instanceof Error ? err.message : 'auto update config failed');
@@ -2325,7 +2339,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           onChange={(event) => void toggleAutoUpdate(event.target.checked)}
         />
         <span>{autoUpdateEnabled ? '自动更新已开启' : '自动更新已关闭'}</span>
-        <small>每 30 分钟检查一次，有更新时自动拉取、构建并重启</small>
+        <small>{autoUpdateEnabled ? '每 30 分钟检查一次，有更新时自动拉取、构建并重启' : '每 1 小时检查一次，有更新时在设置入口提示'}</small>
       </label>
 
       <form className="settings-form inline update-proxy-form" onSubmit={saveProxy}>
@@ -2341,9 +2355,9 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
       {proxyMessage && <p className={proxyMessage.includes('已') ? 'notice update-note' : 'error update-note'}>{proxyMessage}</p>}
 
       <div className="settings-button-row">
-        <button className="secondary" type="button" onClick={check} disabled={update.isFetching || busy}>
+        <button className="secondary" type="button" onClick={check} disabled={update.isFetching || checking || busy}>
           <RefreshCw size={16} />
-          {update.isFetching ? '检查中' : '检查更新'}
+          {update.isFetching || checking ? '检查中' : '检查更新'}
         </button>
         <button className="primary compact" type="button" onClick={() => setConfirmOpen(true)} disabled={!canApply}>
           <Download size={16} />

@@ -422,8 +422,8 @@ export function getVersion() {
   return request<ReleaseInfo>('/api/v1/version');
 }
 
-export function getUpdateStatus() {
-  return request<UpdateStatus>('/api/v1/admin/update/status');
+export function getUpdateStatus(fresh = false) {
+  return request<UpdateStatus>(fresh ? '/api/v1/admin/update/status?fresh=1' : '/api/v1/admin/update/status?cached=1');
 }
 
 export function applyUpdate() {

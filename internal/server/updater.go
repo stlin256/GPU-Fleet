@@ -24,6 +24,7 @@ const (
 	updateBuildTimeout   = 3 * time.Minute
 	updateRestartDelay   = 1200 * time.Millisecond
 	autoUpdateInterval   = 30 * time.Minute
+	updateCheckInterval  = time.Hour
 	updateOutputLimit    = 6000
 	updateSourceEntry    = "./cmd/gpufleet-server"
 	updateRestartLogName = "gpufleet-update-restart.log"
@@ -102,9 +103,15 @@ func (a *App) handleUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	a.updateMu.Lock()
 	defer a.updateMu.Unlock()
 
+	if r.URL.Query().Get("cached") == "1" && r.URL.Query().Get("fresh") != "1" {
+		if cached, ok := a.cachedUpdateStatusLocked(updateMonitorInterval(a.meta.ServiceConfig().AutoUpdateOn())); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), updateCheckTimeout)
 	defer cancel()
-	writeJSON(w, http.StatusOK, a.gitUpdateStatus(ctx))
+	writeJSON(w, http.StatusOK, a.checkUpdateStatusLocked(ctx))
 }
 
 func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
@@ -131,25 +138,22 @@ func (a *App) handleUpdateNotice(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"notice": a.meta.TakeUpdateNotice()})
 }
 
-func (a *App) startAutoUpdateLoop() {
+func (a *App) startUpdateMonitorLoop() {
 	go func() {
-		ticker := time.NewTicker(autoUpdateInterval)
-		defer ticker.Stop()
-		for range ticker.C {
-			if !a.meta.SetupComplete() || !a.meta.ServiceConfig().AutoUpdateOn() {
-				continue
-			}
-			a.updateMu.Lock()
-			response, statusCode, message := a.applyUpdateLocked(context.Background(), true)
-			a.updateMu.Unlock()
-			if statusCode >= http.StatusBadRequest {
-				if a.logger != nil {
-					a.logger.Printf("auto update skipped: %s", message)
-				}
-				continue
-			}
-			if response.Restarting {
+		for {
+			if a.runUpdateMonitorCycle() {
 				return
+			}
+			timer := time.NewTimer(updateMonitorInterval(a.meta.ServiceConfig().AutoUpdateOn()))
+			select {
+			case <-timer.C:
+			case <-a.updateMonitorWake:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
+				}
 			}
 		}
 	}()
@@ -158,8 +162,12 @@ func (a *App) startAutoUpdateLoop() {
 func (a *App) applyUpdateLocked(ctx context.Context, automatic bool) (updateApplyResponse, int, string) {
 	startedAt := time.Now().UTC()
 	checkCtx, checkCancel := context.WithTimeout(ctx, updateCheckTimeout)
-	status := a.gitUpdateStatus(checkCtx)
+	status := a.checkUpdateStatusLocked(checkCtx)
 	checkCancel()
+	return a.applyUpdateLockedWithStatus(ctx, automatic, status, startedAt)
+}
+
+func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, status updateStatus, startedAt time.Time) (updateApplyResponse, int, string) {
 	if !status.Supported {
 		return updateApplyResponse{}, http.StatusBadRequest, status.Message
 	}
@@ -198,6 +206,11 @@ func (a *App) applyUpdateLocked(ctx context.Context, automatic bool) (updateAppl
 	if !status.Available && status.BinaryOutdated {
 		targetCommit = status.LocalCommit
 	}
+	beforeChangelog, targetChangelog := "", ""
+	if automatic {
+		beforeChangelog, _ = a.changelogAt(ctx, status.LocalCommit)
+		targetChangelog, _ = a.changelogAt(ctx, targetCommit)
+	}
 	buildResult, err := a.updateBuildServer(buildCtx, updateBuildRequest{
 		RepoDir:      a.config.RepoDir,
 		RemoteCommit: targetCommit,
@@ -225,7 +238,7 @@ func (a *App) applyUpdateLocked(ctx context.Context, automatic bool) (updateAppl
 	}
 
 	finalCtx, finalCancel := context.WithTimeout(ctx, updateCheckTimeout)
-	finalStatus := a.gitUpdateStatus(finalCtx)
+	finalStatus := a.checkUpdateStatusLocked(finalCtx)
 	finalCancel()
 	restartRequired := status.BinaryOutdated || (before != "" && finalStatus.LocalCommit != "" && before != finalStatus.LocalCommit)
 	if restartRequired {
@@ -245,7 +258,7 @@ func (a *App) applyUpdateLocked(ctx context.Context, automatic bool) (updateAppl
 			return updateApplyResponse{}, http.StatusInternalServerError, fmt.Sprintf("schedule restart failed: %s", limitText(err.Error(), 500))
 		}
 		if automatic {
-			_ = a.saveAutomaticUpdateNotice(ctx, status, finalStatus, targetCommit, startedAt, restartAt)
+			_ = a.saveAutomaticUpdateNoticeFromChangelog(status, finalStatus, targetCommit, beforeChangelog, targetChangelog, startedAt, restartAt)
 		}
 		if status.BinaryOutdated && !status.Available {
 			_ = a.meta.AddAudit("server_update_scheduled", fmt.Sprintf("rebuilt %s from repository commit %s and scheduled automatic restart", version.String(), shortCommit(targetCommit)))
@@ -284,8 +297,75 @@ func (a *App) applyUpdateLocked(ctx context.Context, automatic bool) (updateAppl
 	}, http.StatusOK, ""
 }
 
+func (a *App) runUpdateMonitorCycle() bool {
+	if !a.meta.SetupComplete() {
+		return false
+	}
+	automatic := a.meta.ServiceConfig().AutoUpdateOn()
+	a.updateMu.Lock()
+	defer a.updateMu.Unlock()
+
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), updateCheckTimeout)
+	status := a.checkUpdateStatusLocked(checkCtx)
+	checkCancel()
+	if !automatic || !status.Supported || status.Failed || status.Upstream == "" || status.Dirty || status.Ahead > 0 || (!status.Available && !status.BinaryOutdated) {
+		return false
+	}
+	response, statusCode, message := a.applyUpdateLockedWithStatus(context.Background(), true, status, time.Now().UTC())
+	if statusCode >= http.StatusBadRequest {
+		if a.logger != nil {
+			a.logger.Printf("auto update skipped: %s", message)
+		}
+		return false
+	}
+	return response.Restarting
+}
+
+func updateMonitorInterval(autoUpdateOn bool) time.Duration {
+	if autoUpdateOn {
+		return autoUpdateInterval
+	}
+	return updateCheckInterval
+}
+
+func (a *App) wakeUpdateMonitor() {
+	if a.updateMonitorWake == nil {
+		return
+	}
+	select {
+	case a.updateMonitorWake <- struct{}{}:
+	default:
+	}
+}
+
+func (a *App) checkUpdateStatusLocked(ctx context.Context) updateStatus {
+	status := a.gitUpdateStatus(ctx)
+	a.updateStatusCache = status
+	a.updateStatusCacheOK = true
+	return status
+}
+
+func (a *App) cachedUpdateStatusLocked(maxAge time.Duration) (updateStatus, bool) {
+	if !a.updateStatusCacheOK || a.updateStatusCache.CheckedAt.IsZero() {
+		return updateStatus{}, false
+	}
+	if maxAge <= 0 || time.Since(a.updateStatusCache.CheckedAt) > maxAge {
+		return updateStatus{}, false
+	}
+	return a.updateStatusCache, true
+}
+
 func (a *App) saveAutomaticUpdateNotice(ctx context.Context, beforeStatus, finalStatus updateStatus, targetCommit string, startedAt, restartAt time.Time) error {
 	summary, summaryEN := a.updateSummary(ctx, beforeStatus.LocalCommit, targetCommit)
+	return a.saveAutomaticUpdateNoticeWithSummary(beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
+}
+
+func (a *App) saveAutomaticUpdateNoticeFromChangelog(beforeStatus, finalStatus updateStatus, targetCommit, beforeRaw, targetRaw string, startedAt, restartAt time.Time) error {
+	summary, summaryEN := updateSummaryFromChangelog(beforeRaw, targetRaw)
+	return a.saveAutomaticUpdateNoticeWithSummary(beforeStatus, finalStatus, targetCommit, summary, summaryEN, startedAt, restartAt)
+}
+
+func (a *App) saveAutomaticUpdateNoticeWithSummary(beforeStatus, finalStatus updateStatus, targetCommit string, summary, summaryEN []string, startedAt, restartAt time.Time) error {
 	if len(summary) == 0 && len(summaryEN) == 0 {
 		summary = []string{"无更新说明"}
 		summaryEN = []string{"No update notes."}
@@ -325,6 +405,13 @@ func (a *App) updateSummary(ctx context.Context, beforeCommit, targetCommit stri
 		beforeRaw, _ = a.changelogAt(ctx, beforeCommit)
 	}
 	if strings.TrimSpace(beforeRaw) == strings.TrimSpace(afterRaw) {
+		return []string{"无更新说明"}, []string{"No update notes."}
+	}
+	return updateSummaryFromChangelog(beforeRaw, afterRaw)
+}
+
+func updateSummaryFromChangelog(beforeRaw, afterRaw string) ([]string, []string) {
+	if strings.TrimSpace(afterRaw) == "" || strings.TrimSpace(beforeRaw) == strings.TrimSpace(afterRaw) {
 		return []string{"无更新说明"}, []string{"No update notes."}
 	}
 	afterEntries := version.ChangelogFromMarkdown(afterRaw)

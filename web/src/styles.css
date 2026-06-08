@@ -154,6 +154,18 @@ nav button::after {
   transition: opacity var(--motion-fast) var(--ease), transform var(--motion-fast) var(--ease);
 }
 
+nav button.has-notice::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bad);
+  box-shadow: 0 0 0 3px var(--bad-soft);
+}
+
 nav button.active, .primary {
   background: var(--accent);
   border-color: var(--accent);
@@ -1486,6 +1498,7 @@ input:focus {
   inset: 0;
   z-index: 90;
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 24px;
@@ -1493,12 +1506,14 @@ input:focus {
     radial-gradient(circle at 16% 12%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 34%),
     linear-gradient(135deg, color-mix(in srgb, var(--bg-strong) 76%, var(--panel)) 0%, var(--bg) 64%);
   overflow: auto;
+  scroll-padding-top: max(14px, env(safe-area-inset-top));
   animation: fade-in var(--motion-slow) var(--ease) both;
 }
 
 .setup-stage {
   width: min(1080px, 100%);
   min-height: min(680px, calc(100vh - 48px));
+  min-height: min(680px, calc(100dvh - 48px));
   display: grid;
   grid-template-columns: minmax(300px, .82fr) minmax(420px, 1fr);
   border: 1px solid var(--line);
@@ -2463,6 +2478,10 @@ input[type="file"] {
   nav button::after {
     inset: auto 18px 5px 18px;
   }
+  nav button.has-notice::before {
+    top: 7px;
+    right: calc(50% - 18px);
+  }
   .topbar {
     position: sticky;
     top: 0;
@@ -2562,10 +2581,11 @@ input[type="file"] {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .setup-shell {
-    padding: 14px;
+    padding: max(14px, env(safe-area-inset-top)) 14px 14px;
   }
   .setup-stage {
     min-height: calc(100vh - 28px);
+    min-height: calc(100dvh - max(28px, env(safe-area-inset-top)));
     grid-template-columns: 1fr;
   }
   .setup-hero {
@@ -2630,10 +2650,11 @@ input[type="file"] {
     gap: 10px;
   }
   .setup-shell {
-    padding: 0;
+    padding: max(10px, env(safe-area-inset-top)) 0 0;
   }
   .setup-stage {
-    min-height: 100vh;
+    min-height: calc(100vh - max(10px, env(safe-area-inset-top)));
+    min-height: calc(100dvh - max(10px, env(safe-area-inset-top)));
     border-radius: 0;
     border-left: 0;
     border-right: 0;

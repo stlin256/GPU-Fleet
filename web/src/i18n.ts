@@ -244,6 +244,7 @@ const en: Record<string, string> = {
   '自动更新已开启': 'Automatic update enabled',
   '自动更新已关闭': 'Automatic update disabled',
   '每 30 分钟检查一次，有更新时自动拉取、构建并重启': 'Checks every 30 minutes and automatically pulls, builds, and restarts when an update is available',
+  '每 1 小时检查一次，有更新时在设置入口提示': 'Checks every hour and flags Settings when an update is available',
   '已发送更新请求': 'Update request sent',
   '依赖预检、构建远端提交并执行 fast-forward 拉取': 'Checking dependencies, building the remote commit, and fast-forward pulling',
   '更新已应用，准备自动重启': 'Update applied. Preparing automatic restart.',

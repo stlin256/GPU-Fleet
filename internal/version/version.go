@@ -238,6 +238,8 @@ func Changelog() []ChangelogEntry {
 				"在线更新卡片移除超前、运行提交和远端字段，更新按钮改为二次确认后执行，并新增可立即生效的磁盘预留空间设置。",
 				"设置页数据库下载卡片改为显示实际已存储天数，并将 7 天外指标分段重压缩为单个高压缩率 gzip 成员以降低长期存储占用。",
 				"在线更新检查失败时会按 GitHub TLS、DNS、连接超时和认证等常见原因显示可操作提示，并保留 Git 原始错误供详情弹窗诊断。",
+				"自动更新与普通更新检测统一为同一套后台监测逻辑：启动时立即检查，关闭自动更新时每 1 小时检查并在设置入口提示，开启自动更新时每 30 分钟检查并可立即自动更新。",
+				"移动端配置引导顶部加入浏览器安全区间距，并改用动态视口高度，避免窄屏浏览器顶部内容被裁切。",
 			},
 			ChangedEN: []string{
 				"Mobile setup now uses a more compact first-screen summary and form layout, reducing hero height on narrow screens while keeping save actions easy to reach.",
@@ -257,6 +259,8 @@ func Changelog() []ChangelogEntry {
 				"The online update card now removes ahead, running commit, and remote fields, requires confirmation before updating, and adds an immediately applied disk reserve setting.",
 				"The settings database download card now shows actual stored days, and metric segments older than 7 days are recompressed into single high-compression gzip members to reduce long-term storage use.",
 				"Online update check failures now show actionable messages for common GitHub TLS, DNS, timeout, and authentication issues while preserving raw Git errors in a details dialog for diagnosis.",
+				"Automatic updates and regular update checks now share one background monitor: startup checks immediately, disabled auto-update checks hourly and flags Settings, and enabled auto-update checks every 30 minutes with immediate automatic application when available.",
+				"Mobile setup now adds browser safe-area spacing and dynamic viewport height so the top of the wizard is not clipped in narrow mobile browsers.",
 			},
 			Fixed: []string{
 				"修复 0.1.5 到后续版本自动更新时，Git 仓库已更新但 systemd 仍可能继续运行旧服务端二进制的问题。",
@@ -266,6 +270,7 @@ func Changelog() []ChangelogEntry {
 				"调小总览和 GPU 监控页顶部迷你图表悬浮提示的数值字号，避免提示层遮挡时过于突兀。",
 				"修复英文界面下数据库下载、磁盘预留和部分更新提示仍可能显示中文的问题，切回中文时也会立即恢复中文文案。",
 				"访客页面语言改为跟随访客浏览器语言，不再沿用管理员保存的界面语言。",
+				"修复自动更新完成提示始终显示“无更新说明”的问题，现在会在拉取前比较旧提交和目标提交的 changelog 差异。",
 			},
 			FixedEN: []string{
 				"Fixed automatic updates from 0.1.5 and later where the Git checkout updated but systemd could continue running the old server binary.",
@@ -275,6 +280,7 @@ func Changelog() []ChangelogEntry {
 				"Reduced the value font size in top metric sparkline hover tooltips on Overview and GPU monitoring so the overlay feels less intrusive.",
 				"Fixed Database Download, Disk Reserve, and some update messages still showing Chinese in English mode, and made switching back to Chinese apply immediately.",
 				"Guest pages now follow the visitor browser language instead of inheriting the admin-saved interface language.",
+				"Fixed automatic update completion notices always showing \"No update notes\"; changelog differences are now compared before the pull using the old and target commits.",
 			},
 		},
 		{

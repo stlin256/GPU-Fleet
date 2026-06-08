@@ -216,14 +216,14 @@ func TestAutoUpdateConfigDefaultsOnAndCanBeDisabled(t *testing.T) {
 }
 
 func TestSameVersionChangelogSummaryKeepsOnlyNewLines(t *testing.T) {
-	before := version.ChangelogFromMarkdown(`## [0.1.7] - 2026-06-08
+	beforeRaw := `## [0.1.7] - 2026-06-08
 
 ### Changed / 变更
 
 - zh-CN: 已有变更。
 - en-US: Existing change.
-`)
-	after := version.ChangelogFromMarkdown(`## [0.1.7] - 2026-06-08
+`
+	afterRaw := `## [0.1.7] - 2026-06-08
 
 ### Changed / 变更
 
@@ -231,7 +231,9 @@ func TestSameVersionChangelogSummaryKeepsOnlyNewLines(t *testing.T) {
 - en-US: Existing change.
 - zh-CN: 新增自动更新通知。
 - en-US: Added automatic update notices.
-`)
+`
+	before := version.ChangelogFromMarkdown(beforeRaw)
+	after := version.ChangelogFromMarkdown(afterRaw)
 	zh := newChangelogItems(changelogEntryItems(after[0], false), changelogEntryItems(before[0], false))
 	en := newChangelogItems(changelogEntryItems(after[0], true), changelogEntryItems(before[0], true))
 	if len(zh) != 1 || zh[0] != "新增自动更新通知。" {
@@ -240,9 +242,16 @@ func TestSameVersionChangelogSummaryKeepsOnlyNewLines(t *testing.T) {
 	if len(en) != 1 || en[0] != "Added automatic update notices." {
 		t.Fatalf("expected only the new English line, got %+v", en)
 	}
+	zh, en = updateSummaryFromChangelog(beforeRaw, afterRaw)
+	if len(zh) != 1 || zh[0] != "新增自动更新通知。" || len(en) != 1 || en[0] != "Added automatic update notices." {
+		t.Fatalf("expected changelog summary to keep changed lines, got zh=%+v en=%+v", zh, en)
+	}
 	zh, en = updateSummaryFallback(nil, nil)
 	if zh[0] != "无更新说明" || en[0] != "No update notes." {
 		t.Fatalf("expected no-notes fallback, got zh=%+v en=%+v", zh, en)
+	}
+	if updateMonitorInterval(true) != 30*time.Minute || updateMonitorInterval(false) != time.Hour {
+		t.Fatalf("unexpected update monitor intervals")
 	}
 }
 
@@ -682,12 +691,13 @@ func TestLoginSessionRemembersBrowserForThirtyDays(t *testing.T) {
 func TestInitialSetupCreatesPasswordCredential(t *testing.T) {
 	root := t.TempDir()
 	app, generated, err := NewApp(Config{
-		Addr:         "127.0.0.1:8088",
-		AddrExplicit: true,
-		DataDir:      filepath.Join(root, "data"),
-		WebDir:       filepath.Join(root, "missing-web"),
-		MinFreeBytes: 1,
-		Retention:    time.Hour,
+		Addr:                 "127.0.0.1:8088",
+		AddrExplicit:         true,
+		DataDir:              filepath.Join(root, "data"),
+		WebDir:               filepath.Join(root, "missing-web"),
+		MinFreeBytes:         1,
+		Retention:            time.Hour,
+		DisableUpdateMonitor: true,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -733,13 +743,14 @@ func TestInitialSetupCreatesPasswordCredential(t *testing.T) {
 func TestServerDoesNotCreateBootstrapDeviceByDefault(t *testing.T) {
 	root := t.TempDir()
 	app, _, err := NewApp(Config{
-		Addr:          "127.0.0.1:8088",
-		AddrExplicit:  true,
-		DataDir:       filepath.Join(root, "data"),
-		WebDir:        filepath.Join(root, "missing-web"),
-		MinFreeBytes:  1,
-		Retention:     time.Hour,
-		AdminPassword: "admin-test",
+		Addr:                 "127.0.0.1:8088",
+		AddrExplicit:         true,
+		DataDir:              filepath.Join(root, "data"),
+		WebDir:               filepath.Join(root, "missing-web"),
+		MinFreeBytes:         1,
+		Retention:            time.Hour,
+		AdminPassword:        "admin-test",
+		DisableUpdateMonitor: true,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -954,14 +965,15 @@ func newTestApp(t *testing.T, root, webDir string) *App {
 func newTestAppWithRepo(t *testing.T, root, webDir, repoDir string) *App {
 	t.Helper()
 	app, _, err := NewApp(Config{
-		DataDir:           filepath.Join(root, "data"),
-		WebDir:            webDir,
-		RepoDir:           repoDir,
-		MinFreeBytes:      1,
-		Retention:         time.Hour,
-		AdminPassword:     "admin-test",
-		BootstrapDeviceID: "local-dev",
-		BootstrapSecret:   "local-dev-secret",
+		DataDir:              filepath.Join(root, "data"),
+		WebDir:               webDir,
+		RepoDir:              repoDir,
+		MinFreeBytes:         1,
+		Retention:            time.Hour,
+		AdminPassword:        "admin-test",
+		BootstrapDeviceID:    "local-dev",
+		BootstrapSecret:      "local-dev-secret",
+		DisableUpdateMonitor: true,
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
