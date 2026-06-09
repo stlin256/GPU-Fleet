@@ -1303,7 +1303,8 @@ function gpuSeriesQueryKey(deviceID: string, gpuID: string, hours: number, guest
 }
 
 function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSeriesPoint[] }>): AggregateSeriesData {
-  const buckets = new Map<number, { timestamp?: string; utilizationTotal: number; utilizationCount: number; memory: number; power: number }>();
+  const buckets = new Map<number, { timestamp?: string; contributors: number; utilizationTotal: number; utilizationCount: number; memory: number; power: number }>();
+  const expectedContributors = batches.reduce((total, { points }) => total + (points.length > 0 ? 1 : 0), 0);
   for (const { points } of batches) {
     const perGPUBuckets = new Map<number, GPUSeriesPoint>();
     for (const point of points) {
@@ -1316,10 +1317,11 @@ function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSerie
       }
     }
     for (const [bucket, point] of perGPUBuckets) {
-      const row = buckets.get(bucket) ?? { timestamp: point.timestamp, utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
+      const row = buckets.get(bucket) ?? { timestamp: point.timestamp, contributors: 0, utilizationTotal: 0, utilizationCount: 0, memory: 0, power: 0 };
       if (!row.timestamp || new Date(point.timestamp).getTime() > new Date(row.timestamp).getTime()) {
         row.timestamp = point.timestamp;
       }
+      row.contributors += 1;
       if (typeof point.utilization_gpu_percent === 'number' && Number.isFinite(point.utilization_gpu_percent)) {
         row.utilizationTotal += point.utilization_gpu_percent;
         row.utilizationCount += 1;
@@ -1334,10 +1336,13 @@ function buildAggregateSeries(batches: Array<{ item: StoredGPU; points: GPUSerie
     }
   }
   const rows = Array.from(buckets.entries()).sort(([left], [right]) => left - right).map(([, row]) => row);
+  const maxContributors = rows.reduce((max, row) => Math.max(max, row.contributors), 0);
+  const fullContributorCount = expectedContributors || maxContributors;
+  const completeRows = fullContributorCount > 1 ? rows.filter((row) => row.contributors === fullContributorCount) : rows;
   return {
-    utilization: rows.map((row) => ({ value: row.utilizationCount ? row.utilizationTotal / row.utilizationCount : 0, timestamp: row.timestamp })),
-    memory: rows.map((row) => ({ value: row.memory, timestamp: row.timestamp })),
-    power: rows.map((row) => ({ value: row.power, timestamp: row.timestamp }))
+    utilization: completeRows.map((row) => ({ value: row.utilizationCount ? row.utilizationTotal / row.utilizationCount : 0, timestamp: row.timestamp })),
+    memory: completeRows.map((row) => ({ value: row.memory, timestamp: row.timestamp })),
+    power: completeRows.map((row) => ({ value: row.power, timestamp: row.timestamp }))
   };
 }
 
@@ -2191,8 +2196,15 @@ function StatsPanel({
           const key = statsRowKey(row);
           const open = expanded.has(key);
           const coverage = sampleCoverageText(row, language);
+          const deviceColor = deviceBorderColor(row.device_id);
           return (
-            <div className="stats-expand-row" key={key}>
+            <div
+              className="stats-expand-row"
+              data-device-id={row.device_id}
+              data-gpu-id={row.gpu_id}
+              key={key}
+              style={{ '--device-color': deviceColor } as React.CSSProperties}
+            >
               <button
                 className={`table-row stats-row-trigger ${open ? 'active' : ''}`}
                 type="button"

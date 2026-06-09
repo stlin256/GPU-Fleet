@@ -29,6 +29,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Version numbers, README files, frontend package metadata, and the built-in version API changelog fallback now point to 0.1.8.
 - zh-CN: 页面打开时加入更灵动的 Scanline 风格启动扫描、卡片错峰进入、状态点呼吸和曲线绘制节奏，仅调整动效，不改变现有元素风格。
 - en-US: Page entry now adds livelier Scanline-style startup sweep, staggered card entry, status-dot pulse, and chart draw timing while preserving the existing element styling.
+- zh-CN: Scanline 启动扫描调整到应用内容底层，保留启动氛围但不再覆盖文字、图表和交互元素。
+- en-US: The Scanline startup sweep now renders beneath app content, preserving the entry feel without covering text, charts, or controls.
 
 ### Fixed / 修复
 
@@ -48,6 +50,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed top summary and trend-chart tooltips potentially being covered by neighboring cards, and aligned the top average-utilization, memory, and power tooltip sizing with the lower charts.
 - zh-CN: 修复更新恢复和自动更新监控对短 commit 与完整 commit 严格相等匹配导致的等待重启不结束、二进制落后误判和反复重启问题；自动监控会跳过刚完成的同目标重建，安装脚本改为注入完整 commit。
 - en-US: Fixed update recovery and automatic-update monitoring treating short and full commit hashes as different, which could keep restart waiting active, misreport the binary as stale, and trigger repeated restarts; automatic monitoring now skips just-completed same-target rebuilds, and the Linux installer stamps full commits.
+- zh-CN: 修复统计行只有 3 个指标网格列却渲染 5 个指标导致宽屏仍换行的问题，并用设备色标和错峰入场降低多 GPU 行混淆。
+- en-US: Fixed stats rows wrapping on wide screens because only three metric grid columns were defined for five metrics, and added device color cues plus staggered entry to reduce multi-GPU row confusion.
+- zh-CN: 顶部总显存用量和总功耗小曲线会忽略只包含部分 GPU 的聚合边界桶，避免首个历史点退化成单卡数值。
+- en-US: Top memory and power sparklines now ignore aggregate boundary buckets that only contain some GPUs, preventing the first historical point from falling back to a single-card value.
 
 ## [0.1.7] - 2026-06-08
 

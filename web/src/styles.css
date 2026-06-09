@@ -59,6 +59,7 @@
 
 body {
   position: relative;
+  isolation: isolate;
   margin: 0;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:
@@ -72,7 +73,7 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: 120;
+  z-index: 0;
   pointer-events: none;
   background:
     linear-gradient(180deg, transparent 0%, color-mix(in srgb, var(--accent) 13%, transparent) 46%, color-mix(in srgb, var(--accent-strong) 18%, transparent) 50%, transparent 58%),
@@ -91,6 +92,8 @@ h3 { font-size: 14px; }
 p { color: var(--muted); font-size: 13px; margin-top: 5px; }
 
 .app {
+  position: relative;
+  z-index: 1;
   min-height: 100vh;
   display: grid;
   grid-template-columns: 232px 1fr;
@@ -1177,6 +1180,7 @@ input:focus-visible {
 
 .stats-table {
   display: grid;
+  gap: 4px;
 }
 
 .stats-panel-head {
@@ -1305,19 +1309,35 @@ input:focus-visible {
 
 .stats-expand-row {
   display: grid;
+  animation: stats-row-enter var(--motion-slow) var(--ease) both;
+}
+
+.stats-expand-row:nth-child(2) { animation-delay: 36ms; }
+.stats-expand-row:nth-child(3) { animation-delay: 72ms; }
+.stats-expand-row:nth-child(4) { animation-delay: 108ms; }
+.stats-expand-row:nth-child(5) { animation-delay: 144ms; }
+.stats-expand-row:nth-child(n + 6) { animation-delay: 180ms; }
+
+.stats-expand-row:has(.stats-row-trigger.active) {
+  z-index: 1;
 }
 
 .stats-row-trigger {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(66px, max-content));
+  grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(56px, max-content)) minmax(92px, max-content) minmax(116px, max-content);
   align-items: center;
   gap: 10px 12px;
   width: 100%;
   border: 0;
   border-bottom: 1px solid var(--line);
+  border-left: 2px solid color-mix(in srgb, var(--device-color, var(--accent)) 70%, transparent);
+  border-radius: 0 8px 8px 0;
   background: transparent;
   color: inherit;
   font: inherit;
+  overflow: hidden;
+  padding-left: 10px;
   text-align: left;
   cursor: pointer;
 }
@@ -2676,6 +2696,12 @@ input[type="file"] {
   100% { opacity: 0; transform: translateY(100%); }
 }
 
+@keyframes stats-row-enter {
+  0% { opacity: 0; transform: translateY(10px); }
+  68% { opacity: 1; transform: translateY(-1px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 @keyframes gpu-meta-marquee {
   from { transform: translateX(0); }
   to { transform: translateX(calc(var(--marquee-distance, 0px) * -1)); }
@@ -2701,7 +2727,7 @@ input[type="file"] {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .stats-row-trigger {
-    grid-template-columns: minmax(220px, 1fr) repeat(3, minmax(66px, max-content));
+    grid-template-columns: minmax(190px, 1fr) repeat(3, minmax(52px, max-content)) minmax(86px, max-content) minmax(108px, max-content);
   }
   .stats-row-trigger > span {
     justify-items: start;

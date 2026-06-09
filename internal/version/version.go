@@ -221,6 +221,7 @@ func Changelog() []ChangelogEntry {
 				"前端补齐服务端已返回的统计字段，显示采样覆盖范围、平均显存和峰值利用率，减少只看瞬时快照造成的误判。",
 				"版本号、README、前端包元数据和内置版本 API 变更记录同步到 0.1.8。",
 				"页面打开时加入更灵动的 Scanline 风格启动扫描、卡片错峰进入、状态点呼吸和曲线绘制节奏，仅调整动效，不改变现有元素风格。",
+				"Scanline 启动扫描调整到应用内容底层，保留启动氛围但不再覆盖文字、图表和交互元素。",
 			},
 			ChangedEN: []string{
 				"Overview hot-GPU counts now use the same server-side 85°C threshold as card health state to avoid inconsistent totals.",
@@ -231,6 +232,7 @@ func Changelog() []ChangelogEntry {
 				"The frontend now consumes the richer stats fields already returned by the server, showing sample coverage, average memory, and peak utilization to reduce snapshot-only misreads.",
 				"Version numbers, README files, frontend package metadata, and the built-in version API changelog fallback now point to 0.1.8.",
 				"Page entry now adds livelier Scanline-style startup sweep, staggered card entry, status-dot pulse, and chart draw timing while preserving the existing element styling.",
+				"The Scanline startup sweep now renders beneath app content, preserving the entry feel without covering text, charts, or controls.",
 			},
 			Fixed: []string{
 				"修复 GPU 卡片 tag 区域在 PCIe 降级文案较长时出现横向滚动条的问题，标签改为固定网格并保留完整 hover 提示。",
@@ -241,6 +243,8 @@ func Changelog() []ChangelogEntry {
 				"GPU 卡片限速 tag 现在同时显示当前 P-state；移动端曲线点位提示改为触摸后短暂停留，便于查看具体数值。",
 				"修复顶部汇总小曲线和趋势图 tooltip 可能被相邻卡片遮挡的问题，并统一顶部平均利用率、总显存用量和总功耗 tooltip 与下方图表的尺寸样式。",
 				"修复更新恢复和自动更新监控对短 commit 与完整 commit 严格相等匹配导致的等待重启不结束、二进制落后误判和反复重启问题；自动监控会跳过刚完成的同目标重建，安装脚本改为注入完整 commit。",
+				"修复统计行只有 3 个指标网格列却渲染 5 个指标导致宽屏仍换行的问题，并用设备色标和错峰入场降低多 GPU 行混淆。",
+				"顶部总显存用量和总功耗小曲线会忽略只包含部分 GPU 的聚合边界桶，避免首个历史点退化成单卡数值。",
 			},
 			FixedEN: []string{
 				"Fixed GPU card tag rows showing a horizontal scrollbar when PCIe degradation labels were long; tags now use a fixed grid while preserving the full hover tooltip.",
@@ -251,6 +255,8 @@ func Changelog() []ChangelogEntry {
 				"GPU card throttle tags now include the current P-state, and mobile chart point tooltips stay visible briefly after touch for easier value inspection.",
 				"Fixed top summary and trend-chart tooltips potentially being covered by neighboring cards, and aligned the top average-utilization, memory, and power tooltip sizing with the lower charts.",
 				"Fixed update recovery and automatic-update monitoring treating short and full commit hashes as different, which could keep restart waiting active, misreport the binary as stale, and trigger repeated restarts; automatic monitoring now skips just-completed same-target rebuilds, and the Linux installer stamps full commits.",
+				"Fixed stats rows wrapping on wide screens because only three metric grid columns were defined for five metrics, and added device color cues plus staggered entry to reduce multi-GPU row confusion.",
+				"Top memory and power sparklines now ignore aggregate boundary buckets that only contain some GPUs, preventing the first historical point from falling back to a single-card value.",
 			},
 		},
 		{
