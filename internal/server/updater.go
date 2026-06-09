@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,6 +31,7 @@ const (
 	updateRestartLogName       = "gpufleet-update-restart.log"
 	updateRestartGrace         = 10 * time.Minute
 	updateRecoveryCheckTimeout = 2 * time.Second
+	updateRecoveryMarkerSuffix = ".recovery"
 	minCommitPrefixLen         = 7
 	trustedUpdateHost          = "github.com"
 	trustedUpdateRepo          = "stlin256/gpu-fleet"
@@ -113,6 +115,7 @@ type updateRestartRequest struct {
 	PID               int
 	RestartAt         time.Time
 	ReplaceExecutable bool
+	ManagedBySystemd  bool
 }
 
 type updateBuildFunc func(context.Context, updateBuildRequest) (updateBuildResult, error)
@@ -242,6 +245,7 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 	nextPath := exePath + ".next"
 	backupPath := exePath + ".bak"
 	_ = os.Remove(nextPath)
+	_ = os.Remove(updateRecoveryMarkerPath(nextPath))
 
 	buildCtx, buildCancel := context.WithTimeout(ctx, updateBuildTimeout)
 	targetCommit := status.RemoteCommit
@@ -292,6 +296,7 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 			PID:               os.Getpid(),
 			RestartAt:         restartAt,
 			ReplaceExecutable: true,
+			ManagedBySystemd:  runningUnderSystemd(),
 		}
 		if err := a.updateScheduleRestart(restartReq); err != nil {
 			_ = os.Remove(buildResult.OutputPath)
@@ -382,6 +387,13 @@ func (a *App) schedulePendingExecutableRecovery() bool {
 	if info, err := os.Stat(nextPath); err != nil || info.IsDir() || info.Size() == 0 {
 		return false
 	}
+	markerPath := updateRecoveryMarkerPath(nextPath)
+	if updateRecoveryRecentlyAttempted(markerPath, time.Now().UTC()) {
+		if a.logger != nil {
+			a.logger.Printf("pending update recovery skipped: recent recovery attempt is still cooling down for %s", filepath.Base(nextPath))
+		}
+		return false
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), updateRecoveryCheckTimeout)
 	defer cancel()
 	localCommit, err := a.runGit(ctx, "rev-parse", "HEAD")
@@ -398,6 +410,12 @@ func (a *App) schedulePendingExecutableRecovery() bool {
 	}) {
 		return false
 	}
+	if err := writeUpdateRecoveryMarker(markerPath, localCommit, time.Now().UTC()); err != nil {
+		if a.logger != nil {
+			a.logger.Printf("pending update recovery skipped: cannot write recovery marker: %v", err)
+		}
+		return false
+	}
 	restartAt := time.Now().UTC().Add(updateRestartDelay)
 	req := updateRestartRequest{
 		CurrentExe:        exePath,
@@ -408,8 +426,10 @@ func (a *App) schedulePendingExecutableRecovery() bool {
 		PID:               os.Getpid(),
 		RestartAt:         restartAt,
 		ReplaceExecutable: true,
+		ManagedBySystemd:  runningUnderSystemd(),
 	}
 	if err := a.updateScheduleRestart(req); err != nil {
+		_ = os.Remove(markerPath)
 		if a.logger != nil {
 			a.logger.Printf("pending update recovery failed: %v", err)
 		}
@@ -427,6 +447,23 @@ func (a *App) schedulePendingExecutableRecovery() bool {
 		os.Exit(0)
 	}()
 	return true
+}
+
+func updateRecoveryMarkerPath(nextPath string) string {
+	return nextPath + updateRecoveryMarkerSuffix
+}
+
+func updateRecoveryRecentlyAttempted(markerPath string, now time.Time) bool {
+	info, err := os.Stat(markerPath)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return info.ModTime().Add(updateRestartGrace).After(now)
+}
+
+func writeUpdateRecoveryMarker(markerPath, targetCommit string, attemptedAt time.Time) error {
+	body := fmt.Sprintf("attempted_at=%s\ntarget_commit=%s\n", attemptedAt.UTC().Format(time.RFC3339), strings.TrimSpace(targetCommit))
+	return os.WriteFile(markerPath, []byte(body), 0600)
 }
 
 func updateMonitorInterval(autoUpdateOn bool) time.Duration {
@@ -915,12 +952,21 @@ func scheduleWindowsRestart(req updateRestartRequest) error {
 }
 
 func scheduleLinuxRestart(req updateRestartRequest) error {
+	logPath := filepath.Join(filepath.Dir(req.CurrentExe), updateRestartLogName)
+	if req.ManagedBySystemd {
+		if req.ReplaceExecutable {
+			if err := replaceLinuxExecutable(req, logPath); err != nil {
+				return err
+			}
+		}
+		appendRestartLog(logPath, "systemd-managed restart scheduled at %s", time.Now().UTC().Format(time.RFC3339))
+		return nil
+	}
 	helper, err := os.CreateTemp("", "gpufleet-update-*.sh")
 	if err != nil {
 		return fmt.Errorf("create restart helper: %w", err)
 	}
 	helperPath := helper.Name()
-	logPath := filepath.Join(filepath.Dir(req.CurrentExe), updateRestartLogName)
 	script := linuxRestartScript(req, logPath, helperPath)
 	if _, err := helper.WriteString(script); err != nil {
 		helper.Close()
@@ -938,6 +984,62 @@ func scheduleLinuxRestart(req updateRestartRequest) error {
 		return err
 	}
 	return cmd.Process.Release()
+}
+
+func replaceLinuxExecutable(req updateRestartRequest, logPath string) error {
+	if req.NextExe == "" {
+		return errors.New("new executable path is empty")
+	}
+	if req.BackupExe == "" {
+		req.BackupExe = req.CurrentExe + ".bak"
+	}
+	if err := os.Remove(req.BackupExe); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove previous backup: %w", err)
+	}
+	if err := copyFile(req.CurrentExe, req.BackupExe, 0755); err != nil {
+		return fmt.Errorf("backup current executable: %w", err)
+	}
+	if err := os.Rename(req.NextExe, req.CurrentExe); err != nil {
+		_ = copyFile(req.BackupExe, req.CurrentExe, 0755)
+		return fmt.Errorf("replace current executable: %w", err)
+	}
+	if err := os.Chmod(req.CurrentExe, 0755); err != nil {
+		_ = copyFile(req.BackupExe, req.CurrentExe, 0755)
+		return fmt.Errorf("chmod replaced executable: %w", err)
+	}
+	appendRestartLog(logPath, "replaced executable before systemd restart at %s", time.Now().UTC().Format(time.RFC3339))
+	return nil
+}
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	_, copyErr := io.Copy(out, in)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
+}
+
+func appendRestartLog(logPath, format string, args ...any) {
+	if strings.TrimSpace(logPath) == "" {
+		return
+	}
+	line := fmt.Sprintf(format, args...)
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	_, _ = file.WriteString(line + "\n")
 }
 
 func windowsRestartScript(req updateRestartRequest, logPath, helperPath string) string {
@@ -1023,15 +1125,6 @@ func linuxRestartScript(req updateRestartRequest, logPath, helperPath string) st
 	replace := ""
 	if req.ReplaceExecutable {
 		replace = fmt.Sprintf(`i=0
-while kill -0 %d 2>/dev/null && [ "$i" -lt 600 ]; do
-  i=$((i + 1))
-  sleep 0.1
-done
-if kill -0 %d 2>/dev/null; then
-  printf 'current process did not exit before replacement at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
-  exit 1
-fi
-i=0
 while [ "$i" -lt 600 ]; do
   rm -f %s
   if cp -p %s %s && mv -f %s %s && chmod 0755 %s; then
@@ -1045,12 +1138,22 @@ if [ "$i" -ge 600 ]; then
   printf 'replacement failed and rollback was attempted at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
   exit 1
 fi
-`, req.PID, req.PID, shQuote(logPath), shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.NextExe), shQuote(req.CurrentExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(logPath))
+printf 'replaced executable before old process exit at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
+`, shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.NextExe), shQuote(req.CurrentExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(logPath), shQuote(logPath))
 	}
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
-sleep %.3f
 %s
+sleep %.3f
+i=0
+while kill -0 %d 2>/dev/null && [ "$i" -lt 600 ]; do
+  i=$((i + 1))
+  sleep 0.1
+done
+if kill -0 %d 2>/dev/null; then
+  printf 'current process did not exit before restart at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
+  exit 1
+fi
 already_running=0
 for exe in /proc/[0-9]*/exe; do
   target=$(readlink "$exe" 2>/dev/null || true)
@@ -1068,8 +1171,11 @@ fi
 printf 'restarted at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
 rm -f %s
 `,
-		delay,
 		replace,
+		delay,
+		req.PID,
+		req.PID,
+		shQuote(logPath),
 		shQuote(req.CurrentExe),
 		shQuote(req.WorkDir),
 		shQuote(req.CurrentExe),
@@ -1165,6 +1271,10 @@ func mustGetwd() string {
 		return filepath.Dir(os.Args[0])
 	}
 	return wd
+}
+
+func runningUnderSystemd() bool {
+	return os.Getenv("INVOCATION_ID") != "" || os.Getenv("JOURNAL_STREAM") != ""
 }
 
 func psQuote(value string) string {

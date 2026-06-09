@@ -60,6 +60,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Energy long-range charts now deduplicate latest snapshots against rollup points per display bucket and trim visibly sparse edge buckets, avoiding abnormal spikes or dips at both ends.
 - zh-CN: 空转高耗低于 `0.005 kWh` 时不再计入 GPU 告警、诊断项或排行行状态，前端也移除了能源排行标题中的“只读”标签。
 - en-US: High-idle-power waste below `0.005 kWh` no longer counts toward GPU warnings, diagnostics, or ranking row state, and the Energy ranking header no longer shows a read-only badge.
+- zh-CN: 启动时补救遗留 `.next` 二进制替换现在带有冷却标记；如果替换未成功，不再每次启动都主动退出导致 systemd 无限重启，而是先保持旧二进制可用并等待下一次明确更新或冷却后重试。
+- en-US: Startup recovery for leftover `.next` executables now uses a cooldown marker; if replacement does not complete, the server no longer exits on every start and causes an infinite systemd restart loop, keeping the old binary available until the next explicit update or cooldown retry.
+- zh-CN: Linux systemd 场景下在线更新会在调度退出前同步替换服务端二进制，并交给 systemd 拉起新进程；非 systemd 场景的 helper 也改为先替换再等待旧进程退出，减少二进制不一致和重复拉起竞争。
+- en-US: On Linux systemd deployments, online update now replaces the server executable synchronously before scheduling process exit and lets systemd restart it; non-systemd helpers also replace before waiting for the old process, reducing binary mismatch and duplicate-start races.
 
 ## [0.1.8] - 2026-06-09
 

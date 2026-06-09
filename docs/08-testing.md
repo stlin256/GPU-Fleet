@@ -55,7 +55,7 @@ cd ..
 - `internal/server` 已有内置 fallback 面板测试，覆盖服务设置入口、密码更改、端口配置、HTTPS 证书、数据库下载、在线更新、配置引导、GPU 趋势图、离线蒙版，并禁止旧进度条 UI 回归。
 - `internal/server` 覆盖登录短时限流和爆破锁定：连续错误触发 `429`、返回 `Retry-After`、锁定期间正确密码也不能从同源登录、其他来源不受影响、成功登录会清理失败计数。
 - `internal/server` 已有设备生命周期和登录限流测试，覆盖创建设备、改名、禁用、启用、轮换密钥、删除、旧密钥失效和新密钥生效。
-- `internal/server` 已有在线更新测试，覆盖未登录拒绝、非 Git 目录不可用、临时本地 bare upstream 的 fast-forward 拉取、构建/重启调度响应和 dirty 工作区阻止更新。
+- `internal/server` 已有在线更新测试，覆盖未登录拒绝、非 Git 目录不可用、临时本地 bare upstream 的 fast-forward 拉取、构建/重启调度响应、dirty 工作区阻止更新、Linux systemd 同步替换二进制、非 systemd helper 先替换再等待旧进程退出，以及 `.next.recovery` 冷却标记避免补救失败后无限重启。
 - `internal/server` 已有能耗摘要 API 测试，覆盖电价/阈值配置保存、kWh 积分、电费估算、空转高耗、高温、限速诊断、低于展示阈值的空转高耗过滤、离线大间隔不累计能耗、30D 能源查询使用 rollup 索引，以及长范围能源曲线同桶去重和稀疏边界裁剪。
 
 ### 本机采集验证

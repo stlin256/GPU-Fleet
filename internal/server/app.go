@@ -715,6 +715,7 @@ func (a *App) scheduleServiceRestart() (time.Time, error) {
 		PID:               os.Getpid(),
 		RestartAt:         restartAt,
 		ReplaceExecutable: false,
+		ManagedBySystemd:  runningUnderSystemd(),
 	}
 	if err := a.updateScheduleRestart(restartReq); err != nil {
 		return time.Time{}, err

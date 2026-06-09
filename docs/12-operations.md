@@ -142,7 +142,7 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 - 服务端会在临时 Git worktree 中构建远端提交，构建成功后才执行 `git pull --ff-only`。
 - 工作区存在未提交改动、没有 upstream、本地超前或与上游分叉时会阻止更新。
 - 网络远端必须指向官方 `github.com/stlin256/gpu-fleet` 仓库；服务端会记录 remote、upstream、工作区、fast-forward 和精确目标 commit 的供应链校验状态，来源异常时阻止更新。
-- 拉取完成后会生成平台重启器，等待旧进程退出后替换当前服务端二进制，并按原启动参数拉起新进程。重启日志写入当前二进制目录的 `gpufleet-update-restart.log`。
+- 拉取完成后，Linux systemd 场景会先同步替换当前服务端二进制，再让 systemd 按服务配置拉起新进程；非 systemd 场景会生成平台重启器，先替换二进制，再等待旧进程退出并按原启动参数拉起新进程。重启日志写入当前二进制目录的 `gpufleet-update-restart.log`。
 - 自动更新成功后会在服务端保存一条待展示通知。下一次管理员访问时，面板通过 `/api/v1/admin/update/notice` 读取并清除该通知，显示更新时间和更新内容；如果版本号未变化，只展示新旧 `CHANGELOG.md` 顶部同版本条目中新增或变化的行，完全一致时显示“无更新说明”。
 - Web 面板会在更新、证书启用或手动重启时显示全屏背景模糊进度。重启阶段进度停在 99%，服务恢复后刷新当前页面，并弹出需要确认的完成提示。
 
@@ -179,7 +179,7 @@ sh ./scripts/restore-server-linux.sh
 1. 设置页下载诊断包，查看 `diagnostics.json` 中的版本、运行时、磁盘、指标分段、更新缓存和审计摘要。
 2. 查看服务日志：`journalctl -u gpufleet-server --no-pager -l`。
 3. 查看更新重启日志：当前服务端二进制目录下的 `gpufleet-update-restart.log`。
-4. 如果在线更新后仓库已前进但二进制仍旧，重启后的服务端会优先尝试使用遗留的 `.next` 二进制完成替换；仍失败时检查二进制目录写权限和日志中的 replacement/rollback 记录。
+4. 如果在线更新后仓库已前进但二进制仍旧，重启后的服务端会优先尝试使用遗留的 `.next` 二进制完成替换；补救尝试会写入 `.next.recovery` 冷却标记，替换仍失败时服务端会先保持旧二进制可用，避免 systemd 无限重启。此时检查二进制目录写权限和日志中的 replacement/rollback 记录，再重新触发更新或等待冷却后重试。
 
 ## 访客模式
 

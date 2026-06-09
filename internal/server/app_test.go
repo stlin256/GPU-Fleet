@@ -622,7 +622,7 @@ func TestRestartScriptsWaitBeforeReplacingExecutable(t *testing.T) {
 		}
 	}
 	linux := linuxRestartScript(req, "/opt/gpufleet/update.log", "/tmp/gpufleet-update.sh")
-	for _, want := range []string{"current process did not exit before replacement", "mv -f", "nohup"} {
+	for _, want := range []string{"replaced executable before old process exit", "current process did not exit before restart", "mv -f", "nohup"} {
 		if !strings.Contains(linux, want) {
 			t.Fatalf("expected Linux restart script to contain %q:\n%s", want, linux)
 		}
@@ -684,7 +684,28 @@ func TestRecentUpdateNoticeSuppressesRepeatedAutoRebuild(t *testing.T) {
 	}
 }
 
-func TestLinuxRestartScriptWaitsBeforeReplacingBinary(t *testing.T) {
+func TestUpdateRecoveryMarkerSuppressesRecentRetry(t *testing.T) {
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	markerPath := filepath.Join(t.TempDir(), "gpufleet-server.next.recovery")
+	if updateRecoveryRecentlyAttempted(markerPath, now) {
+		t.Fatalf("missing recovery marker should not suppress retry")
+	}
+	if err := writeUpdateRecoveryMarker(markerPath, "0123456789abcdef", now); err != nil {
+		t.Fatal(err)
+	}
+	if !updateRecoveryRecentlyAttempted(markerPath, now.Add(time.Minute)) {
+		t.Fatalf("recent recovery marker should suppress retry")
+	}
+	old := now.Add(-(updateRestartGrace + time.Second))
+	if err := os.Chtimes(markerPath, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if updateRecoveryRecentlyAttempted(markerPath, now) {
+		t.Fatalf("stale recovery marker should allow retry")
+	}
+}
+
+func TestLinuxRestartScriptReplacesBinaryBeforeWaitingForProcess(t *testing.T) {
 	req := updateRestartRequest{
 		CurrentExe:        "/opt/gpufleet/gpufleet-server",
 		NextExe:           "/opt/gpufleet/gpufleet-server.next",
@@ -697,11 +718,78 @@ func TestLinuxRestartScriptWaitsBeforeReplacingBinary(t *testing.T) {
 	script := linuxRestartScript(req, "/opt/gpufleet/gpufleet-update-restart.log", "/tmp/gpufleet-update.sh")
 	moveIndex := strings.Index(script, "mv -f '/opt/gpufleet/gpufleet-server.next' '/opt/gpufleet/gpufleet-server'")
 	waitIndex := strings.Index(script, "while kill -0 1234")
-	if moveIndex < 0 || waitIndex < 0 || waitIndex > moveIndex {
-		t.Fatalf("expected Linux restart script to wait for old process before replacing binary, got:\n%s", script)
+	if moveIndex < 0 || waitIndex < 0 || moveIndex > waitIndex {
+		t.Fatalf("expected Linux restart script to replace binary before waiting for old process, got:\n%s", script)
 	}
 	if !strings.Contains(script, "'/opt/gpufleet/gpufleet-server.bak'") || !strings.Contains(script, "already_running=0") || !strings.Contains(script, "/proc/[0-9]*/exe") {
 		t.Fatalf("expected Linux restart script to avoid duplicate process starts, got:\n%s", script)
+	}
+}
+
+func TestSystemdLinuxRestartReplacesBinaryWithoutHelperStart(t *testing.T) {
+	root := t.TempDir()
+	current := filepath.Join(root, "gpufleet-server")
+	next := current + ".next"
+	backup := current + ".bak"
+	logPath := filepath.Join(root, updateRestartLogName)
+	if err := os.WriteFile(current, []byte("old"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(next, []byte("new"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := scheduleLinuxRestart(updateRestartRequest{
+		CurrentExe:        current,
+		NextExe:           next,
+		BackupExe:         backup,
+		PID:               1234,
+		ReplaceExecutable: true,
+		ManagedBySystemd:  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	currentRaw, err := os.ReadFile(current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(currentRaw) != "new" {
+		t.Fatalf("expected current executable to be replaced before systemd restart, got %q", currentRaw)
+	}
+	backupRaw, err := os.ReadFile(backup)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(backupRaw) != "old" {
+		t.Fatalf("expected backup executable to keep old binary, got %q", backupRaw)
+	}
+	if _, err := os.Stat(next); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected next executable to be consumed, err=%v", err)
+	}
+	logRaw, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(logRaw), "nohup") || !strings.Contains(string(logRaw), "systemd-managed restart scheduled") {
+		t.Fatalf("expected systemd restart log without helper self-start, got %q", logRaw)
+	}
+}
+
+func TestRunningUnderSystemdDetectsServiceEnvironment(t *testing.T) {
+	t.Setenv("INVOCATION_ID", "")
+	t.Setenv("JOURNAL_STREAM", "")
+	if runningUnderSystemd() {
+		t.Fatalf("empty systemd environment should not be detected")
+	}
+	t.Setenv("INVOCATION_ID", "test-invocation")
+	if !runningUnderSystemd() {
+		t.Fatalf("INVOCATION_ID should mark systemd-managed process")
+	}
+	t.Setenv("INVOCATION_ID", "")
+	t.Setenv("JOURNAL_STREAM", "8:12345")
+	if !runningUnderSystemd() {
+		t.Fatalf("JOURNAL_STREAM should mark systemd-managed process")
 	}
 }
 
