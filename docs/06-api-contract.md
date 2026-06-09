@@ -28,7 +28,7 @@ POST /api/v1/agent/heartbeat
 
 ```json
 {
-  "agent_version": "0.1.1",
+  "agent_version": "0.1.9",
   "hostname": "workstation-01",
   "os": "windows",
   "os_version": "Windows 11",
@@ -58,7 +58,7 @@ POST /api/v1/agent/samples
 ```json
 {
   "device_id": "device_01H...",
-  "agent_version": "0.1.1",
+  "agent_version": "0.1.9",
   "samples": [
     {
       "timestamp": "2026-06-01T12:00:00Z",
@@ -189,10 +189,12 @@ POST /api/v1/admin/server-config
 POST /api/v1/admin/language
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
+GET  /api/v1/admin/diagnostics/download
 POST /api/v1/admin/guest
 GET  /api/v1/admin/guest/visits
 POST /api/v1/admin/restart
 GET  /api/v1/admin/update/status
+POST /api/v1/admin/update/proxy
 POST /api/v1/admin/update/apply
 GET  /api/v1/admin/update/notice
 POST /api/v1/admin/devices
@@ -244,20 +246,20 @@ GET /api/v1/version
 ```json
 {
   "product": "GPUFleet",
-  "version": "0.1.1",
+  "version": "0.1.9",
   "commit": "dev",
   "author": "stlin256",
   "repository": "https://github.com/stlin256/GPU-Fleet",
   "changelog": [
     {
-      "version": "0.1.1",
-      "date": "2026-06-05",
-      "title": "设备管理与移动端体验增强",
+      "version": "0.1.9",
+      "date": "2026-06-09",
+      "title": "运行诊断与长期数据查询强化",
       "added": [
-        "设备管理支持改名和删除，删除后会清理该设备的最新 GPU 与进程快照。"
+        "设置页新增只读诊断包下载，导出版本、运行时、磁盘、设备、GPU、进程、更新缓存和最近审计摘要，并脱敏代理凭据和远端 IP。"
       ],
       "changed": [
-        "设备页中的禁用、启用、删除和密钥轮换统一使用应用内确认弹窗。"
+        "前端 Chrome/CDP 验证脚本补充诊断包入口、关键设置弹窗和截图非空检查，并支持显式期望版本参数。"
       ]
     }
   ]
@@ -277,7 +279,9 @@ POST /api/v1/admin/password
 POST /api/v1/admin/server-config
 POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
+GET  /api/v1/admin/diagnostics/download
 GET  /api/v1/admin/update/status
+POST /api/v1/admin/update/proxy
 POST /api/v1/admin/update/apply
 GET  /api/v1/admin/update/notice
 POST /api/v1/admin/guest
@@ -293,7 +297,9 @@ POST /api/v1/admin/restart
 - `POST /admin/language`：保存界面语言；当前支持 `zh-CN` 和 `en-US`，即时生效且不需要重启。
 - `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，证书保存后服务端会调度自动重启，恢复后使用 HTTPS。
 - `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
+- `GET /admin/diagnostics/download`：下载只读诊断 ZIP，包含 `diagnostics.json`，汇总版本、运行时、磁盘、指标分段、设备、GPU、进程、更新缓存和最近审计摘要，并脱敏代理凭据和远端 IP。
 - `GET /admin/update/status`：检查服务端自身 Git 工作区和 upstream 状态。
+- `POST /admin/update/proxy`：保存或清空在线更新代理地址，仅接受 `http` 或 `https` 代理；诊断包中会脱敏代理凭据。
 - `POST /admin/update/apply`：仅在工作区干净、存在 upstream、本地未超前且可 fast-forward 时预检依赖、构建远端提交、执行 `git pull --ff-only`，并安排服务端自动重启。
 - `GET /admin/update/notice`：返回并清除一条自动更新完成通知。通知包含更新时间、提交、版本和中英文更新内容；同版本更新只返回新旧 changelog 顶部同版本条目中新增或变化的行。
 - `POST /admin/guest`：开启或关闭访客入口和访客总览。
@@ -314,10 +320,58 @@ POST /api/v1/admin/restart
   "upstream": "origin/main",
   "local_commit": "1111111111111111111111111111111111111111",
   "remote_commit": "2222222222222222222222222222222222222222",
+  "running_version": "0.1.9",
+  "running_commit": "1111111111111111111111111111111111111111",
+  "repo_version": "0.1.9",
+  "binary_outdated": false,
   "behind": 1,
   "ahead": 0,
+  "supply_chain": {
+    "ok": true,
+    "blocked": false,
+    "remote_trusted": true,
+    "remote_kind": "network",
+    "remote_host": "github.com",
+    "remote_repository": "stlin256/gpu-fleet",
+    "upstream_bound": true,
+    "fast_forward_only": true,
+    "worktree_clean": true,
+    "exact_target_commit": true
+  },
   "checked_at": "2026-06-05T12:00:00Z",
   "message": "update available"
+}
+```
+
+应用更新响应示例：
+
+```json
+{
+  "ok": true,
+  "target_commit": "2222222222222222222222222222222222222222",
+  "restart_required": true,
+  "restarting": true,
+  "restart_at": "2026-06-05T12:00:07Z",
+  "output": "Updating 1111111..2222222\nFast-forward",
+  "build_output": "",
+  "dependency_status": {
+    "ok": true,
+    "platform": "windows",
+    "checked": ["repo-dir", "git", "go", "./cmd/gpufleet-server", "current executable", "executable directory writable", "powershell.exe"]
+  },
+  "status": {
+    "available": false,
+    "supported": true,
+    "dirty": false,
+    "branch": "main",
+    "upstream": "origin/main",
+    "local_commit": "2222222222222222222222222222222222222222",
+    "remote_commit": "2222222222222222222222222222222222222222",
+    "behind": 0,
+    "ahead": 0,
+    "checked_at": "2026-06-05T12:00:05Z",
+    "message": "already up to date"
+  }
 }
 ```
 
@@ -343,37 +397,6 @@ X-GPUFleet-Guest-Language
 X-GPUFleet-Guest-Platform
 X-GPUFleet-Guest-Screen
 X-GPUFleet-Guest-Timezone
-```
-
-应用更新响应示例：
-
-```json
-{
-  "ok": true,
-  "restart_required": true,
-  "restarting": true,
-  "restart_at": "2026-06-05T12:00:07Z",
-  "output": "Updating 1111111..2222222\nFast-forward",
-  "build_output": "",
-  "dependency_status": {
-    "ok": true,
-    "platform": "windows",
-    "checked": ["repo-dir", "git", "go", "./cmd/gpufleet-server", "current executable", "executable directory writable", "powershell.exe"]
-  },
-  "status": {
-    "available": false,
-    "supported": true,
-    "dirty": false,
-    "branch": "main",
-    "upstream": "origin/main",
-    "local_commit": "2222222222222222222222222222222222222222",
-    "remote_commit": "2222222222222222222222222222222222222222",
-    "behind": 0,
-    "ahead": 0,
-    "checked_at": "2026-06-05T12:00:05Z",
-    "message": "already up to date"
-  }
-}
 ```
 
 ### 创建设备

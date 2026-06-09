@@ -5,7 +5,9 @@
 
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/8-glossary)
 
-GPUFleet is a lightweight NVIDIA GPU fleet monitoring system. It combines a public server and Windows/Linux Agents to collect GPU runtime data from machines across different networks, then presents current status, history, statistics, device management, database download, and operations controls in a responsive web dashboard.
+GPUFleet is an operations dashboard for NVIDIA GPU machines spread across different networks. It lets a public server collect read-only reports from Windows/Linux Agents, then shows which GPUs are online, how busy they are, how utilization, memory, temperature, and power changed over time, which devices went offline, and which processes are currently using GPU memory.
+
+The product stays intentionally simple. The server handles login, device management, storage, statistics, diagnostics, backup, and online update. Each device runs a local Agent that only reads GPU state and actively reports to the server. The server never connects back to clients, sends commands, edits Agent configuration, kills processes, or changes GPU settings.
 
 Chinese documentation: [README.md](README.md)
 
@@ -15,30 +17,19 @@ Current version: `0.1.9`<br>
 Author: `stlin256`<br>
 Repository: `https://github.com/stlin256/GPU-Fleet`
 
-## Goals
+## What It Does
 
-- Agents only perform local read-only collection and actively report to the public server.
-- The server only receives, verifies, stores, summarizes, and displays data; it never sends commands or configuration to clients.
-- The default deployment stays simple: one Go server binary, one Go Agent binary, gzip JSONL metric segments, and JSON metadata.
-- Storage has retention cleanup and a disk guard with an `800MiB` default free-space reserve.
-- The web dashboard prioritizes multi-host, multi-GPU cards with historical charts, offline masks, same-device border colors, hover readings, dark/light themes, and mobile support.
-- First startup begins with language selection. Simplified Chinese and English are supported; language can later be changed from Settings and is stored in server metadata.
-- Optional guest access exposes only a sanitized `/guest` overview and guest-only GPU series endpoints. Guests cannot access processes, 24-hour stats, real device IDs, hostnames, Agent metadata, driver versions, GPU UUIDs, or admin APIs.
+- Fleet overview: multi-host, multi-GPU cards with online state, utilization, memory, temperature, power, PCIe state, clock throttle reasons, and process summaries.
+- History and statistics: per-GPU 2x2 trend charts for utilization, memory, temperature, and power; hover readings; 1H, 6H, 24H, 7D, and 30D statistics backed by rollup indexes.
+- Device management: create devices, copy one-time secrets, rename, enable/disable, delete, and rotate secrets. These actions only change server-side records and never rewrite Agent configuration.
+- Server operations: first-start language, password, port, and optional HTTPS setup; Settings controls for password, language, port, certificates, disk reserve, automatic update, and update proxy.
+- Diagnostics and recovery: authenticated database download, read-only diagnostics package, Linux backup/restore scripts, automatic update source checks, remote build before fast-forward pull, binary replacement, and restart recovery.
+- Guest access: optional `/guest` overview with sanitized device and GPU data. Guests cannot see processes, stats, real device IDs, hostnames, Agent metadata, driver versions, GPU UUIDs, VBIOS, or admin APIs.
+- Lightweight deployment: the default stack is one Go server, one Go Agent, React static files, gzip JSONL metric segments, and JSON metadata. Prometheus, Grafana, and external databases are not required.
 
-## Current Capabilities
+## Current Status
 
-| Module | Status | Notes |
-| --- | --- | --- |
-| Server | Implemented | HTTP/HTTPS, HMAC Agent ingestion, Web API, static dashboard hosting, built-in fallback dashboard |
-| Agent | Implemented | Windows/Linux, read-only `nvidia-smi` collection, offline queue |
-| Web dashboard | Implemented | React, Vite, TypeScript, TanStack Query, ECharts, lucide-react |
-| i18n | Implemented | First-start language selection, Settings language switch, server persistence, extensible dictionary, Chinese/English |
-| Device management | Implemented | Create, one-time secret, rename, enable/disable, delete, rotate secret, confirmation dialogs |
-| Storage | Implemented | gzip JSONL metrics, in-memory rollups/indexes, schema-versioned JSON metadata, retention cleanup, database download, Linux backup/restore scripts |
-| Security | Implemented | HMAC signatures, atomic nonce replay protection, Origin/Referer checks for management writes, login rate limit, progressive lockout, 30-day sessions |
-| Guest access | Implemented | Login-page guest entry, sanitized overview, guest-only series API, visit records with browser fingerprint summaries |
-| Release info | Implemented | `-version`, `/api/v1/version`, current release summary, full changelog dialog, `CHANGELOG.md` |
-| Online update | Implemented | Default-on 30-minute automatic checks, manual checks, 1-hour status cache, proxy setting, supply-chain source checks, confirmation dialog, dependency preflight, remote build, fast-forward pull, automatic restart, and completion notices |
+GPUFleet is currently at `0.1.9`. The core reporting path, dashboard, device management, guest access, long-range statistics, online update, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
 
 ## Product Screenshots
 
@@ -63,7 +54,7 @@ Language changes apply immediately. Port and HTTPS certificate changes require r
 
 ## Dashboard
 
-The authenticated dashboard has Overview, GPU, Devices, and Settings views. Overview and GPU cards include compact sparklines and 24-hour expandable GPU charts. Settings includes service status, password, port, language, HTTPS certificates, database download, disk reserve, automatic/manual online update, manual service restart, guest access, setup wizard, repository attribution, release information, and the changelog dialog.
+The authenticated dashboard has Overview, GPU, Devices, and Settings views. Overview and GPU cards include compact sparklines and 24-hour expandable GPU charts. Settings includes service status, password, port, language, HTTPS certificates, database download, diagnostics package download, disk reserve, automatic/manual online update, manual service restart, guest access, setup wizard, repository attribution, release information, and the changelog dialog.
 
 The guest dashboard at `/guest` is intentionally smaller: it shows a sanitized overview and GPU chart cards only. It hides GPU processes, 24-hour statistics, management controls, real device identifiers, host metadata, and internal GPU identifiers.
 
@@ -95,11 +86,11 @@ Create devices from the dashboard Devices page, copy each one-time secret, then 
 
 ## Server Operations
 
-Online update operates only on the server Git checkout configured by `-repo-dir` or `GPUFLEET_REPO_DIR`. Automatic checks are enabled by default and run every 30 minutes; when a fast-forwardable update exists, the server builds the remote commit in a temporary worktree, fast-forwards only after a successful build, keeps a `.bak` copy of the previous binary, replaces the running server binary, and restarts. The update panel caches status for one hour, supports an update proxy URL, and still allows manual checks and manual apply.
+Online update operates only on the server Git checkout configured by `-repo-dir` or `GPUFLEET_REPO_DIR`. Automatic checks are enabled by default and run every 30 minutes; when a fast-forwardable update exists, the server verifies the official `github.com/stlin256/gpu-fleet` remote, upstream binding, clean worktree, fast-forward path, and exact target commit, builds the remote commit in a temporary worktree, fast-forwards only after a successful build, keeps a `.bak` copy of the previous binary, replaces the running server binary, and restarts. The update panel caches status for one hour, supports an update proxy URL, and still allows manual checks and manual apply.
 
 After an automatic update completes, the next admin visit shows a completion dialog with update time and notes. If the version did not change, the dialog shows only new or changed `CHANGELOG.md` lines since the previous checkout; if the changelog is identical, it shows “No update notes.”
 
-Settings also provides a manual service restart button. HTTPS certificate upload schedules an automatic restart; after recovery the page refreshes and shows a completion dialog that must be acknowledged.
+Settings also provides diagnostics package download and a manual service restart button. HTTPS certificate upload schedules an automatic restart; after recovery the page refreshes and shows a completion dialog that must be acknowledged.
 
 ## Documentation
 

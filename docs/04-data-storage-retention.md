@@ -2,17 +2,17 @@
 
 ## 存储选型
 
-当前 MVP 使用两类零外部服务存储，优先满足部署简单、压缩和空间可回收：
+当前默认实现使用三类零外部服务存储，优先满足部署简单、压缩、长范围查询和空间可回收：
 
 | 数据类型 | 存储 | 内容 |
 | --- | --- | --- |
 | 时序指标 | gzip JSONL 小时分段文件 | GPU 利用率、显存、温度、功耗、风扇、时钟等 |
-| 元数据 | JSON 文件 | 管理员、设备、密钥、审计日志 |
+| 元数据 | JSON 文件 | 管理员、设备、密钥、会话、服务配置、审计日志 |
 | 最新进程快照 | JSON 文件 | 每台设备最近一次 GPU 进程占用 |
 
 这样比直接上 PostgreSQL/TimescaleDB 更轻，服务端只需要一个 Go 二进制和数据目录。VictoriaMetrics 与 SQLite 保留为后续生产增强选项。
 
-## 当前 MVP 文件布局
+## 当前文件布局
 
 默认数据目录为 `data`：
 
@@ -24,9 +24,9 @@ data/
     samples-YYYYMMDDHH.jsonl.gz
 ```
 
-时序样本按小时写入 `samples-YYYYMMDDHH.jsonl.gz`。每个分段是 gzip 压缩 JSON Lines，便于追加、审计和按保留期整段删除。
+时序样本按小时写入 `samples-YYYYMMDDHH.jsonl.gz`。每个分段是 gzip 压缩 JSON Lines，便于追加、审计和按保留期整段删除。服务启动后会加载最新状态、原始索引和 rollup 索引，用于总览、GPU 曲线、统计面板和 30D 长范围查询。
 
-## 当前 MVP 空间回收
+## 空间回收
 
 服务端每次写入新指标前会：
 
@@ -41,7 +41,16 @@ data/
 -min-free-mb 800
 ```
 
-这满足“压缩 + 空间回收 + 预留 800MiB”的 MVP 目标。即使拒绝指标写入，服务端仍保持 Web 登录、历史查询和磁盘状态展示。
+这满足“压缩 + 空间回收 + 预留 800MiB”的默认目标。即使拒绝指标写入，服务端仍保持 Web 登录、历史查询、诊断包下载和磁盘状态展示。
+
+## 备份与恢复
+
+Linux 服务端提供数据目录备份与恢复脚本：
+
+- `scripts/backup-server-linux.sh`：默认热备份；设置 `STOP_SERVICE=1` 时做冷备份；输出归档、manifest 和 `.sha256` 校验文件。
+- `scripts/restore-server-linux.sh`：必须设置 `CONFIRM_RESTORE=1`；恢复前停止服务，把现有数据目录移到带时间戳的 `.pre-restore` 回滚路径，再恢复归档并启动服务。
+
+备份包含数据目录中的指标、元数据、会话、设备记录和证书文件，应按敏感资料保存。设置页“下载数据库”适合临时导出，正式灾备优先使用脚本备份。
 
 ## VictoriaMetrics 增强选项
 
@@ -101,9 +110,9 @@ PRAGMA auto_vacuum = INCREMENTAL;
 
 ## 磁盘保护策略
 
-当前 MVP 使用服务端内置 Disk Guard。若后续引入 VictoriaMetrics，可形成三层保护。
+当前默认实现使用服务端内置 Disk Guard。若后续引入 VictoriaMetrics，可形成三层保护。
 
-### 第一层：MVP 文件保留策略
+### 第一层：文件保留策略
 
 gzip JSONL 分段通过 `-retention-days` 删除超出保留期的数据。删除的是整段文件，释放空间明确、直接。
 

@@ -1,8 +1,8 @@
 # Changelog
 
-所有值得用户关注的变更都会记录在这里。项目版本遵循语义化版本思路：`MAJOR.MINOR.PATCH`，当前仍处于 MVP 预览阶段。
+所有值得用户关注的变更都会记录在这里。项目版本遵循语义化版本思路：`MAJOR.MINOR.PATCH`，当前仍处于快速迭代预览阶段。
 
-User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in the MVP preview stage.
+User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in an active preview stage.
 
 ## [0.1.9] - 2026-06-09
 
@@ -22,6 +22,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 
 - zh-CN: 前端 Chrome/CDP 验证脚本补充诊断包入口、关键设置弹窗和截图非空检查，并支持显式期望版本参数。
 - en-US: The frontend Chrome/CDP verification script now covers the diagnostics entry, key settings dialogs, non-empty screenshot checks, and an explicit expected-version parameter.
+- zh-CN: README、产品、路线图、API、前端、测试和当前实现文档同步到 0.1.9 状态，减少旧 MVP 口径和已完成能力之间的偏差。
+- en-US: README, product, roadmap, API, frontend, testing, and current implementation docs now match the 0.1.9 state, reducing mismatches between older MVP wording and implemented capabilities.
 
 ### Security / 安全
 

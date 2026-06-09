@@ -141,6 +141,7 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 - 点击“更新”会先显示全屏确认弹窗，再检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。
 - 服务端会在临时 Git worktree 中构建远端提交，构建成功后才执行 `git pull --ff-only`。
 - 工作区存在未提交改动、没有 upstream、本地超前或与上游分叉时会阻止更新。
+- 网络远端必须指向官方 `github.com/stlin256/gpu-fleet` 仓库；服务端会记录 remote、upstream、工作区、fast-forward 和精确目标 commit 的供应链校验状态，来源异常时阻止更新。
 - 拉取完成后会生成平台重启器，等待旧进程退出后替换当前服务端二进制，并按原启动参数拉起新进程。重启日志写入当前二进制目录的 `gpufleet-update-restart.log`。
 - 自动更新成功后会在服务端保存一条待展示通知。下一次管理员访问时，面板通过 `/api/v1/admin/update/notice` 读取并清除该通知，显示更新时间和更新内容；如果版本号未变化，只展示新旧 `CHANGELOG.md` 顶部同版本条目中新增或变化的行，完全一致时显示“无更新说明”。
 - Web 面板会在更新、证书启用或手动重启时显示全屏背景模糊进度。重启阶段进度停在 99%，服务恢复后刷新当前页面，并弹出需要确认的完成提示。

@@ -36,7 +36,7 @@ gpu_uuid_mode = "hash"
 
 ## 采集方式
 
-MVP 优先使用 `nvidia-smi`：
+当前版本使用 `nvidia-smi`：
 
 ```powershell
 nvidia-smi --query-gpu=index,name,uuid,driver_version,vbios_version,memory.total,memory.used,memory.free,memory.reserved,utilization.gpu,utilization.memory,temperature.gpu,temperature.memory,temperature.gpu.tlimit,power.draw,power.limit,enforced.power.limit,fan.speed,clocks.gr,clocks.mem,clocks.sm,clocks.video,pstate,pcie.link.gen.current,pcie.link.gen.max,pcie.link.width.current,pcie.link.width.max,compute_mode,compute_cap,display_active,display_attached,persistence_mode,driver_model.current,ecc.mode.current,mig.mode.current,clocks_event_reasons.active --format=csv,noheader,nounits

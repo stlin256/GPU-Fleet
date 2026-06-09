@@ -66,9 +66,9 @@ Then upload the full certificate chain and private key from Settings. The server
 
 然后在设置页上传完整证书链和私钥。证书上传后服务端会调度重启，面板会等待服务恢复并显示完成提示。
 
-After setup, Settings can also adjust the disk reserve, toggle the default-on 30-minute automatic update checks, configure the online update proxy, run a manual service restart, enable guest access, and open guest visit records.
+After setup, Settings can also download the database or diagnostics package, adjust the disk reserve, toggle the default-on 30-minute automatic update checks, configure the online update proxy, run a manual service restart, enable guest access, and open guest visit records.
 
-配置完成后，设置页还可以调整磁盘预留空间、切换默认开启的 30 分钟自动更新检查、配置在线更新代理、手动重启服务、开启访客访问并查看访客记录。
+配置完成后，设置页还可以下载数据库或诊断包、调整磁盘预留空间、切换默认开启的 30 分钟自动更新检查、配置在线更新代理、手动重启服务、开启访客访问并查看访客记录。
 
 ### Service Commands / 服务命令
 
@@ -135,6 +135,10 @@ Backups include server metadata, metrics, sessions, device records, and certific
 If an older deployment was started manually, clone or update the repository, then run the installer once. It will replace the binary, write the service, and make future online updates possible.
 
 如果旧版本是手动启动的，先 clone 或更新仓库，再运行一次安装脚本。它会替换二进制、写入服务，并让后续在线更新可用。
+
+Online update expects the service checkout to track the official `github.com/stlin256/gpu-fleet` upstream. If a network remote points to another repository, update apply is blocked until the deployment is corrected.
+
+在线更新要求服务端工作区跟踪官方 `github.com/stlin256/gpu-fleet` upstream。如果网络远端指向其他仓库，应用更新会被阻止，直到部署状态被修正。
 
 ```sh
 cd /opt/gpufleet/repo

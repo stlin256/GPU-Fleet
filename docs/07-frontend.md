@@ -75,22 +75,13 @@
 - 搜索设备别名。
 - 显示最后上报时间和最近错误摘要。
 
-### 后续 GPU 详情页
+### 统计与导出增强
 
-- 当前状态摘要。
-- 分时图表。
-- 进程占用表。
-- 历史统计。
-- 告警记录。
+当前统计面板已经覆盖时间范围选择、GPU 级趋势、平均/峰值/空闲指标和排序筛选。后续增强集中在：
 
-### 后续统计页
-
-- 时间范围选择。
-- 设备/GPU 多选。
-- 平均利用率排行。
-- 空闲率排行。
-- 峰值温度排行。
-- CSV 导出。
+- 设备/GPU 多选对比。
+- CSV/JSON 导出。
+- 告警记录和规则配置。
 
 ### 设置页
 
@@ -182,7 +173,7 @@
 
 ## 实时更新
 
-MVP 使用轮询：
+当前版本使用轮询：
 
 - 总览页：10 秒。
 - 统计数据：30 秒。
@@ -191,6 +182,6 @@ MVP 使用轮询：
 
 ## 浏览器验证
 
-已提供 `scripts/verify-frontend-chrome.mjs`，使用本机 Chrome/Edge 的 CDP 能力完成无额外 npm 依赖的端到端浏览器验证。脚本会登录 Web 面板、验证刷新后 Cookie 会话恢复、检查 GPU Fleet 卡片面板和 2x2 历史趋势图、检查趋势图悬浮读数、检查同设备 GPU 边框同色、检查深浅主题切换和持久化、检查设备页、检查设置页操作入口、在线更新入口、品牌 Logo、仓库署名、版本号和 Changelog、检查移动端总览和 GPU 页、确认底部导航固定和无横向溢出，并输出桌面/移动端截图和 `result.json`。
+已提供 `scripts/verify-frontend-chrome.mjs`，使用本机 Chrome/Edge 的 CDP 能力完成无额外 npm 依赖的端到端浏览器验证。脚本会登录 Web 面板、验证刷新后 Cookie 会话恢复、检查 GPU Fleet 卡片面板和 2x2 历史趋势图、检查趋势图悬浮读数、检查同设备 GPU 边框同色、检查深浅主题切换和持久化、检查设备页、检查设置页操作入口、数据库下载入口、诊断包下载入口、在线更新入口、品牌 Logo、仓库署名、显式期望版本号、完整 Changelog 弹窗、访客记录弹窗、重启确认弹窗、移动端总览和 GPU 页、底部导航固定、无横向溢出和截图非空，并输出桌面/移动端截图和 `result.json`。
 
-演示场景可配合 `scripts/seed-demo-data.mjs` 生成 4 台设备、5 块 GPU 的数据，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 用于验证离线灰色蒙版。验证脚本支持 `--min-fleet-cards`、`--require-offline-mask` 和 `--require-dual-device`，用于对这类演示数据做强断言。
+演示场景可配合 `scripts/seed-demo-data.mjs` 生成 4 台设备、5 块 GPU 的数据，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 用于验证离线灰色蒙版。验证脚本支持 `--expected-version`、`--min-fleet-cards`、`--require-offline-mask` 和 `--require-dual-device`，用于对版本和演示数据做强断言。

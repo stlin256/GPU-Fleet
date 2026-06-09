@@ -5,7 +5,9 @@
 
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/8-glossary)
 
-GPUFleet 是一个依赖尽量简单的 NVIDIA GPU 多设备监控系统。它由公网服务端和多台 Windows/Linux 客户端 Agent 组成，用于聚合不同网络环境中多台机器的 GPU 运行信息，并在一个支持深浅主题和移动端适配的 Web 面板中展示、统计和下载数据。
+GPUFleet 是一个面向多台 NVIDIA GPU 机器的运行观察与运维面板。它把分散在家庭宽带、办公室、云主机或远程机房里的 Windows/Linux 设备接到同一个公网服务端，用一张 Web 面板看清每张卡现在忙不忙、过去一段时间怎么变化、哪些设备掉线、哪些 GPU 温度或 PCIe 状态需要关注，以及当前有哪些进程占用了显存。
+
+它的使用方式很直接：服务端负责登录、设备管理、数据存储、统计、诊断、备份和在线更新；每台设备只运行一个只读 Agent，主动把本机 GPU 指标和可选进程快照上报给服务端。服务端不会反连客户端，也不会下发命令、改配置、杀进程或调整 GPU 参数。
 
 English documentation: [README-en.md](README-en.md)<br>
 安装指南 / Installation guide: [docs/14-installation.md](docs/14-installation.md)<br>
@@ -13,32 +15,19 @@ English documentation: [README-en.md](README-en.md)<br>
 作者：`stlin256`<br>
 仓库：`https://github.com/stlin256/GPU-Fleet`
 
-## 核心目标
+## GPUFleet 能做什么
 
-- 客户端只做本机只读采集，主动访问公网服务端，不开放监听端口。
-- 服务端只接收、校验、存储、统计和展示数据，不向客户端下发命令或配置。
-- 默认使用 Go 单文件服务端、Go 单文件 Agent、gzip JSONL 分段文件和 JSON 元数据，避免引入复杂基础设施。
-- 数据库具备压缩、保留期清理和空间保护，默认预留 `800MiB` 空闲磁盘。
-- Web 面板优先展示多机多卡 GPU Fleet 卡片，卡片内使用历史图表而非进度条，支持离线蒙版、同设备边框同色和悬浮读数。
-- 首次启动通过浏览器配置访问密码、端口和可选 HTTPS 证书；未配置证书时使用 HTTP，配置证书并重启后使用 HTTPS。
-- 首次启动先选择界面语言，当前支持简体中文和 English；后续可在设置页修改，语言配置保存在服务端元数据中。
-- Web 登录仅使用密码，登录后记住当前浏览器设备 30 天。
-- 设置页可开启访客模式。访客只能访问 `/guest` 的脱敏总览和访客专用 GPU 曲线接口，不能看到进程、24 小时统计、设备真实 ID、主机名、Agent 信息、驱动版本、GPU UUID 或任何管理接口。
+- 看总览：把多机多卡聚合成 Fleet 卡片，展示在线状态、利用率、显存、温度、功耗、PCIe、时钟限速和进程摘要；离线设备会有明确蒙版，同一设备下的 GPU 使用同色边框，便于在大盘里快速定位。
+- 看历史：每张 GPU 卡片内置利用率、显存、温度、功耗 2x2 趋势图，支持悬浮读数；统计面板支持 1H、6H、24H、7D、30D 等范围，用 rollup 索引支撑长范围查询。
+- 管设备：在 Web 面板注册设备、复制一次性密钥、改名、禁用/启用、删除和轮换密钥；这些操作只改变服务端认证记录，不会远程修改 Agent 本地配置。
+- 管服务：首次启动通过浏览器选择语言、设置密码、端口和可选 HTTPS 证书；设置页可改密码、语言、端口、证书、磁盘预留空间、自动更新开关和更新代理。
+- 做运维：服务端可下载数据库和只读诊断包，Linux 部署提供备份/恢复脚本；在线更新会校验官方仓库来源、upstream、工作区状态、fast-forward 路径和目标 commit，构建成功后才拉取并重启。
+- 开访客：可以打开 `/guest` 脱敏总览给只读访客查看，访客看不到进程、统计、真实设备 ID、主机名、Agent 信息、驱动版本、GPU UUID、VBIOS 或任何管理接口。
+- 保持轻量：默认就是 Go 服务端、Go Agent、React 静态面板、gzip JSONL 分段指标和 JSON 元数据，不要求先搭 Prometheus、Grafana 或外部数据库。
 
-## 当前能力
+## 当前状态
 
-| 模块 | 状态 | 说明 |
-| --- | --- | --- |
-| 服务端 | 已实现 | HTTP/HTTPS、HMAC Agent 接入、Web API、静态面板托管、内置 fallback 面板 |
-| Agent | 已实现 | Windows/Linux，基于 `nvidia-smi` 只读采集，支持离线队列 |
-| Web 面板 | 已实现 | React + Vite + TypeScript + TanStack Query + ECharts + lucide-react |
-| i18n | 已实现 | 首次配置语言选择、设置页语言切换、服务端语言持久化、可扩展词表、中文/英文 |
-| 设备管理 | 已实现 | 创建设备、一次性密钥、改名、禁用/启用、删除、轮换密钥、危险操作确认 |
-| 数据存储 | 已实现 | gzip JSONL 分段指标、内存 rollup/索引、带 schema version 的 JSON 元数据、保留期清理、数据库下载、Linux 备份/恢复脚本 |
-| 安全防护 | 已实现 | HMAC 签名、原子 nonce 重放保护、管理写接口 Origin/Referer 校验、登录限流、递进锁定、30 天会话 |
-| 访客模式 | 已实现 | 登录页访客入口、脱敏总览、访客专用曲线接口、访客记录和浏览器指纹摘要 |
-| 版本机制 | 已实现 | `-version` 命令、`/api/v1/version`、设置页当前版本摘要、完整 Changelog 弹窗、`CHANGELOG.md` |
-| 在线更新 | 已实现 | 默认开启 30 分钟自动检查、设置页手动检查、1 小时缓存、代理配置、供应链来源校验、二次确认、远端构建、fast-forward 拉取、自动重启、完成通知和全屏进度 |
+GPUFleet 当前版本是 `0.1.9`。核心链路、Web 面板、设备管理、访客模式、长期统计、在线更新、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
 
 ## 产品截图
 
@@ -135,7 +124,7 @@ sequenceDiagram
 
 ## 存储与磁盘保护
 
-当前 MVP 不依赖外部数据库。服务端使用压缩分段文件保存时序指标，使用 JSON 文件保存元数据。每次写入前会先清理超过保留期的旧分段，再检查磁盘剩余空间；低于阈值时拒绝新指标写入，避免占满磁盘。
+当前默认部署不依赖外部数据库。服务端使用压缩分段文件保存时序指标，使用 JSON 文件保存元数据。每次写入前会先清理超过保留期的旧分段，再检查磁盘剩余空间；低于阈值时拒绝新指标写入，避免占满磁盘。
 
 ```mermaid
 flowchart TD
@@ -394,6 +383,7 @@ sequenceDiagram
 - 前端不能传入命令、分支、远端或路径。
 - 服务端只在 `-repo-dir` 指定的仓库目录内执行固定 Git 参数，并使用固定的 `go build ./cmd/gpufleet-server` 构建服务端。
 - 更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。
+- 网络远端必须指向官方 `github.com/stlin256/gpu-fleet` 仓库，并通过 upstream、工作区、fast-forward 和精确目标 commit 校验。
 - 工作区存在未提交改动、没有 upstream、本地超前或分叉时拒绝拉取。
 - 构建成功后才会 fast-forward 当前工作区；随后重启器替换当前服务端二进制，并按原启动参数拉起新进程。
 - 自动更新成功后会保存一条管理员待读通知；同版本更新只展示上次未出现或发生变化的 `CHANGELOG.md` 行，若 changelog 完全相同则显示“无更新说明”。
@@ -418,19 +408,26 @@ POST /api/v1/auth/login
 POST /api/v1/auth/logout
 GET  /api/v1/version
 GET  /api/v1/overview
+GET  /api/v1/devices
 GET  /api/v1/gpus/{gpu_id}/series
 GET  /api/v1/guest/status
 GET  /api/v1/guest/overview
 GET  /api/v1/guest/gpus/{gpu_id}/series
 GET  /api/v1/stats/gpu-utilization
 GET  /api/v1/processes/latest
+POST /api/v1/admin/setup/reopen
+POST /api/v1/admin/setup/apply
+POST /api/v1/admin/password
+POST /api/v1/admin/certificate
 GET  /api/v1/admin/database/download
+GET  /api/v1/admin/diagnostics/download
 POST /api/v1/admin/language
 POST /api/v1/admin/server-config
 POST /api/v1/admin/guest
 GET  /api/v1/admin/guest/visits
 POST /api/v1/admin/restart
 GET  /api/v1/admin/update/status
+POST /api/v1/admin/update/proxy
 POST /api/v1/admin/update/apply
 GET  /api/v1/admin/update/notice
 POST /api/v1/admin/devices
@@ -473,12 +470,13 @@ node scripts\verify-frontend-chrome.mjs `
   --url http://127.0.0.1:8088 `
   --password demo-admin `
   --out logs\frontend-verify-manual `
+  --expected-version v0.1.9 `
   --min-fleet-cards 5 `
   --require-offline-mask true `
   --require-dual-device true
 ```
 
-验证脚本会检查登录、30 天 Cookie 会话恢复、总览卡片、每卡历史图表、悬浮读数、离线蒙版、同设备边框同色、深浅主题、移动端无横向溢出、设置页操作入口、在线更新入口、版本号和 Changelog。
+验证脚本会检查登录、30 天 Cookie 会话恢复、总览卡片、每卡历史图表、悬浮读数、离线蒙版、同设备边框同色、深浅主题、移动端无横向溢出、设置页操作入口、数据库/诊断包下载入口、在线更新入口、访客记录弹窗、完整 Changelog 弹窗、重启确认弹窗、版本号和截图非空。
 
 ## 项目结构
 

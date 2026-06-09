@@ -25,7 +25,7 @@ flowchart LR
 
 ## 部署架构
 
-MVP 推荐单机部署：
+默认推荐单机部署：
 
 ```text
 public-server
@@ -82,7 +82,7 @@ secret = "..."
 ### Query API
 
 - 读取设备、管理员、审计等元数据。
-- 扫描 gzip JSONL 分段生成历史曲线和统计。
+- 读取 gzip JSONL 分段、原始索引和 rollup 索引生成历史曲线和统计。
 - 读取最新 GPU 进程快照。
 - 返回前端所需的聚合结果。
 
@@ -98,7 +98,6 @@ secret = "..."
 
 - Web 用户登录。
 - Agent 设备身份认证。
-- API Token 管理。
 - 审计日志。
 
 ## Agent 模块
