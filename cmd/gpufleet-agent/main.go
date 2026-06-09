@@ -29,8 +29,8 @@ func main() {
 	var showVersion bool
 
 	flag.StringVar(&serverURL, "server-url", env("GPUFLEET_SERVER_URL", "http://127.0.0.1:8080"), "GPUFleet server URL")
-	flag.StringVar(&deviceID, "device-id", env("GPUFLEET_DEVICE_ID", "local-dev"), "device id")
-	flag.StringVar(&secret, "secret", env("GPUFLEET_SECRET", "local-dev-secret"), "device secret")
+	flag.StringVar(&deviceID, "device-id", env("GPUFLEET_DEVICE_ID", ""), "device id")
+	flag.StringVar(&secret, "secret", env("GPUFLEET_SECRET", ""), "device secret")
 	flag.StringVar(&nvidiaSMI, "nvidia-smi", env("GPUFLEET_NVIDIA_SMI", "nvidia-smi"), "nvidia-smi executable")
 	flag.StringVar(&queuePath, "queue-path", env("GPUFLEET_QUEUE_PATH", "agent-queue"), "local offline queue directory")
 	flag.IntVar(&intervalSeconds, "interval", envInt("GPUFLEET_INTERVAL", 10), "sample interval seconds")

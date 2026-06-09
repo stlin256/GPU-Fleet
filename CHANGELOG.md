@@ -31,6 +31,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Automatic updates now include supply-chain source checks for the remote repository, upstream, worktree, fast-forward path, and exact build target, blocking updates when a network remote points outside the official repository.
 - zh-CN: Agent HMAC 签名串现在绑定 `device_id`，避免多个设备误用同一 secret 时签名可跨设备复用。
 - en-US: Agent HMAC signatures now bind `device_id`, preventing signatures from being reused across devices that accidentally share the same secret.
+- zh-CN: Agent CLI 和 Windows/Linux 安装脚本不再提供 `local-dev` / `local-dev-secret` 默认凭据，上报和服务安装必须显式传入设备 ID 与密钥。
+- en-US: The Agent CLI and Windows/Linux installers no longer default to `local-dev` / `local-dev-secret`; uploads and service installation must receive an explicit device ID and secret.
 
 ### Fixed / 修复
 

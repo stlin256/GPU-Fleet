@@ -1,8 +1,12 @@
 param(
   [string]$InstallDir = "C:\Program Files\GPUFleet",
   [string]$ServerUrl = "http://127.0.0.1:8080",
-  [string]$DeviceId = "local-dev",
-  [string]$Secret = "local-dev-secret",
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullOrEmpty()]
+  [string]$DeviceId,
+  [Parameter(Mandatory = $true)]
+  [ValidateNotNullOrEmpty()]
+  [string]$Secret,
   [int]$IntervalSeconds = 10,
   [int]$QueueMaxMB = 128,
   [string]$ServiceName = "GPUFleetAgent"
@@ -45,4 +49,3 @@ New-Service `
 
 Start-Service -Name $ServiceName
 Write-Host "Installed and started $ServiceName"
-

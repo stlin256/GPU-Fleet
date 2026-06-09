@@ -246,8 +246,8 @@ http://127.0.0.1:8088
 ```powershell
 .\bin\gpufleet-agent.exe `
   -server-url http://127.0.0.1:8088 `
-  -device-id local-dev `
-  -secret local-dev-secret `
+  -device-id device_20260603120000 `
+  -secret replace-with-one-time-secret `
   -once `
   -processes
 ```
