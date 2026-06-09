@@ -18,6 +18,11 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - zh-CN: 新增 Linux 服务端数据备份与恢复脚本，并在安装和运维文档中补充热备份、冷备份、显式确认恢复、回滚目录和故障排查流程。
 - en-US: Added Linux server data backup and restore scripts, with installation and operations docs for live backup, cold backup, explicit restore confirmation, rollback directories, and troubleshooting flow.
 
+### Changed / 变更
+
+- zh-CN: 前端 Chrome/CDP 验证脚本补充诊断包入口、关键设置弹窗和截图非空检查，并支持显式期望版本参数。
+- en-US: The frontend Chrome/CDP verification script now covers the diagnostics entry, key settings dialogs, non-empty screenshot checks, and an explicit expected-version parameter.
+
 ### Security / 安全
 
 - zh-CN: 自动更新新增供应链来源校验，记录远端仓库、upstream、工作区、fast-forward 和精确构建目标状态，并阻止网络远端指向非官方仓库时继续更新。

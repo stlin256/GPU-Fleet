@@ -190,9 +190,9 @@ cd ..
 - 磁盘保护状态。
 - 图表密集数据状态。
 
-当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、在线更新入口、品牌 Logo、仓库署名、版本号、Changelog、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性和移动端无横向溢出。后续验证应继续覆盖访客入口、访客总览脱敏、访客移动端无底部导航、访客记录弹窗、完整 Changelog 弹窗、更新/重启全屏进度弹窗和设置页手动重启入口。
+当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、数据库下载入口、诊断包下载入口、在线更新入口、品牌 Logo、仓库署名、显式期望版本号、Changelog、完整 Changelog 弹窗、访客记录弹窗、重启确认弹窗、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性、移动端无横向溢出和截图非空检查。弹窗验证只打开并关闭确认层，不会确认执行更新或重启。
 
-最新验证使用重新编译后的示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。结果文件位于 `logs/frontend-verify-20260605-final/result.json`：
+最新已记录验证使用重新编译后的示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。当前脚本输出的 `result.json` 结构如下，截图字节数为示例值：
 
 ```json
 {
@@ -221,16 +221,25 @@ cd ..
     "detailTrendCount": 20,
     "meterCount": 0,
     "settingsStatCount": 4,
-    "settingsOperationCount": 7,
+    "settingsOperationCount": 9,
     "settingsChangelogPanel": true,
     "settingsUpdatePanel": true,
+    "settingsDiagnosticsLink": "/api/v1/admin/diagnostics/download",
+    "screenshotSizes": {
+      "desktop_overview": 120000,
+      "desktop_overview_dark": 120000,
+      "desktop_devices": 120000,
+      "desktop_settings": 120000,
+      "mobile_overview": 120000,
+      "mobile_gpu": 120000
+    },
     "theme": "dark",
     "buttonCount": 7
   }
 }
 ```
 
-该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`，因此同时验证了 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、移动端底部固定导航、GPU 详情页无旧进度条、设置页服务状态、操作入口完整性、在线更新入口、品牌 Logo、仓库署名、版本号和 Changelog。
+该轮命令显式要求 `--min-fleet-cards 5 --require-offline-mask true --require-dual-device true`。当前脚本还支持传入 `--expected-version v0.1.9`，用于在设置页版本信息里校验本次预期发布版本。因此验证范围包括 5 块 GPU 卡片、每卡 4 个历史趋势图、趋势图悬浮读数、离线灰色蒙版、同一设备多 GPU 聚合、同设备 GPU 边框同色、移动端底部固定导航、GPU 详情页无旧进度条、设置页服务状态、操作入口完整性、数据库和诊断包下载入口、在线更新入口、品牌 Logo、仓库署名、版本号、Changelog、访客记录弹窗、完整 Changelog 弹窗和重启确认弹窗。
 
 当前验证脚本输出：
 
@@ -240,6 +249,7 @@ cd ..
 - `desktop-settings.png`：服务设置。
 - `mobile-overview.png`：移动端 GPU Fleet 卡片面板。
 - `mobile-gpu.png`：移动端 GPU 详情。
+- `result.json`：记录布局断言、设置页入口断言、诊断包下载链接和各截图字节数；截图小于 2000 字节会直接判定失败，避免空白图误判通过。
 
 ## MVP 验收标准
 

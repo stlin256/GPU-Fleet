@@ -11,8 +11,10 @@ async function main() {
   const password = required(options.password, '--password');
   const outDir = options.out || path.resolve('logs', `frontend-verify-${Date.now()}`);
   const minFleetCards = Number.parseInt(options['min-fleet-cards'] || '1', 10);
+  const expectedVersion = options['expected-version'] || 'v0.1.9';
   const requireOfflineMask = options['require-offline-mask'] === 'true' || options['require-offline-mask'] === '1';
   const requireDualDevice = options['require-dual-device'] === 'true' || options['require-dual-device'] === '1';
+  const screenshotSizes = {};
 
   const port = await freePort();
   const profileDir = path.join(tmpdir(), `gpufleet-chrome-${process.pid}-${Date.now()}`);
@@ -76,12 +78,12 @@ async function main() {
       const tooltipStatus = await assertTrendTooltip(cdp);
       await waitForTheme(cdp, 'light');
       logStep('capturing desktop light overview');
-      await screenshot(cdp, path.join(outDir, 'desktop-overview.png'));
+      screenshotSizes.desktop_overview = await screenshot(cdp, path.join(outDir, 'desktop-overview.png'));
 
       logStep('checking dark theme');
       await clickTestId(cdp, 'theme-toggle');
       await waitForTheme(cdp, 'dark');
-      await screenshot(cdp, path.join(outDir, 'desktop-overview-dark.png'));
+      screenshotSizes.desktop_overview_dark = await screenshot(cdp, path.join(outDir, 'desktop-overview-dark.png'));
 
       logStep('checking reload session restore');
       await cdp.send('Page.reload', { ignoreCache: true });
@@ -96,37 +98,42 @@ async function main() {
       logStep('checking devices view');
       await clickButton(cdp, text('devices'));
       await waitForText(cdp, [text('device management'), text('register device')], 5000);
-      await screenshot(cdp, path.join(outDir, 'desktop-devices.png'));
+      screenshotSizes.desktop_devices = await screenshot(cdp, path.join(outDir, 'desktop-devices.png'));
 
       logStep('checking settings view');
       await clickButton(cdp, text('settings'));
-      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('online update'), text('setup wizard'), text('release info'), text('latest changelog'), 'v0.1.1', 'stlin256', 'https://github.com/stlin256/GPU-Fleet'], 5000);
+      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('download diagnostics'), text('online update'), text('setup wizard'), text('release info'), text('latest changelog'), expectedVersion, 'stlin256', 'https://github.com/stlin256/GPU-Fleet'], 5000);
       const settingsLayout = await evaluate(cdp, () => ({
         statCount: document.querySelectorAll('[data-testid="setting-stat"]').length,
         operationCount: document.querySelectorAll('.setting-operation').length,
         passwordPanel: Boolean(document.querySelector('[data-testid="settings-password"]')),
         portPanel: Boolean(document.querySelector('[data-testid="settings-port"]')),
         certPanel: Boolean(document.querySelector('[data-testid="settings-certificate"]')),
+        guestPanel: Boolean(document.querySelector('[data-testid="settings-guest"]')),
+        restartPanel: Boolean(document.querySelector('[data-testid="settings-restart"]')),
         databasePanel: Boolean(document.querySelector('[data-testid="settings-database"]')),
+        diskReservePanel: Boolean(document.querySelector('[data-testid="settings-disk-reserve"]')),
         updatePanel: Boolean(document.querySelector('[data-testid="settings-update"]')),
         projectPanel: Boolean(document.querySelector('[data-testid="settings-project"]')),
         changelogPanel: Boolean(document.querySelector('[data-testid="settings-changelog"]')),
         brandLogoCount: document.querySelectorAll('.brand-mark').length,
         databaseLink: document.querySelector('[data-testid="settings-database"] a')?.getAttribute('href') || '',
+        diagnosticsLink: Array.from(document.querySelectorAll('[data-testid="settings-database"] a')).map((item) => item.getAttribute('href') || '').find((href) => href.includes('/api/v1/admin/diagnostics/download')) || '',
         projectLink: document.querySelector('[data-testid="settings-project"] a[href="https://github.com/stlin256/GPU-Fleet"]')?.getAttribute('href') || '',
         hasSettingsPage: Boolean(document.querySelector('[data-testid="settings-page"]')),
         bodyText: document.body.innerText
       }));
-      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.operationCount < 7) {
+      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.operationCount < 9) {
         throw new Error(`settings page is incomplete: ${JSON.stringify(settingsLayout)}`);
       }
-      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.databasePanel || !settingsLayout.updatePanel || !settingsLayout.projectPanel || !settingsLayout.changelogPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPU-Fleet') {
+      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.guestPanel || !settingsLayout.restartPanel || !settingsLayout.databasePanel || !settingsLayout.diskReservePanel || !settingsLayout.updatePanel || !settingsLayout.projectPanel || !settingsLayout.changelogPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || !settingsLayout.diagnosticsLink.includes('/api/v1/admin/diagnostics/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPU-Fleet') {
         throw new Error(`settings page does not expose operational controls: ${JSON.stringify(settingsLayout)}`);
       }
-      if (settingsLayout.brandLogoCount < 1 || !settingsLayout.bodyText.includes('版本与变更') || !settingsLayout.bodyText.includes('最近变更') || !settingsLayout.bodyText.includes('v0.1.1') || !settingsLayout.bodyText.includes('stlin256')) {
+      if (settingsLayout.brandLogoCount < 1 || !settingsLayout.bodyText.includes('版本与变更') || !settingsLayout.bodyText.includes('最近变更') || !settingsLayout.bodyText.includes(expectedVersion) || !settingsLayout.bodyText.includes('stlin256')) {
         throw new Error(`release, brand, or repository attribution is missing: ${JSON.stringify(settingsLayout)}`);
       }
-      await screenshot(cdp, path.join(outDir, 'desktop-settings.png'));
+      await assertSettingsDialogs(cdp);
+      screenshotSizes.desktop_settings = await screenshot(cdp, path.join(outDir, 'desktop-settings.png'));
 
       logStep('checking mobile overview');
       await clickButton(cdp, text('overview'));
@@ -139,7 +146,7 @@ async function main() {
       await cdp.send('Page.reload', { ignoreCache: true });
       await waitForLoad(cdp, targetURL);
       await waitForText(cdp, [text('GPU resource overview'), text('fleet board')], 12000);
-      await screenshot(cdp, path.join(outDir, 'mobile-overview.png'));
+      screenshotSizes.mobile_overview = await screenshot(cdp, path.join(outDir, 'mobile-overview.png'));
       const mobileOverviewLayout = await evaluate(cdp, () => ({
         width: window.innerWidth,
         height: window.innerHeight,
@@ -166,7 +173,7 @@ async function main() {
       logStep('checking mobile GPU view');
       await clickButton(cdp, text('gpu'));
       await waitForText(cdp, [text('gpu monitoring')], 5000);
-      await screenshot(cdp, path.join(outDir, 'mobile-gpu.png'));
+      screenshotSizes.mobile_gpu = await screenshot(cdp, path.join(outDir, 'mobile-gpu.png'));
 
       const layout = await evaluate(cdp, () => ({
         width: window.innerWidth,
@@ -230,6 +237,8 @@ async function main() {
           settingsOperationCount: settingsLayout.operationCount,
           settingsChangelogPanel: settingsLayout.changelogPanel,
           settingsUpdatePanel: settingsLayout.updatePanel,
+          settingsDiagnosticsLink: settingsLayout.diagnosticsLink,
+          screenshotSizes,
           theme: layout.theme,
           buttonCount: layout.buttonCount
         }
@@ -276,10 +285,13 @@ function text(id) {
     'port config': '\u7aef\u53e3\u914d\u7f6e',
     'https certificate': '\u0048\u0054\u0054\u0050\u0053 \u8bc1\u4e66',
     'database download': '\u6570\u636e\u5e93\u4e0b\u8f7d',
+    'download diagnostics': '\u4e0b\u8f7d\u8bca\u65ad\u5305',
     'online update': '\u5728\u7ebf\u66f4\u65b0',
     'setup wizard': '\u914d\u7f6e\u5f15\u5bfc',
     'release info': '\u7248\u672c\u4e0e\u53d8\u66f4',
     'latest changelog': '\u6700\u8fd1\u53d8\u66f4',
+    'guest records': '\u8bbf\u5ba2\u8bb0\u5f55',
+    'restart service': '\u91cd\u542f\u670d\u52a1',
     overview: '\u603b\u89c8',
     devices: '\u8bbe\u5907',
     gpu: '\u0047\u0050\u0055',
@@ -351,6 +363,43 @@ async function clickTestId(cdp, testId) {
     if (!element) throw new Error(`test id not found: ${testId}`);
     element.click();
   }, testId);
+}
+
+async function clickWithinTestId(cdp, testId, label) {
+  await evaluate(cdp, ({ testId, label }) => {
+    const root = document.querySelector(`[data-testid="${testId}"]`);
+    if (!root) throw new Error(`test id not found: ${testId}`);
+    const button = Array.from(root.querySelectorAll('button')).find((item) =>
+      (item.textContent || '').includes(label)
+    );
+    if (!button) throw new Error(`button not found in ${testId}: ${label}`);
+    button.click();
+  }, { testId, label });
+}
+
+async function clickSelector(cdp, selector) {
+  await evaluate(cdp, (selector) => {
+    const element = document.querySelector(selector);
+    if (!element) throw new Error(`selector not found: ${selector}`);
+    element.click();
+  }, selector);
+}
+
+async function assertVisibleTestId(cdp, testId) {
+  const visible = await evaluate(cdp, (testId) => {
+    const element = document.querySelector(`[data-testid="${testId}"]`);
+    if (!element) return false;
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+  }, testId);
+  if (!visible) throw new Error(`expected visible test id: ${testId}`);
+}
+
+async function closeTopDialog(cdp) {
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await delay(150);
 }
 
 async function setStoredTheme(cdp, theme) {
@@ -457,6 +506,20 @@ async function assertTrendTooltip(cdp) {
   return status;
 }
 
+async function assertSettingsDialogs(cdp) {
+  await clickSelector(cdp, '.changelog-toggle');
+  await assertVisibleTestId(cdp, 'changelog-dialog');
+  await closeTopDialog(cdp);
+
+  await clickWithinTestId(cdp, 'settings-guest', text('guest records'));
+  await assertVisibleTestId(cdp, 'guest-records-dialog');
+  await closeTopDialog(cdp);
+
+  await clickWithinTestId(cdp, 'settings-restart', text('restart service'));
+  await assertVisibleTestId(cdp, 'restart-confirm-dialog');
+  await closeTopDialog(cdp);
+}
+
 async function visibleText(cdp) {
   return evaluate(cdp, () => document.body.innerText || '');
 }
@@ -510,7 +573,12 @@ async function screenshot(cdp, file) {
     captureBeyondViewport: true,
     fromSurface: true
   });
-  await writeFile(file, Buffer.from(result.data, 'base64'));
+  const bytes = Buffer.from(result.data, 'base64');
+  if (bytes.length < 2000) {
+    throw new Error(`screenshot appears blank or truncated: ${file} (${bytes.length} bytes)`);
+  }
+  await writeFile(file, bytes);
+  return bytes.length;
 }
 
 async function evaluate(cdp, fn, arg) {
