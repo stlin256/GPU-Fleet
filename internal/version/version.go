@@ -232,11 +232,13 @@ func Changelog() []ChangelogEntry {
 				"自动更新新增供应链来源校验，记录远端仓库、upstream、工作区、fast-forward 和精确构建目标状态，并阻止网络远端指向非官方仓库时继续更新。",
 				"Agent HMAC 签名串现在绑定 `device_id`，避免多个设备误用同一 secret 时签名可跨设备复用。",
 				"Agent CLI 和 Windows/Linux 安装脚本不再提供 `local-dev` / `local-dev-secret` 默认凭据，上报和服务安装必须显式传入设备 ID 与密钥。",
+				"服务端入口移除自动生成管理员密码的明文日志分支，避免未来回归时把初始密码写入 stdout、systemd 或容器日志。",
 			},
 			SecurityEN: []string{
 				"Automatic updates now include supply-chain source checks for the remote repository, upstream, worktree, fast-forward path, and exact build target, blocking updates when a network remote points outside the official repository.",
 				"Agent HMAC signatures now bind `device_id`, preventing signatures from being reused across devices that accidentally share the same secret.",
 				"The Agent CLI and Windows/Linux installers no longer default to `local-dev` / `local-dev-secret`; uploads and service installation must receive an explicit device ID and secret.",
+				"The server entrypoint removed the plaintext generated-admin-password log branch to avoid future regressions that write initial passwords to stdout, systemd, or container logs.",
 			},
 			Fixed: []string{
 				"30D 统计查询现在和长范围曲线一样使用 rollup 边界容错，避免在 30 天边界附近回退扫描原始 gzip 分段导致响应变慢。",

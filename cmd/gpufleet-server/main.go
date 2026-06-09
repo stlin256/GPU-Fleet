@@ -43,12 +43,9 @@ func main() {
 	cfg.Retention = time.Duration(retentionDays) * 24 * time.Hour
 
 	logger := log.New(os.Stdout, "gpufleet-server ", log.LstdFlags|log.Lmsgprefix)
-	app, generatedPassword, err := server.NewApp(cfg, logger)
+	app, _, err := server.NewApp(cfg, logger)
 	if err != nil {
 		logger.Fatal(err)
-	}
-	if generatedPassword != "" {
-		logger.Printf("generated admin password: %s", generatedPassword)
 	}
 	logger.Printf("listening on %s://%s", app.Scheme(), app.Addr())
 	logger.Printf("data dir: %s, min free: %d MiB, retention: %d days", cfg.DataDir, minFreeMB, retentionDays)
