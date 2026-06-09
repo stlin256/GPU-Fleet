@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Version   = "0.1.8"
+	Version   = "0.1.9"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -207,6 +207,18 @@ func containsCJK(value string) bool {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "0.1.9",
+			Date:    "2026-06-09",
+			Title:   "运行诊断与长期数据查询强化",
+			TitleEN: "Operational diagnostics and long-range query hardening",
+			Fixed: []string{
+				"30D 统计查询现在和长范围曲线一样使用 rollup 边界容错，避免在 30 天边界附近回退扫描原始 gzip 分段导致响应变慢。",
+			},
+			FixedEN: []string{
+				"30D stats queries now use the same rollup boundary tolerance as long-range series, avoiding slow raw gzip scans near the 30-day edge.",
+			},
+		},
 		{
 			Version: "0.1.8",
 			Date:    "2026-06-09",

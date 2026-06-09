@@ -4,6 +4,18 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in the MVP preview stage.
 
+## [0.1.9] - 2026-06-09
+
+### Title / 标题
+
+- zh-CN: 运行诊断与长期数据查询强化
+- en-US: Operational diagnostics and long-range query hardening
+
+### Fixed / 修复
+
+- zh-CN: 30D 统计查询现在和长范围曲线一样使用 rollup 边界容错，避免在 30 天边界附近回退扫描原始 gzip 分段导致响应变慢。
+- en-US: 30D stats queries now use the same rollup boundary tolerance as long-range series, avoiding slow raw gzip scans near the 30-day edge.
+
 ## [0.1.8] - 2026-06-09
 
 ### Title / 标题

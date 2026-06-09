@@ -476,9 +476,9 @@ func (s *MetricsStore) statsFromIndex(deviceID string, since time.Time) ([]GPUSt
 	}
 	now := time.Now().UTC()
 	var source map[string]map[int64]*metricRollupBucket
-	if !since.Before(now.Add(-minuteRollupAge)) {
+	if !since.Before(now.Add(-minuteRollupAge - rollupBoundarySlack)) {
 		source = s.minuteRollups
-	} else if !since.Before(now.Add(-hourRollupAge)) {
+	} else if !since.Before(now.Add(-hourRollupAge - rollupBoundarySlack)) {
 		source = s.hourRollups
 	} else {
 		return nil, false

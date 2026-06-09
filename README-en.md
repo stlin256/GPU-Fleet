@@ -11,7 +11,7 @@ Chinese documentation: [README.md](README.md)
 
 Installation guide: [docs/14-installation.md](docs/14-installation.md)
 
-Current version: `0.1.8`<br>
+Current version: `0.1.9`<br>
 Author: `stlin256`<br>
 Repository: `https://github.com/stlin256/GPU-Fleet`
 

@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1250,6 +1251,51 @@ func TestMetricsStoreSeriesRollupCoversThirtyDayBoundary(t *testing.T) {
 	}
 }
 
+func TestMetricsStoreStatsRollupCoversThirtyDayBoundary(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	util := 61.0
+	power := 244.0
+	sampleAt := time.Now().UTC().Add(-hourRollupAge + 2*time.Minute)
+	if err := store.AppendBatch(model.SampleBatch{
+		DeviceID:     "rig-rollup",
+		AgentVersion: model.AgentVersion,
+		Samples: []model.GPUSample{{
+			Timestamp: sampleAt,
+			GPUs: []model.GPUStatus{{
+				GPUID:                 "0",
+				UUIDHash:              "uuid-rollup",
+				Name:                  "NVIDIA Rollup GPU",
+				DriverVersion:         "999.1",
+				MemoryTotalBytes:      24 * 1024 * 1024 * 1024,
+				MemoryUsedBytes:       8 * 1024 * 1024 * 1024,
+				UtilizationGPUPercent: &util,
+				PowerDrawWatts:        &power,
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	segmentPath := filepath.Join(root, "metrics", "samples-"+sampleAt.Format("2006010215")+".jsonl.gz")
+	if err := os.Remove(segmentPath); err != nil {
+		t.Fatal(err)
+	}
+
+	stats, err := store.Stats("rig-rollup", time.Now().UTC().Add(-hourRollupAge))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stats) != 1 {
+		t.Fatalf("expected 30-day boundary stats to use rollup index, got %d rows", len(stats))
+	}
+	if stats[0].SampleCount != 1 || stats[0].AverageUtilizationPercent == nil || *stats[0].AverageUtilizationPercent != util {
+		t.Fatalf("unexpected rollup stats: %+v", stats[0])
+	}
+}
+
 func TestMetricsStoreSegmentLocksDoNotBlockUnrelatedWrites(t *testing.T) {
 	root := t.TempDir()
 	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
@@ -1289,6 +1335,59 @@ func TestMetricsStoreSegmentLocksDoNotBlockUnrelatedWrites(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("append to a different segment was blocked by an unrelated segment read lock")
+	}
+}
+
+func BenchmarkMetricsStoreThirtyDayStatsFromRollup(b *testing.B) {
+	root := b.TempDir()
+	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
+	if err != nil {
+		b.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Hour)
+	for deviceIndex := 0; deviceIndex < 20; deviceIndex++ {
+		deviceID := "bench-device-" + strconv.Itoa(deviceIndex)
+		batch := model.SampleBatch{
+			DeviceID:     deviceID,
+			AgentVersion: model.AgentVersion,
+			Samples:      make([]model.GPUSample, 0, 30*24),
+		}
+		for hour := 0; hour < 30*24; hour++ {
+			at := now.Add(-time.Duration(hour) * time.Hour)
+			sample := model.GPUSample{
+				Timestamp: at,
+				GPUs:      make([]model.GPUStatus, 0, 4),
+			}
+			for gpuIndex := 0; gpuIndex < 4; gpuIndex++ {
+				util := float64((deviceIndex + gpuIndex + hour) % 100)
+				power := 120 + float64(gpuIndex*25)
+				temp := 60 + float64(gpuIndex*3)
+				sample.GPUs = append(sample.GPUs, model.GPUStatus{
+					GPUID:                 "gpu" + strconv.Itoa(gpuIndex),
+					Name:                  "Benchmark GPU",
+					MemoryTotalBytes:      24 * 1024 * 1024 * 1024,
+					MemoryUsedBytes:       uint64(4+gpuIndex) * 1024 * 1024 * 1024,
+					UtilizationGPUPercent: &util,
+					TemperatureCelsius:    &temp,
+					PowerDrawWatts:        &power,
+				})
+			}
+			batch.Samples = append(batch.Samples, sample)
+		}
+		if err := store.AppendBatch(batch); err != nil {
+			b.Fatal(err)
+		}
+	}
+	since := now.Add(-30 * 24 * time.Hour)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		stats, err := store.Stats("", since)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if len(stats) != 80 {
+			b.Fatalf("expected 80 GPU stat rows, got %d", len(stats))
+		}
 	}
 }
 
