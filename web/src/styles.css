@@ -2555,13 +2555,25 @@ input:focus {
 }
 
 .update-note-row .inline-help {
-  display: inline-grid;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
   margin-left: 6px;
-  vertical-align: -5px;
+  border-radius: 999px;
+  line-height: 1;
+  vertical-align: middle;
   flex: 0 0 auto;
   color: var(--muted);
+}
+
+.update-note-row .inline-help svg {
+  width: 14px;
+  height: 14px;
 }
 
 .update-detail-dialog {

@@ -480,7 +480,7 @@ const dashboardHTML = `<!doctype html>
     .metric-spark .spark-tooltip strong { font-size: 12px; line-height: 1.05; }
     .update-note-row { margin-top: -4px; }
     .update-note-row p { min-width: 0; margin: 0; }
-    .update-note-row .inline-help { display: inline-grid; width: 22px; height: 22px; margin-left: 6px; vertical-align: -5px; flex: 0 0 auto; }
+    .update-note-row .inline-help { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; min-width: 22px; min-height: 22px; padding: 0; margin-left: 6px; border-radius: 999px; line-height: 1; vertical-align: middle; flex: 0 0 auto; }
     .trend-tile.good .spark-line { stroke: var(--good); }
     .trend-tile.warn .spark-line { stroke: var(--warn); }
     .trend-tile.bad .spark-line { stroke: var(--bad); }

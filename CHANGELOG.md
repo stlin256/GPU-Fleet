@@ -68,6 +68,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Manual update now asks for a second confirmation when the server Git worktree is dirty; after confirmation the server first preserves the worktree with recoverable `git stash push -u` before continuing. Automatic update still blocks dirty worktrees.
 - zh-CN: 前端迷你趋势图改为稳定折线面积渲染，降低填充和悬浮游标视觉权重，避免接近恒定的曲线出现异常锯齿、尖峰或突兀竖线。
 - en-US: Frontend mini trend charts now use stable line/area rendering with lighter fills and hover cursors, avoiding odd teeth, spikes, or harsh vertical lines on nearly flat series.
+- zh-CN: 修复在线更新错误详情问号按钮继承通用图标按钮高度后边框呈错位长方形的问题，改为固定圆形内联按钮。
+- en-US: Fixed the online-update error detail help button inheriting the generic icon-button height and rendering as a misaligned rectangle; it now uses a fixed circular inline button.
 
 ## [0.1.8] - 2026-06-09
 
