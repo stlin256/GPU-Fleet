@@ -34,11 +34,11 @@ Repository: `https://github.com/stlin256/GPU-Fleet`
 | Web dashboard | Implemented | React, Vite, TypeScript, TanStack Query, ECharts, lucide-react |
 | i18n | Implemented | First-start language selection, Settings language switch, server persistence, extensible dictionary, Chinese/English |
 | Device management | Implemented | Create, one-time secret, rename, enable/disable, delete, rotate secret, confirmation dialogs |
-| Storage | Implemented | gzip JSONL metrics, in-memory rollups/indexes, schema-versioned JSON metadata, retention cleanup, database download |
+| Storage | Implemented | gzip JSONL metrics, in-memory rollups/indexes, schema-versioned JSON metadata, retention cleanup, database download, Linux backup/restore scripts |
 | Security | Implemented | HMAC signatures, atomic nonce replay protection, Origin/Referer checks for management writes, login rate limit, progressive lockout, 30-day sessions |
 | Guest access | Implemented | Login-page guest entry, sanitized overview, guest-only series API, visit records with browser fingerprint summaries |
 | Release info | Implemented | `-version`, `/api/v1/version`, current release summary, full changelog dialog, `CHANGELOG.md` |
-| Online update | Implemented | Default-on 30-minute automatic checks, manual checks, 1-hour status cache, proxy setting, confirmation dialog, dependency preflight, remote build, fast-forward pull, automatic restart, and completion notices |
+| Online update | Implemented | Default-on 30-minute automatic checks, manual checks, 1-hour status cache, proxy setting, supply-chain source checks, confirmation dialog, dependency preflight, remote build, fast-forward pull, automatic restart, and completion notices |
 
 ## Product Screenshots
 

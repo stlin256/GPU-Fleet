@@ -145,6 +145,41 @@ sudo REMOVE_FILES=1 sh ./scripts/uninstall-agent-linux.sh
 - 自动更新成功后会在服务端保存一条待展示通知。下一次管理员访问时，面板通过 `/api/v1/admin/update/notice` 读取并清除该通知，显示更新时间和更新内容；如果版本号未变化，只展示新旧 `CHANGELOG.md` 顶部同版本条目中新增或变化的行，完全一致时显示“无更新说明”。
 - Web 面板会在更新、证书启用或手动重启时显示全屏背景模糊进度。重启阶段进度停在 99%，服务恢复后刷新当前页面，并弹出需要确认的完成提示。
 
+## 备份、恢复与故障处理
+
+Linux 服务端提供两个数据目录脚本：
+
+```sh
+DATA_DIR="/var/lib/gpufleet" \
+BACKUP_DIR="/var/backups/gpufleet" \
+sh ./scripts/backup-server-linux.sh
+```
+
+默认是热备份，不停止 Web 面板。需要更强一致性时使用冷备份：
+
+```sh
+STOP_SERVICE=1 sh ./scripts/backup-server-linux.sh
+```
+
+恢复必须显式确认：
+
+```sh
+CONFIRM_RESTORE=1 \
+BACKUP_FILE="/var/backups/gpufleet/gpufleet-data-20260609-120000.tar.gz" \
+sh ./scripts/restore-server-linux.sh
+```
+
+恢复流程会停止 `gpufleet-server`，把现有 `DATA_DIR` 移到 `DATA_DIR.pre-restore-时间戳`，解压备份，然后重新启动服务。如果恢复后发现数据不对，先停止服务，再把当前 `DATA_DIR` 移走，并把 `DATA_DIR.pre-restore-时间戳` 改回原名。
+
+备份文件包含数据目录中的 `metadata.json`、指标分段、进程快照、会话、设备记录和证书文件，应按敏感资料保存。设置页“下载数据库”适合临时导出数据；正式灾备应使用脚本备份并保留 `.sha256` 校验文件。
+
+故障排查顺序：
+
+1. 设置页下载诊断包，查看 `diagnostics.json` 中的版本、运行时、磁盘、指标分段、更新缓存和审计摘要。
+2. 查看服务日志：`journalctl -u gpufleet-server --no-pager -l`。
+3. 查看更新重启日志：当前服务端二进制目录下的 `gpufleet-update-restart.log`。
+4. 如果在线更新后仓库已前进但二进制仍旧，重启后的服务端会优先尝试使用遗留的 `.next` 二进制完成替换；仍失败时检查二进制目录写权限和日志中的 replacement/rollback 记录。
+
 ## 访客模式
 
 访客模式默认关闭。登录后可在设置页左下区域开启“访客功能”，开启后登录页显示访客入口。

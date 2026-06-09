@@ -96,6 +96,40 @@ systemctl daemon-reload
 systemctl restart gpufleet-server
 ```
 
+### Backup And Restore / 备份与恢复
+
+Create a live backup without stopping the dashboard:
+
+不中断面板创建热备份：
+
+```sh
+DATA_DIR="/var/lib/gpufleet" \
+BACKUP_DIR="/var/backups/gpufleet" \
+sh ./scripts/backup-server-linux.sh
+```
+
+For a cold backup, stop the service during the archive step:
+
+冷备份会在归档期间停止服务：
+
+```sh
+STOP_SERVICE=1 sh ./scripts/backup-server-linux.sh
+```
+
+Restore requires an explicit confirmation flag. The script stops the service, moves the existing data directory to a timestamped rollback path, restores the archive, and starts the service again.
+
+恢复必须显式确认。脚本会停止服务，把现有数据目录移动到带时间戳的回滚路径，再恢复归档并重新启动服务。
+
+```sh
+CONFIRM_RESTORE=1 \
+BACKUP_FILE="/var/backups/gpufleet/gpufleet-data-20260609-120000.tar.gz" \
+sh ./scripts/restore-server-linux.sh
+```
+
+Backups include server metadata, metrics, sessions, device records, and certificate files under the data directory. Store backup files as sensitive material.
+
+备份包含数据目录中的服务端元数据、指标、会话、设备记录和证书文件，应按敏感资料保存。
+
 ### Manual Upgrade Of Older Deployments / 旧部署手动升级
 
 If an older deployment was started manually, clone or update the repository, then run the installer once. It will replace the binary, write the service, and make future online updates possible.

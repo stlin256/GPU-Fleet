@@ -15,6 +15,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 
 - zh-CN: 设置页新增只读诊断包下载，导出版本、运行时、磁盘、设备、GPU、进程、更新缓存和最近审计摘要，并脱敏代理凭据和远端 IP。
 - en-US: Settings now includes a read-only diagnostics package download with version, runtime, disk, device, GPU, process, cached update, and recent audit summaries while redacting proxy credentials and remote IPs.
+- zh-CN: 新增 Linux 服务端数据备份与恢复脚本，并在安装和运维文档中补充热备份、冷备份、显式确认恢复、回滚目录和故障排查流程。
+- en-US: Added Linux server data backup and restore scripts, with installation and operations docs for live backup, cold backup, explicit restore confirmation, rollback directories, and troubleshooting flow.
 
 ### Security / 安全
 
