@@ -3,7 +3,7 @@
   GPUFleet
 </h1>
 
-[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/8-glossary)
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/)
 
 GPUFleet 是一个面向多台 NVIDIA GPU 机器的运行观察与运维面板。它把分散在家庭宽带、办公室、云主机或远程机房里的 Windows/Linux 设备接到同一个公网服务端，用一张 Web 面板看清每张卡现在忙不忙、过去一段时间怎么变化、哪些设备掉线、哪些 GPU 温度或 PCIe 状态需要关注，以及当前有哪些进程占用了显存。
 
@@ -19,6 +19,7 @@ English documentation: [README-en.md](README-en.md)<br>
 
 - 看总览：把多机多卡聚合成 Fleet 卡片，展示在线状态、利用率、显存、温度、功耗、PCIe、时钟限速和进程摘要；离线设备会有明确蒙版，同一设备下的 GPU 使用同色边框，便于在大盘里快速定位。
 - 看历史：每张 GPU 卡片内置利用率、显存、温度、功耗 2x2 趋势图，支持悬浮读数；统计面板支持 1H、6H、24H、7D、30D 等范围，用 rollup 索引支撑长范围查询。
+- 看能耗：能耗页把现有功率、温度、利用率和限速原因汇总为 24H/7D/30D 耗电量、电费估算、热状态趋势、GPU 能耗排行、空转高耗和限速/高温诊断；它只做展示和估算，不下发功耗、风扇或频率控制。
 - 管设备：在 Web 面板注册设备、复制一次性密钥、改名、禁用/启用、删除和轮换密钥；这些操作只改变服务端认证记录，不会远程修改 Agent 本地配置。
 - 管服务：首次启动通过浏览器选择语言、设置密码、端口和可选 HTTPS 证书；设置页可改密码、语言、端口、证书、磁盘预留空间、自动更新开关和更新代理。
 - 做运维：服务端可下载数据库和只读诊断包，Linux 部署提供备份/恢复脚本；在线更新会校验官方仓库来源、upstream、工作区状态、fast-forward 路径和目标 commit，构建成功后才拉取并重启。
@@ -27,7 +28,7 @@ English documentation: [README-en.md](README-en.md)<br>
 
 ## 当前状态
 
-GPUFleet 当前版本是 `0.1.9`。核心链路、Web 面板、设备管理、访客模式、长期统计、在线更新、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
+GPUFleet 当前版本是 `0.1.9`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、在线更新、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
 
 ## 产品截图
 
@@ -118,8 +119,9 @@ sequenceDiagram
   Server->>Store: 写入 gzip JSONL 分段
   Web->>Server: GET /api/v1/overview
   Web->>Server: GET /api/v1/gpus/{gpu_id}/series
+  Web->>Server: GET /api/v1/energy/summary
   Web->>Server: GET /api/v1/version
-  Server-->>Web: 当前状态、历史序列、版本与 Changelog
+  Server-->>Web: 当前状态、历史序列、能耗摘要、版本与 Changelog
 ```
 
 ## 存储与磁盘保护
@@ -290,22 +292,25 @@ sudo sh ./scripts/uninstall-agent-linux.sh
 
 ## Web 面板
 
-Web 面板有四个主视图：
+Web 面板有五个主视图：
 
 - 总览：多机多卡 GPU Fleet 卡片、每卡 4 个历史趋势图、顶部汇总迷你曲线、离线灰色蒙版、同设备 GPU 边框同色、设备和进程摘要。
-- 设备：创建设备、展示一次性密钥、改名、禁用/启用设备、删除设备、轮换密钥；危险操作使用应用内弹窗二次确认。
 - GPU：完整 GPU 运行字段、2x2 历史趋势图、可展开的 24 小时 GPU 曲线、进程快照和统计。
+- 能耗：展示当前功率、范围耗电、电费估算、热状态趋势、GPU 能耗排行、空转高耗、高温和限速诊断；设置页可调整电价和诊断阈值，这些参数只影响展示估算。
+- 设备：创建设备、展示一次性密钥、改名、禁用/启用设备、删除设备、轮换密钥；危险操作使用应用内弹窗二次确认。
 - 设置：服务状态、密码更改、端口配置、语言设置、HTTPS 证书上传、证书到期日期、数据库下载、磁盘预留空间、自动/手动在线更新、手动重启服务、访客功能、配置引导、作者/仓库、版本号和 Changelog。
 - 访客总览：仅展示脱敏后的总览和 GPU 卡片曲线；移动端不显示底部导航栏，设备区域只显示设备名称和在线状态。
 
 ```mermaid
 flowchart LR
   Web["Web Dashboard"] --> Overview["总览\nGPU Fleet 卡片"]
-  Web --> Devices["设备\n注册/改名/删除/轮换密钥"]
   Web --> GPUs["GPU\n完整字段与趋势"]
+  Web --> Energy["能耗\nkWh/电费/热诊断"]
+  Web --> Devices["设备\n注册/改名/删除/轮换密钥"]
   Web --> Settings["设置\n端口/证书/数据库/版本"]
   Overview --> Cards["多设备多 GPU 卡片"]
   Cards --> Charts["利用率/显存/温度/功耗历史图表"]
+  Energy --> EnergyAPI["只读聚合\n不下发 GPU 控制"]
   Settings --> Release["版本号与 Changelog"]
   Settings --> Update["在线更新\n自动检查 + 依赖预检 + 构建 + 自动重启"]
   Settings --> Guest["访客功能\n脱敏总览 + 访问记录"]
@@ -410,6 +415,7 @@ GET  /api/v1/version
 GET  /api/v1/overview
 GET  /api/v1/devices
 GET  /api/v1/gpus/{gpu_id}/series
+GET  /api/v1/energy/summary
 GET  /api/v1/guest/status
 GET  /api/v1/guest/overview
 GET  /api/v1/guest/gpus/{gpu_id}/series

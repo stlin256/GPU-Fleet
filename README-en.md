@@ -3,7 +3,7 @@
   GPUFleet
 </h1>
 
-[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/8-glossary)
+[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/)
 
 GPUFleet is an operations dashboard for NVIDIA GPU machines spread across different networks. It lets a public server collect read-only reports from Windows/Linux Agents, then shows which GPUs are online, how busy they are, how utilization, memory, temperature, and power changed over time, which devices went offline, and which processes are currently using GPU memory.
 
@@ -21,6 +21,7 @@ Repository: `https://github.com/stlin256/GPU-Fleet`
 
 - Fleet overview: multi-host, multi-GPU cards with online state, utilization, memory, temperature, power, PCIe state, clock throttle reasons, and process summaries.
 - History and statistics: per-GPU 2x2 trend charts for utilization, memory, temperature, and power; hover readings; 1H, 6H, 24H, 7D, and 30D statistics backed by rollup indexes.
+- Energy view: derives 24H, 7D, and 30D kWh, cost estimates, thermal trends, per-GPU energy ranking, high-idle-power, throttle, and thermal diagnostics from existing read-only metrics. It does not issue power, fan, or clock controls.
 - Device management: create devices, copy one-time secrets, rename, enable/disable, delete, and rotate secrets. These actions only change server-side records and never rewrite Agent configuration.
 - Server operations: first-start language, password, port, and optional HTTPS setup; Settings controls for password, language, port, certificates, disk reserve, automatic update, and update proxy.
 - Diagnostics and recovery: authenticated database download, read-only diagnostics package, Linux backup/restore scripts, automatic update source checks, remote build before fast-forward pull, binary replacement, and restart recovery.
@@ -29,7 +30,7 @@ Repository: `https://github.com/stlin256/GPU-Fleet`
 
 ## Current Status
 
-GPUFleet is currently at `0.1.9`. The core reporting path, dashboard, device management, guest access, long-range statistics, online update, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
+GPUFleet is currently at `0.1.9`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
 
 ## Product Screenshots
 
@@ -54,7 +55,7 @@ Language changes apply immediately. Port and HTTPS certificate changes require r
 
 ## Dashboard
 
-The authenticated dashboard has Overview, GPU, Devices, and Settings views. Overview and GPU cards include compact sparklines and 24-hour expandable GPU charts. Settings includes service status, password, port, language, HTTPS certificates, database download, diagnostics package download, disk reserve, automatic/manual online update, manual service restart, guest access, setup wizard, repository attribution, release information, and the changelog dialog.
+The authenticated dashboard has Overview, GPU, Energy, Devices, and Settings views. Overview and GPU cards include compact sparklines and 24-hour expandable GPU charts. Energy shows current power, range energy, cost estimates, thermal trends, per-GPU energy ranking, high-idle-power, throttle, and thermal diagnostics. Settings includes service status, password, port, language, HTTPS certificates, energy display thresholds, database download, diagnostics package download, disk reserve, automatic/manual online update, manual service restart, guest access, setup wizard, repository attribution, release information, and the changelog dialog.
 
 The guest dashboard at `/guest` is intentionally smaller: it shows a sanitized overview and GPU chart cards only. It hides GPU processes, 24-hour statistics, management controls, real device identifiers, host metadata, and internal GPU identifiers.
 

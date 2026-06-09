@@ -28,6 +28,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: The frontend Chrome/CDP verification script now covers Energy-page KPIs, 24H/7D/30D range switching, GPU energy ranking, energy diagnostics, and the Settings energy display form.
 - zh-CN: README、产品、路线图、API、前端、测试和当前实现文档同步到 0.1.9 状态，减少旧 MVP 口径和已完成能力之间的偏差。
 - en-US: README, product, roadmap, API, frontend, testing, and current implementation docs now match the 0.1.9 state, reducing mismatches between older MVP wording and implemented capabilities.
+- zh-CN: README 顶部 DeepWiki 徽章链接改为项目根页，并补齐能耗与热状态展示在安全、运维、i18n、测试和路线图文档中的只读边界与验证说明。
+- en-US: The README DeepWiki badge now points to the project root, and the docs now cover read-only energy/thermal boundaries and verification notes across security, operations, i18n, testing, and roadmap pages.
 - zh-CN: 在线更新流程补齐手动请求和 dirty/no-upstream/ahead/检查失败阻止路径审计，并在测试中覆盖请求、调度和阻止事件。
 - en-US: Online update flow now audits manual requests and dirty/no-upstream/ahead/check-failure blocking paths, with tests covering request, scheduled restart, and blocked events.
 - zh-CN: 前端新增“能耗”导航页，展示当前功率、范围耗电、电费估算、热状态趋势、GPU 能耗排行和结构化诊断，并在设置页提供仅影响展示估算的电价与阈值配置。

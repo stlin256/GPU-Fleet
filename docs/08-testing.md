@@ -56,6 +56,7 @@ cd ..
 - `internal/server` 覆盖登录短时限流和爆破锁定：连续错误触发 `429`、返回 `Retry-After`、锁定期间正确密码也不能从同源登录、其他来源不受影响、成功登录会清理失败计数。
 - `internal/server` 已有设备生命周期和登录限流测试，覆盖创建设备、改名、禁用、启用、轮换密钥、删除、旧密钥失效和新密钥生效。
 - `internal/server` 已有在线更新测试，覆盖未登录拒绝、非 Git 目录不可用、临时本地 bare upstream 的 fast-forward 拉取、构建/重启调度响应和 dirty 工作区阻止更新。
+- `internal/server` 已有能耗摘要 API 测试，覆盖电价/阈值配置保存、kWh 积分、电费估算、空转高耗、高温、限速诊断、离线大间隔不累计能耗，以及 30D 能源查询使用 rollup 索引。
 
 ### 本机采集验证
 
@@ -86,7 +87,7 @@ cd ..
 4. 确认未知 API `/api/v1/unknown` 返回 `404`，不会被 SPA fallback 吞掉。
 5. 使用 `gpufleet-agent.exe -once -processes` 上报本机 GPU 指标和进程快照。
 6. 登录 Web API。
-7. 查询 `/api/v1/overview`、`/api/v1/stats/gpu-utilization?hours=24` 和 `/api/v1/processes/latest`。
+7. 查询 `/api/v1/overview`、`/api/v1/stats/gpu-utilization?hours=24`、`/api/v1/energy/summary?hours=24` 和 `/api/v1/processes/latest`。
 8. 主动停止服务端进程。
 
 验证结果：
@@ -190,9 +191,9 @@ cd ..
 - 磁盘保护状态。
 - 图表密集数据状态。
 
-当前已使用 `scripts/verify-frontend-chrome.mjs` 完成真实 Chrome headless/CDP 浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、服务设置操作入口、数据库下载入口、诊断包下载入口、在线更新入口、品牌 Logo、仓库署名、显式期望版本号、Changelog、完整 Changelog 弹窗、访客记录弹窗、重启确认弹窗、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性、移动端无横向溢出和截图非空检查。弹窗验证只打开并关闭确认层，不会确认执行更新或重启。
+`scripts/verify-frontend-chrome.mjs` 使用真实 Chrome headless/CDP 执行浏览器验证。脚本覆盖密码登录、刷新后 Cookie 会话恢复、GPU Fleet 卡片面板和 2x2 历史趋势图、趋势图悬浮读数、深浅主题切换和刷新持久化、设备管理页、能源页 KPI、24H/7D/30D 范围切换、GPU 能耗排行、能源诊断、服务设置操作入口、能耗展示表单、数据库下载入口、诊断包下载入口、在线更新入口、品牌 Logo、仓库署名、显式期望版本号、Changelog、完整 Changelog 弹窗、访客记录弹窗、重启确认弹窗、移动端总览、移动端 GPU 页、移动端底部固定导航、扩展 GPU 字段可见性、移动端无横向溢出和截图非空检查。弹窗验证只打开并关闭确认层，不会确认执行更新或重启。
 
-最新已记录验证使用重新编译后的示例服务端 `127.0.0.1:8088`、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。当前脚本输出的 `result.json` 结构如下，截图字节数为示例值：
+脚本可配合重新编译后的示例服务端、`web/dist` 静态面板和 `scripts/seed-demo-data.mjs` 演示数据运行。演示数据包含 4 台设备、5 块 GPU，其中 `rig-dual` 包含 2 块 GPU，`rig-offline` 为离线设备。当前脚本输出的 `result.json` 结构如下，截图字节数为示例值：
 
 ```json
 {
@@ -201,6 +202,7 @@ cd ..
     "desktop_overview": "logs\\frontend-verify-20260605-final\\desktop-overview.png",
     "desktop_overview_dark": "logs\\frontend-verify-20260605-final\\desktop-overview-dark.png",
     "desktop_devices": "logs\\frontend-verify-20260605-final\\desktop-devices.png",
+    "desktop_energy": "logs\\frontend-verify-20260605-final\\desktop-energy.png",
     "desktop_settings": "logs\\frontend-verify-20260605-final\\desktop-settings.png",
     "mobile_overview": "logs\\frontend-verify-20260605-final\\mobile-overview.png",
     "mobile_gpu": "logs\\frontend-verify-20260605-final\\mobile-gpu.png"
@@ -212,16 +214,20 @@ cd ..
     "fleetCardCount": 5,
     "fleetTrendCount": 20,
     "offlineMaskCount": 1,
-    "mobileNavButtonCount": 4,
+    "mobileNavButtonCount": 5,
     "mobileNavPosition": "fixed",
     "dualDeviceCardCount": 2,
     "dualDeviceColorMatched": true,
     "distinctDeviceColorCount": 3,
     "sparkTooltipCount": 1,
+    "energyMetricCount": 5,
+    "energyTrendCount": 3,
+    "energyRangeButtonCount": 3,
+    "energySettingsPanel": true,
     "detailTrendCount": 20,
     "meterCount": 0,
     "settingsStatCount": 4,
-    "settingsOperationCount": 9,
+    "settingsOperationCount": 10,
     "settingsChangelogPanel": true,
     "settingsUpdatePanel": true,
     "settingsDiagnosticsLink": "/api/v1/admin/diagnostics/download",
@@ -229,6 +235,7 @@ cd ..
       "desktop_overview": 120000,
       "desktop_overview_dark": 120000,
       "desktop_devices": 120000,
+      "desktop_energy": 120000,
       "desktop_settings": 120000,
       "mobile_overview": 120000,
       "mobile_gpu": 120000
@@ -246,10 +253,11 @@ cd ..
 - `desktop-overview.png`：浅色总览。
 - `desktop-overview-dark.png`：深色总览。
 - `desktop-devices.png`：设备管理。
+- `desktop-energy.png`：能源页。
 - `desktop-settings.png`：服务设置。
 - `mobile-overview.png`：移动端 GPU Fleet 卡片面板。
 - `mobile-gpu.png`：移动端 GPU 详情。
-- `result.json`：记录布局断言、设置页入口断言、诊断包下载链接和各截图字节数；截图小于 2000 字节会直接判定失败，避免空白图误判通过。
+- `result.json`：记录布局断言、能源页断言、设置页入口断言、诊断包下载链接和各截图字节数；截图小于 2000 字节会直接判定失败，避免空白图误判通过。
 
 ## 当前验收与回归关注点
 
@@ -259,5 +267,6 @@ cd ..
 - 设备断网上线状态正确变化：逻辑已实现，仍需补自动化验证。
 - 服务端低磁盘空间时停止指标写入，并保留 800MiB 空闲空间：逻辑已实现。
 - Web 面板在桌面和手机宽度下无明显布局错乱：已通过 Chrome headless 截图和移动端 `scrollWidth` 验证，覆盖深浅主题、GPU Fleet 卡片面板、GPU 详情趋势图和服务设置页。
+- 能耗展示面只读：后端已验证积分和诊断口径，前端已通过 TypeScript/Vite 构建；浏览器脚本已补能源页 KPI、范围切换、GPU 能耗排行、能源诊断和设置页展示参数表单的强断言。
 - 在线更新后不应长期卡在“重启中”，强制重启后不应误报二进制和仓库不匹配：服务端和前端恢复逻辑已修复，真实服务环境仍应保留回归观察。
 - 诊断包、备份恢复和更新重启日志应能支持故障定位：脚本和接口已实现，恢复演练应在真实部署环境定期执行。

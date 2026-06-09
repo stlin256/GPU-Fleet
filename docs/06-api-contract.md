@@ -183,6 +183,7 @@ GET  /api/v1/guest/status
 GET  /api/v1/guest/overview
 GET  /api/v1/guest/gpus/{gpu_id}/series
 GET  /api/v1/stats/gpu-utilization
+GET  /api/v1/energy/summary
 GET  /api/v1/processes/latest
 POST /api/v1/admin/setup/reopen
 POST /api/v1/admin/setup/apply
@@ -295,7 +296,7 @@ POST /api/v1/admin/restart
 - `POST /setup/apply`：仅在尚无密码的首次部署可用，用于设置访问密码、端口、界面语言和可选证书。
 - `POST /admin/setup/reopen` 与 `/admin/setup/apply`：登录后再次打开并应用配置引导，可集中调整密码、端口、界面语言和证书。
 - `POST /admin/password`：修改 Web 访问密码。
-- `POST /admin/server-config`：保存访问端口、磁盘预留空间和自动更新开关。端口不会热切换，响应会标记是否需要重启；磁盘预留空间和自动更新开关立即生效。
+- `POST /admin/server-config`：保存访问端口、磁盘预留空间、自动更新开关和能耗展示参数。端口不会热切换，响应会标记是否需要重启；磁盘预留空间、自动更新开关和能耗展示参数立即生效。
 - `POST /admin/language`：保存界面语言；当前支持 `zh-CN` 和 `en-US`，即时生效且不需要重启。
 - `POST /admin/certificate`：上传证书 PEM 和私钥 PEM；无证书使用 HTTP，证书保存后服务端会调度自动重启，恢复后使用 HTTPS。
 - `GET /admin/database/download`：下载运行数据库压缩包，仅包含 `metadata.json`、`processes.json` 和 `metrics/`，不包含证书私钥。
@@ -309,6 +310,26 @@ POST /api/v1/admin/restart
 - `POST /admin/restart`：手动调度服务端重启。页面会全屏等待服务恢复，恢复后刷新并显示完成提示。
 
 在线更新接口只接受固定路径，不读取请求体参数，不允许前端传入命令、远端、分支或仓库路径。更新前会检查 `git`、`go`、Windows 的 `powershell.exe` 或 Linux 的 `/bin/sh`、服务端源码入口和当前可执行文件目录写入权限。依赖缺失时返回错误且不会开始应用更新。更新状态在前端缓存 1 小时，管理员可手动重新检查；设置页可保存代理地址，后端 Git 和 Go 构建会复用该代理环境。自动更新默认开启，每 30 分钟执行同一套服务端检查和应用逻辑；旧 metadata 没有 `auto_update_enabled` 字段时按开启处理。
+
+`POST /admin/server-config` 可额外接收以下能耗展示字段，这些字段只影响 Web 展示、估算和诊断口径，不会下发到 Agent，也不会修改 GPU 功耗、风扇或频率：
+
+```json
+{
+  "energy_price_per_kwh": 0.75,
+  "energy_currency": "CNY",
+  "thermal_hot_celsius": 85,
+  "idle_utilization_percent": 5,
+  "idle_power_watts": 30
+}
+```
+
+校验规则：
+
+- `energy_price_per_kwh` 必须大于等于 `0`。
+- `energy_currency` 为空时默认为 `CNY`，最长 12 个字符，仅允许字母、数字、`-` 和 `_`。
+- `thermal_hot_celsius` 范围为 `1-120`。
+- `idle_utilization_percent` 范围为 `0-100`。
+- `idle_power_watts` 范围为 `0-2000`。
 
 更新状态响应示例：
 
@@ -376,6 +397,104 @@ POST /api/v1/admin/restart
   }
 }
 ```
+
+### 能耗与热状态摘要
+
+```text
+GET /api/v1/energy/summary?hours=24
+```
+
+该接口需要已登录的 Web Cookie Session。`hours` 支持 `1-720`，前端当前使用 `24`、`168` 和 `720`。服务端基于现有 GPU 时序点派生能耗和热状态：
+
+```text
+kWh = Σ 平均功率 W × 时间差 h / 1000
+```
+
+当相邻采样间隔超过当前范围的保护上限时，该段不累计能耗，避免设备离线或数据缺口被误算成持续耗电。1H 使用原始序列，24H 使用分钟 rollup，7D/30D 使用小时 rollup。
+
+响应示例：
+
+```json
+{
+  "hours": 24,
+  "since": "2026-06-08T12:00:00Z",
+  "until": "2026-06-09T12:00:00Z",
+  "config": {
+    "energy_price_per_kwh": 0.75,
+    "energy_currency": "CNY",
+    "thermal_hot_celsius": 85,
+    "idle_utilization_percent": 5,
+    "idle_power_watts": 30
+  },
+  "summary": {
+    "current_power_watts": 2400,
+    "average_power_watts": 2300,
+    "peak_power_watts": 2600,
+    "energy_kwh": 55.2,
+    "estimated_cost": 41.4,
+    "currency": "CNY",
+    "hot_gpu_count": 2,
+    "throttled_gpu_count": 1,
+    "high_idle_power_gpu_count": 1,
+    "idle_waste_kwh": 2.3,
+    "coverage_percent": 96,
+    "sample_count": 1800,
+    "power_sample_count": 1800
+  },
+  "series": [
+    {
+      "timestamp": "2026-06-09T11:59:00Z",
+      "power_watts": 2400,
+      "peak_temperature_celsius": 82,
+      "hot_gpu_count": 0,
+      "gpu_sample_count": 8
+    }
+  ],
+  "gpus": [
+    {
+      "device_id": "device_20260609120000",
+      "device_alias": "worker-a100-01",
+      "gpu_id": "0",
+      "gpu_name": "NVIDIA A100",
+      "sample_count": 240,
+      "power_sample_count": 240,
+      "current_power_watts": 285,
+      "average_power_watts": 260,
+      "peak_power_watts": 310,
+      "peak_temperature_celsius": 86,
+      "energy_kwh": 6.2,
+      "estimated_cost": 4.65,
+      "hot_sample_count": 3,
+      "hot_seconds": 120,
+      "throttled": true,
+      "throttle_reason": "HW Slowdown",
+      "idle_waste_kwh": 0.3,
+      "high_idle_power_seconds": 3600,
+      "coverage_percent": 97
+    }
+  ],
+  "diagnostics": [
+    {
+      "kind": "thermal",
+      "severity": "warning",
+      "device_id": "device_20260609120000",
+      "device_alias": "worker-a100-01",
+      "gpu_id": "0",
+      "gpu_name": "NVIDIA A100",
+      "value": 86,
+      "unit": "celsius"
+    }
+  ]
+}
+```
+
+`diagnostics.kind` 当前可能为：
+
+- `thermal`：峰值温度达到高温阈值。
+- `throttle`：最新快照存在有效时钟限速原因。
+- `idle_waste`：低利用率同时功率高于空转功率阈值。
+
+该接口是只读展示接口，不提供功耗墙、风扇、频率、任务暂停或其他客户端控制能力。
 
 ### 访客接口
 
