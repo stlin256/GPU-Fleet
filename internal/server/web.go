@@ -1908,7 +1908,7 @@ const dashboardHTML = `<!doctype html>
       if (messageRow) messageRow.className = 'update-note-row update-note ' + (viewState.tone === 'bad' ? 'error' : 'notice');
       if (detailButton) detailButton.classList.toggle('hidden', !state.updateDetail);
       if (button) {
-        button.disabled = !(status.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && !status.ahead);
+        button.disabled = !(status.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && !status.ahead && !(status.supply_chain && status.supply_chain.blocked) && !(status.supply_chain && status.supply_chain.exact_target_commit === false));
         button.textContent = '更新';
       }
     }
@@ -1936,6 +1936,7 @@ const dashboardHTML = `<!doctype html>
     function updateState(status) {
       if (!status || !status.supported) return {label: '不可用', tone: 'bad', message: (status && status.message) || '服务端未运行在 Git 工作区'};
       if (status.failed) return {label: '检查失败', tone: 'bad', message: status.message || '检查 Git 上游失败'};
+      if (status.supply_chain && status.supply_chain.blocked) return {label: '来源异常', tone: 'bad', message: status.message || (status.supply_chain.warnings || []).join('；') || '自动更新来源校验未通过'};
       if (status.dirty) return {label: '已阻止', tone: 'bad', message: '服务端工作区存在未提交改动，已阻止自动拉取'};
       if (!status.upstream) return {label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream'};
       if (status.ahead > 0 && status.behind > 0) return {label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward'};

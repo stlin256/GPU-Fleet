@@ -207,9 +207,24 @@ export type UpdateStatus = {
   behind: number;
   ahead: number;
   checked_at: string;
+  supply_chain?: UpdateSupplyChainStatus;
   failed?: boolean;
   message?: string;
   detail?: string;
+};
+
+export type UpdateSupplyChainStatus = {
+  ok: boolean;
+  blocked: boolean;
+  remote_trusted: boolean;
+  remote_kind?: string;
+  remote_host?: string;
+  remote_repository?: string;
+  upstream_bound: boolean;
+  fast_forward_only: boolean;
+  worktree_clean: boolean;
+  exact_target_commit: boolean;
+  warnings?: string[];
 };
 
 export type UpdateDependencyStatus = {

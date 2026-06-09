@@ -542,6 +542,60 @@ func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
 	}
 }
 
+func TestUpdateSupplyChainStatusBlocksUntrustedNetworkRemote(t *testing.T) {
+	status := updateStatus{
+		Supported:    true,
+		Upstream:     "origin/main",
+		LocalCommit:  strings.Repeat("1", 40),
+		RemoteCommit: strings.Repeat("2", 40),
+		Available:    true,
+	}
+	trusted := updateSupplyChainStatusForRemote(status, "https://github.com/stlin256/GPU-Fleet.git")
+	if !trusted.OK || trusted.Blocked || !trusted.RemoteTrusted || trusted.RemoteHost != "github.com" || trusted.RemoteRepository != "stlin256/gpu-fleet" {
+		t.Fatalf("expected official HTTPS remote to pass, got %+v", trusted)
+	}
+	scp := updateSupplyChainStatusForRemote(status, "git@github.com:stlin256/GPU-Fleet.git")
+	if !scp.OK || scp.Blocked || !scp.RemoteTrusted || scp.RemoteRepository != "stlin256/gpu-fleet" {
+		t.Fatalf("expected official scp remote to pass, got %+v", scp)
+	}
+	local := updateSupplyChainStatusForRemote(status, filepath.Join(t.TempDir(), "remote.git"))
+	if !local.OK || local.Blocked || local.RemoteKind != "local" {
+		t.Fatalf("expected local test remote not to be blocked, got %+v", local)
+	}
+	if remoteNameFromUpstream("origin/main") != "origin" || remoteNameFromUpstream("upstream/release/0.1") != "upstream" || remoteNameFromUpstream("main") != "" {
+		t.Fatalf("unexpected upstream remote parsing")
+	}
+
+	status.SupplyChain = updateSupplyChainStatusForRemote(status, "https://github.com/other/project.git")
+	if !status.SupplyChain.Blocked || status.SupplyChain.OK {
+		t.Fatalf("expected untrusted network remote to be blocked, got %+v", status.SupplyChain)
+	}
+	app := newTestApp(t, t.TempDir(), filepath.Join(t.TempDir(), "missing-web"))
+	_, code, message := app.applyUpdateLockedWithStatus(context.Background(), false, status, time.Now().UTC())
+	if code != http.StatusPreconditionFailed || !strings.Contains(message, "supply-chain") {
+		t.Fatalf("expected supply-chain precondition failure, got code=%d message=%q", code, message)
+	}
+}
+
+func TestUpdateSupplyChainStatusRequiresExactTargetCommit(t *testing.T) {
+	status := updateStatus{
+		Supported:    true,
+		Upstream:     "origin/main",
+		LocalCommit:  strings.Repeat("1", 40),
+		RemoteCommit: "origin/main",
+		Available:    true,
+	}
+	status.SupplyChain = updateSupplyChainStatusForRemote(status, "https://github.com/stlin256/GPU-Fleet.git")
+	if !status.SupplyChain.Blocked || status.SupplyChain.ExactTargetCommit {
+		t.Fatalf("expected non-exact update target to be blocked, got %+v", status.SupplyChain)
+	}
+	app := newTestApp(t, t.TempDir(), filepath.Join(t.TempDir(), "missing-web"))
+	_, code, message := app.applyUpdateLockedWithStatus(context.Background(), false, status, time.Now().UTC())
+	if code != http.StatusPreconditionFailed || !strings.Contains(message, "commit") {
+		t.Fatalf("expected exact-target precondition failure, got code=%d message=%q", code, message)
+	}
+}
+
 func TestBinaryOutdatedAcceptsShortCommitPrefix(t *testing.T) {
 	fullCommit := "0123456789abcdef0123456789abcdef01234567"
 	status := updateStatus{

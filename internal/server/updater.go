@@ -30,28 +30,45 @@ const (
 	updateRestartLogName = "gpufleet-update-restart.log"
 	updateRestartGrace   = 10 * time.Minute
 	minCommitPrefixLen   = 7
+	trustedUpdateHost    = "github.com"
+	trustedUpdateRepo    = "stlin256/gpu-fleet"
 )
 
 type updateStatus struct {
-	Available      bool      `json:"available"`
-	Supported      bool      `json:"supported"`
-	Dirty          bool      `json:"dirty"`
-	Branch         string    `json:"branch,omitempty"`
-	Remote         string    `json:"remote,omitempty"`
-	Upstream       string    `json:"upstream,omitempty"`
-	LocalCommit    string    `json:"local_commit,omitempty"`
-	RemoteCommit   string    `json:"remote_commit,omitempty"`
-	RunningVersion string    `json:"running_version,omitempty"`
-	RunningCommit  string    `json:"running_commit,omitempty"`
-	RunningBuild   string    `json:"running_build_time,omitempty"`
-	RepoVersion    string    `json:"repo_version,omitempty"`
-	BinaryOutdated bool      `json:"binary_outdated"`
-	Behind         int       `json:"behind"`
-	Ahead          int       `json:"ahead"`
-	CheckedAt      time.Time `json:"checked_at"`
-	Failed         bool      `json:"failed,omitempty"`
-	Message        string    `json:"message,omitempty"`
-	Detail         string    `json:"detail,omitempty"`
+	Available      bool                    `json:"available"`
+	Supported      bool                    `json:"supported"`
+	Dirty          bool                    `json:"dirty"`
+	Branch         string                  `json:"branch,omitempty"`
+	Remote         string                  `json:"remote,omitempty"`
+	Upstream       string                  `json:"upstream,omitempty"`
+	LocalCommit    string                  `json:"local_commit,omitempty"`
+	RemoteCommit   string                  `json:"remote_commit,omitempty"`
+	RunningVersion string                  `json:"running_version,omitempty"`
+	RunningCommit  string                  `json:"running_commit,omitempty"`
+	RunningBuild   string                  `json:"running_build_time,omitempty"`
+	RepoVersion    string                  `json:"repo_version,omitempty"`
+	BinaryOutdated bool                    `json:"binary_outdated"`
+	Behind         int                     `json:"behind"`
+	Ahead          int                     `json:"ahead"`
+	CheckedAt      time.Time               `json:"checked_at"`
+	SupplyChain    updateSupplyChainStatus `json:"supply_chain"`
+	Failed         bool                    `json:"failed,omitempty"`
+	Message        string                  `json:"message,omitempty"`
+	Detail         string                  `json:"detail,omitempty"`
+}
+
+type updateSupplyChainStatus struct {
+	OK                bool     `json:"ok"`
+	Blocked           bool     `json:"blocked"`
+	RemoteTrusted     bool     `json:"remote_trusted"`
+	RemoteKind        string   `json:"remote_kind,omitempty"`
+	RemoteHost        string   `json:"remote_host,omitempty"`
+	RemoteRepository  string   `json:"remote_repository,omitempty"`
+	UpstreamBound     bool     `json:"upstream_bound"`
+	FastForwardOnly   bool     `json:"fast_forward_only"`
+	WorktreeClean     bool     `json:"worktree_clean"`
+	ExactTargetCommit bool     `json:"exact_target_commit"`
+	Warnings          []string `json:"warnings,omitempty"`
 }
 
 type updateDependencyStatus struct {
@@ -188,6 +205,16 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 	if status.Failed {
 		return updateApplyResponse{}, http.StatusBadGateway, status.Message
 	}
+	if status.SupplyChain.Blocked {
+		message := updateSupplyChainBlockMessage(status.SupplyChain)
+		_ = a.meta.AddAudit("server_update_blocked", message)
+		return updateApplyResponse{}, http.StatusPreconditionFailed, message
+	}
+	if (status.Available || status.BinaryOutdated) && !status.SupplyChain.ExactTargetCommit {
+		message := "update target commit could not be verified as an exact commit hash"
+		_ = a.meta.AddAudit("server_update_blocked", message)
+		return updateApplyResponse{}, http.StatusPreconditionFailed, message
+	}
 	if !status.Available && !status.BinaryOutdated {
 		return updateApplyResponse{OK: true, Status: status, RestartRequired: false}, http.StatusOK, ""
 	}
@@ -316,7 +343,7 @@ func (a *App) runUpdateMonitorCycle() bool {
 	checkCtx, checkCancel := context.WithTimeout(context.Background(), updateCheckTimeout)
 	status := a.checkUpdateStatusLocked(checkCtx)
 	checkCancel()
-	if !automatic || !status.Supported || status.Failed || status.Upstream == "" || status.Dirty || status.Ahead > 0 || (!status.Available && !status.BinaryOutdated) {
+	if !automatic || !status.Supported || status.Failed || status.Upstream == "" || status.Dirty || status.Ahead > 0 || status.SupplyChain.Blocked || (!status.Available && !status.BinaryOutdated) {
 		return false
 	}
 	if automaticUpdateRecentlyCompletedForTarget(a.meta.PeekUpdateNotice(), status, time.Now().UTC()) {
@@ -551,8 +578,10 @@ func (a *App) gitUpdateStatus(ctx context.Context) updateStatus {
 	if branch, err := a.runGit(ctx, "rev-parse", "--abbrev-ref", "HEAD"); err == nil {
 		status.Branch = strings.TrimSpace(branch)
 	}
+	remoteRaw := ""
 	if remote, err := a.runGit(ctx, "remote", "get-url", "origin"); err == nil {
-		status.Remote = sanitizeGitRemote(strings.TrimSpace(remote))
+		remoteRaw = strings.TrimSpace(remote)
+		status.Remote = sanitizeGitRemote(remoteRaw)
 	}
 	if local, err := a.runGit(ctx, "rev-parse", "HEAD"); err == nil {
 		status.LocalCommit = strings.TrimSpace(local)
@@ -565,15 +594,23 @@ func (a *App) gitUpdateStatus(ctx context.Context) updateStatus {
 	upstream, err := a.runGit(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
 	if err != nil {
 		status.Message = "current branch has no upstream"
+		status.SupplyChain = updateSupplyChainStatusForRemote(status, remoteRaw)
 		return status
 	}
 	status.Upstream = strings.TrimSpace(upstream)
+	if upstreamRemote := remoteNameFromUpstream(status.Upstream); upstreamRemote != "" {
+		if remote, err := a.runGit(ctx, "remote", "get-url", upstreamRemote); err == nil {
+			remoteRaw = strings.TrimSpace(remote)
+			status.Remote = sanitizeGitRemote(remoteRaw)
+		}
+	}
 
 	if _, err := a.runGit(ctx, "fetch", "--quiet", "--prune"); err != nil {
 		detail := limitText(cleanCommandError(err), updateOutputLimit)
 		status.Failed = true
 		status.Message = gitFailureMessage("fetch", detail, a.meta.ServiceConfig().UpdateProxy)
 		status.Detail = detail
+		status.SupplyChain = updateSupplyChainStatusForRemote(status, remoteRaw)
 		return status
 	}
 	if remoteCommit, err := a.runGit(ctx, "rev-parse", "@{u}"); err == nil {
@@ -584,6 +621,7 @@ func (a *App) gitUpdateStatus(ctx context.Context) updateStatus {
 	}
 	status.Available = status.Behind > 0
 	status.BinaryOutdated = binaryOutdated(status)
+	status.SupplyChain = updateSupplyChainStatusForRemote(status, remoteRaw)
 	status.Message = updateMessage(status)
 	return status
 }
@@ -1053,6 +1091,8 @@ func updateMessage(status updateStatus) string {
 	switch {
 	case status.Failed:
 		return status.Message
+	case status.SupplyChain.Blocked:
+		return updateSupplyChainBlockMessage(status.SupplyChain)
 	case status.Dirty:
 		return "server working tree has uncommitted changes"
 	case status.Ahead > 0 && status.Behind > 0:
@@ -1066,6 +1106,138 @@ func updateMessage(status updateStatus) string {
 	default:
 		return "already up to date"
 	}
+}
+
+func updateSupplyChainBlockMessage(status updateSupplyChainStatus) string {
+	if len(status.Warnings) > 0 {
+		return "update supply-chain check blocked the operation: " + strings.Join(status.Warnings, "; ")
+	}
+	return "update supply-chain check blocked the operation"
+}
+
+func updateSupplyChainStatusForRemote(status updateStatus, remoteRaw string) updateSupplyChainStatus {
+	kind, host, repo, trusted := classifyGitRemote(remoteRaw)
+	out := updateSupplyChainStatus{
+		RemoteTrusted:    trusted || kind == "local",
+		RemoteKind:       kind,
+		RemoteHost:       host,
+		RemoteRepository: repo,
+		UpstreamBound:    strings.TrimSpace(status.Upstream) != "",
+		FastForwardOnly:  status.Ahead == 0,
+		WorktreeClean:    !status.Dirty,
+	}
+	targetCommit := status.RemoteCommit
+	if !status.Available && status.BinaryOutdated {
+		targetCommit = status.LocalCommit
+	}
+	if targetCommit == "" {
+		targetCommit = status.LocalCommit
+	}
+	out.ExactTargetCommit = isFullCommitHash(targetCommit)
+	if kind == "network" && !trusted {
+		out.Blocked = true
+		if host == "" || repo == "" {
+			out.Warnings = append(out.Warnings, "network remote could not be identified")
+		} else {
+			out.Warnings = append(out.Warnings, fmt.Sprintf("network remote %s/%s is not %s/%s", host, repo, trustedUpdateHost, trustedUpdateRepo))
+		}
+	}
+	if !out.UpstreamBound {
+		out.Warnings = append(out.Warnings, "current branch has no upstream")
+	}
+	if !out.WorktreeClean {
+		out.Warnings = append(out.Warnings, "server working tree has uncommitted changes")
+	}
+	if !out.FastForwardOnly {
+		out.Warnings = append(out.Warnings, "local branch is ahead of upstream")
+	}
+	if (status.Available || status.BinaryOutdated) && !out.ExactTargetCommit {
+		out.Blocked = true
+		out.Warnings = append(out.Warnings, "update target is not an exact commit hash")
+	}
+	out.OK = !out.Blocked && out.UpstreamBound && out.FastForwardOnly && out.WorktreeClean
+	if status.Available || status.BinaryOutdated {
+		out.OK = out.OK && out.ExactTargetCommit
+	}
+	return out
+}
+
+func remoteNameFromUpstream(upstream string) string {
+	upstream = strings.TrimSpace(upstream)
+	remoteName, _, ok := strings.Cut(upstream, "/")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(remoteName)
+}
+
+func classifyGitRemote(raw string) (kind, host, repo string, trusted bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "unknown", "", "", false
+	}
+	if filepath.IsAbs(raw) || filepath.VolumeName(raw) != "" || strings.HasPrefix(raw, ".") {
+		return "local", "", "", false
+	}
+	if before, after, ok := strings.Cut(raw, ":"); ok && after != "" && !strings.Contains(before, `\`) {
+		if strings.Contains(before, "@") || strings.Contains(before, ".") {
+			host = before
+			if at := strings.LastIndex(host, "@"); at >= 0 {
+				host = host[at+1:]
+			}
+			host = normalizeGitRemoteHost(host)
+			repo = normalizeGitRemotePath(after)
+			return "network", host, repo, isTrustedUpdateRemote(host, repo)
+		}
+	}
+	if parsed, err := url.Parse(raw); err == nil && parsed.Scheme != "" {
+		switch strings.ToLower(parsed.Scheme) {
+		case "file":
+			return "local", "", "", false
+		case "http", "https", "ssh", "git":
+			host = normalizeGitRemoteHost(parsed.Host)
+			repo = normalizeGitRemotePath(parsed.Path)
+			return "network", host, repo, isTrustedUpdateRemote(host, repo)
+		default:
+			return "unknown", "", "", false
+		}
+	}
+	return "local", "", "", false
+}
+
+func normalizeGitRemoteHost(host string) string {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if at := strings.LastIndex(host, "@"); at >= 0 {
+		host = host[at+1:]
+	}
+	if strings.Contains(host, ":") && !strings.Contains(host, "]") {
+		host = strings.Split(host, ":")[0]
+	}
+	return strings.Trim(host, "[]")
+}
+
+func normalizeGitRemotePath(path string) string {
+	path = strings.TrimSpace(path)
+	path = strings.TrimPrefix(path, "/")
+	path = strings.TrimSuffix(path, ".git")
+	return strings.ToLower(path)
+}
+
+func isTrustedUpdateRemote(host, repo string) bool {
+	return host == trustedUpdateHost && repo == trustedUpdateRepo
+}
+
+func isFullCommitHash(value string) bool {
+	value = strings.TrimSpace(value)
+	if len(value) != 40 {
+		return false
+	}
+	for _, r := range value {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') && (r < 'A' || r > 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func cleanCommandError(err error) string {

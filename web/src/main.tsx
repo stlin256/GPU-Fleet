@@ -2528,7 +2528,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   const state = waitingForRestart
     ? { label: t('重启中'), tone: 'warn' as const, message: t('服务端正在自动重启，恢复后页面会自动刷新。') }
     : updateState(status, update.isLoading, update.error instanceof Error ? update.error.message : '');
-  const canApply = Boolean(status?.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && status.ahead === 0 && !busy);
+  const canApply = Boolean(status?.supported && status.upstream && (status.available || status.binary_outdated) && !status.dirty && status.ahead === 0 && !status.supply_chain?.blocked && status.supply_chain?.exact_target_commit !== false && !busy);
 
   useEffect(() => {
     setProxyURL(service?.update_proxy || '');
@@ -2872,6 +2872,7 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
   if (!status) return { label: '未知', tone: 'warn', message: '尚未读取更新状态' };
   if (!status.supported) return { label: '不可用', tone: 'bad', message: status.message || '服务端未运行在 Git 工作区' };
   if (status.failed) return { label: '检查失败', tone: 'bad', message: status.message || '检查 Git 上游失败' };
+  if (status.supply_chain?.blocked) return { label: '来源异常', tone: 'bad', message: status.message || status.supply_chain.warnings?.join('；') || '自动更新来源校验未通过' };
   if (status.dirty) return { label: '已阻止', tone: 'bad', message: '服务端工作区存在未提交改动，已阻止自动拉取' };
   if (!status.upstream) return { label: '未绑定', tone: 'warn', message: status.message || '当前分支没有 Git upstream' };
   if (status.ahead > 0 && status.behind > 0) return { label: '分叉', tone: 'bad', message: '本地和上游存在分叉，不能自动 fast-forward' };

@@ -1213,6 +1213,7 @@ func (a *App) cachedDiagnosticsUpdateStatus() *diagnosticsUpdateStatus {
 		Behind:         cached.Behind,
 		Ahead:          cached.Ahead,
 		CheckedAt:      cached.CheckedAt,
+		SupplyChain:    cached.SupplyChain,
 		Failed:         cached.Failed,
 		Message:        redactURLCredentials(cached.Message),
 	}
@@ -2065,24 +2066,25 @@ type diagnosticsProcessGPU struct {
 }
 
 type diagnosticsUpdateStatus struct {
-	Available      bool      `json:"available"`
-	Supported      bool      `json:"supported"`
-	Dirty          bool      `json:"dirty"`
-	Branch         string    `json:"branch,omitempty"`
-	Remote         string    `json:"remote,omitempty"`
-	Upstream       string    `json:"upstream,omitempty"`
-	LocalCommit    string    `json:"local_commit,omitempty"`
-	RemoteCommit   string    `json:"remote_commit,omitempty"`
-	RunningVersion string    `json:"running_version,omitempty"`
-	RunningCommit  string    `json:"running_commit,omitempty"`
-	RunningBuild   string    `json:"running_build_time,omitempty"`
-	RepoVersion    string    `json:"repo_version,omitempty"`
-	BinaryOutdated bool      `json:"binary_outdated"`
-	Behind         int       `json:"behind"`
-	Ahead          int       `json:"ahead"`
-	CheckedAt      time.Time `json:"checked_at"`
-	Failed         bool      `json:"failed,omitempty"`
-	Message        string    `json:"message,omitempty"`
+	Available      bool                    `json:"available"`
+	Supported      bool                    `json:"supported"`
+	Dirty          bool                    `json:"dirty"`
+	Branch         string                  `json:"branch,omitempty"`
+	Remote         string                  `json:"remote,omitempty"`
+	Upstream       string                  `json:"upstream,omitempty"`
+	LocalCommit    string                  `json:"local_commit,omitempty"`
+	RemoteCommit   string                  `json:"remote_commit,omitempty"`
+	RunningVersion string                  `json:"running_version,omitempty"`
+	RunningCommit  string                  `json:"running_commit,omitempty"`
+	RunningBuild   string                  `json:"running_build_time,omitempty"`
+	RepoVersion    string                  `json:"repo_version,omitempty"`
+	BinaryOutdated bool                    `json:"binary_outdated"`
+	Behind         int                     `json:"behind"`
+	Ahead          int                     `json:"ahead"`
+	CheckedAt      time.Time               `json:"checked_at"`
+	SupplyChain    updateSupplyChainStatus `json:"supply_chain"`
+	Failed         bool                    `json:"failed,omitempty"`
+	Message        string                  `json:"message,omitempty"`
 }
 
 type diagnosticsAuditEvent struct {
