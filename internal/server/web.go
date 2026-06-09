@@ -937,7 +937,18 @@ const dashboardHTML = `<!doctype html>
       white-space: nowrap;
     }
     .switch-row input { width: 18px; min-height: 18px; margin: 0; accent-color: var(--accent); }
-    .security-switch-row .inline-help { display: inline-flex; align-items: center; justify-content: center; width: 22px; min-width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 999px; }
+    .security-switch-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      justify-content: start;
+    }
+    .security-switch-row span {
+      min-width: 0;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+    .security-switch-row .inline-help { display: inline-flex; align-items: center; justify-content: center; width: 22px; min-width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 999px; line-height: 1; }
     .update-note {
       margin-top: -4px;
     }
@@ -1392,6 +1403,11 @@ const dashboardHTML = `<!doctype html>
         }
       }
     }
+    function scheduleFleetReconnectRefresh() {
+      [2000, 5000, 10000, 20000].forEach((delay) => {
+        setTimeout(() => { refresh().catch(() => undefined); }, delay);
+      });
+    }
 
     function updateHistory(items) {
       items.forEach((item) => {
@@ -1821,6 +1837,13 @@ const dashboardHTML = `<!doctype html>
           message.className = 'notice update-note';
           message.textContent = next ? '旧版 Agent 兼容已开启' : '旧版 Agent 兼容已关闭';
         }
+        await refresh();
+        const nextMessage = document.getElementById('legacyAgentAuthMessage');
+        if (nextMessage) {
+          nextMessage.className = 'notice update-note';
+          nextMessage.textContent = next ? '旧版 Agent 兼容已开启' : '旧版 Agent 兼容已关闭';
+        }
+        if (next) scheduleFleetReconnectRefresh();
       } catch (err) {
         if (input) input.checked = !enabled;
         if (message) {

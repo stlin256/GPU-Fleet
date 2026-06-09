@@ -1807,6 +1807,23 @@ input:focus {
   border-color: color-mix(in srgb, var(--bad) 48%, var(--line));
 }
 
+.info-dialog {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+
+.info-dialog .confirm-copy {
+  min-width: 0;
+}
+
+.info-dialog .confirm-copy h2 {
+  margin-top: 0;
+}
+
+.info-dialog .confirm-actions {
+  grid-column: 1 / -1;
+}
+
 .confirm-icon {
   width: 42px;
   height: 42px;
@@ -2492,16 +2509,29 @@ input:focus {
 }
 
 .security-switch-row {
-  width: fit-content;
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  justify-content: start;
+}
+
+.security-switch-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .security-switch-row .inline-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   min-width: 22px;
   height: 22px;
   min-height: 22px;
   padding: 0;
   border-radius: 999px;
+  line-height: 1;
 }
 
 .update-auto-row small {

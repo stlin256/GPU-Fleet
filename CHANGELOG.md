@@ -78,6 +78,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Frontend mini trend charts now use stable line/area rendering with lighter fills and hover cursors, avoiding odd teeth, spikes, or harsh vertical lines on nearly flat series.
 - zh-CN: 修复在线更新错误详情问号按钮继承通用图标按钮高度后边框呈错位长方形的问题，改为固定圆形内联按钮。
 - en-US: Fixed the online-update error detail help button inheriting the generic icon-button height and rendering as a misaligned rectangle; it now uses a fixed circular inline button.
+- zh-CN: 修复“旧版 Agent 兼容”说明弹窗中问号图标和标题纵向错位的问题，并在开启兼容后立即刷新 GPU/统计/能耗相关查询、短时重查 Agent 恢复状态，避免 GPU 卡片继续被旧离线遮罩覆盖直到手动刷新页面。
+- en-US: Fixed the Legacy Agent compatibility help dialog icon/title layout and now refreshes GPU, stats, and energy queries immediately after enabling compatibility, with short reconnect polling so GPU cards do not remain under stale offline masks until a manual page refresh.
 
 ## [0.1.8] - 2026-06-09
 

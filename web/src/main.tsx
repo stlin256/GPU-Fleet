@@ -141,6 +141,26 @@ type CachedUpdateStatus = {
   cached_at: string;
 };
 
+function invalidateFleetQueries(client: QueryClient) {
+  const keys = [
+    ['overview'],
+    ['stats'],
+    ['energy-summary'],
+    ['aggregate-gpu-series'],
+    ['gpu-series'],
+    ['gpu-series-stats']
+  ] as const;
+  return Promise.all(keys.map((queryKey) => client.invalidateQueries({ queryKey }))).then(() => undefined);
+}
+
+function scheduleFleetReconnectRefresh(client: QueryClient) {
+  [2000, 5000, 10000, 20000].forEach((delay) => {
+    window.setTimeout(() => {
+      void invalidateFleetQueries(client);
+    }, delay);
+  });
+}
+
 function initialTheme(): Theme {
   const stored = window.localStorage.getItem('gpufleet-theme');
   if (stored === 'light' || stored === 'dark') return stored;
@@ -2671,6 +2691,10 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
     await query.invalidateQueries({ queryKey: ['overview'] });
   }
 
+  async function refreshFleetAfterAgentAuthChange() {
+    await invalidateFleetQueries(query);
+  }
+
   async function openWizard() {
     setMessage('');
     try {
@@ -2715,7 +2739,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           <PortSettings service={service} onDone={refreshOverview} />
           <LanguageSettings service={service} onDone={refreshOverview} />
           <CertificateSettings service={service} onDone={refreshOverview} />
-          <LegacyAgentAuthSettings service={service} onDone={refreshOverview} />
+          <LegacyAgentAuthSettings service={service} onDone={refreshFleetAfterAgentAuthChange} />
           <article className="panel setting-operation">
             <div className="operation-head">
               <div className="operation-icon"><Settings size={18} /></div>
@@ -3753,6 +3777,7 @@ function CertificateSettings({ service, onDone }: { service?: ServiceStatus; onD
 }
 
 function LegacyAgentAuthSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const query = useQueryClient();
   const { t } = useI18n();
   const [enabled, setEnabled] = useState(service?.legacy_agent_auth_enabled ?? false);
   const [saving, setSaving] = useState(false);
@@ -3767,9 +3792,12 @@ function LegacyAgentAuthSettings({ service, onDone }: { service?: ServiceStatus;
     setMessage('');
     setSaving(true);
     try {
-      await updateServerConfig({ legacy_agent_auth_enabled: next });
-      setMessage(next ? '旧版 Agent 兼容已开启' : '旧版 Agent 兼容已关闭');
+      const result = await updateServerConfig({ legacy_agent_auth_enabled: next });
+      const confirmed = result.service?.legacy_agent_auth_enabled ?? next;
+      setEnabled(confirmed);
+      setMessage(confirmed ? '旧版 Agent 兼容已开启' : '旧版 Agent 兼容已关闭');
       await onDone();
+      if (confirmed) scheduleFleetReconnectRefresh(query);
     } catch (err) {
       setEnabled(!next);
       setMessage(err instanceof Error ? err.message : 'legacy Agent compatibility update failed');
@@ -3821,12 +3849,10 @@ function InfoDialog({ title, body, onClose }: { title: string; body: string; onC
       if (event.target === event.currentTarget) onClose();
     }}>
       <section className="confirm-dialog info-dialog" role="dialog" aria-modal="true" aria-labelledby="info-dialog-title">
+        <div className="confirm-icon"><CircleHelp size={22} /></div>
         <div className="confirm-copy">
-          <span className="confirm-icon"><CircleHelp size={22} /></span>
-          <div>
-            <h2 id="info-dialog-title">{title}</h2>
-            <p>{body}</p>
-          </div>
+          <h2 id="info-dialog-title">{title}</h2>
+          <p>{body}</p>
         </div>
         <div className="confirm-actions">
           <button className="primary narrow" type="button" onClick={onClose}>知道了</button>
