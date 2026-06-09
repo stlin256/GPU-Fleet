@@ -492,6 +492,7 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		Port                   int      `json:"port"`
 		MinFreeMB              int      `json:"min_free_mb"`
 		AutoUpdateEnabled      *bool    `json:"auto_update_enabled"`
+		LegacyAgentAuthEnabled *bool    `json:"legacy_agent_auth_enabled"`
 		EnergyPricePerKWh      *float64 `json:"energy_price_per_kwh"`
 		EnergyCurrency         *string  `json:"energy_currency"`
 		ThermalHotCelsius      *float64 `json:"thermal_hot_celsius"`
@@ -532,6 +533,13 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.wakeUpdateMonitor()
+	}
+	if body.LegacyAgentAuthEnabled != nil {
+		config, err = a.meta.UpdateLegacyAgentAuthEnabled(*body.LegacyAgentAuthEnabled)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	if body.EnergyPricePerKWh != nil || body.EnergyCurrency != nil || body.ThermalHotCelsius != nil || body.IdleUtilizationPercent != nil || body.IdlePowerWatts != nil {
 		settings := config.EnergySettings()
@@ -1713,7 +1721,8 @@ func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string,
 		time.Now().UTC(),
 		5*time.Minute,
 	); err != nil {
-		if !allowLegacyAgentSignature(deviceAuth.AgentVersion) || auth.VerifyLegacy(
+		legacyAllowed := a.meta.ServiceConfig().LegacyAgentAuth && allowLegacyAgentSignature(deviceAuth.AgentVersion)
+		if !legacyAllowed || auth.VerifyLegacy(
 			r.Method,
 			r.URL.EscapedPath(),
 			body,
@@ -2042,6 +2051,7 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 		GuestEnabled:      config.GuestEnabled,
 		UpdateProxy:       config.UpdateProxy,
 		AutoUpdateEnabled: config.AutoUpdateOn(),
+		LegacyAgentAuth:   config.LegacyAgentAuth,
 		MinFreeBytes:      config.MinFreeBytes,
 		Energy:            config.EnergySettings(),
 		CertNotAfter:      config.CertNotAfter,
@@ -2250,6 +2260,7 @@ type serviceStatus struct {
 	GuestEnabled      bool           `json:"guest_enabled"`
 	UpdateProxy       string         `json:"update_proxy,omitempty"`
 	AutoUpdateEnabled bool           `json:"auto_update_enabled"`
+	LegacyAgentAuth   bool           `json:"legacy_agent_auth_enabled"`
 	MinFreeBytes      uint64         `json:"min_free_bytes"`
 	Energy            EnergySettings `json:"energy"`
 	CertNotAfter      time.Time      `json:"cert_not_after,omitempty"`

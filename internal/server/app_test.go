@@ -1252,13 +1252,41 @@ func TestLegacyAgentSignatureAcceptedOnlyForKnownOldAgent(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if status := legacyStatus("legacy-signature-for-old-agent"); status != http.StatusAccepted {
-		t.Fatalf("expected legacy signature to be accepted for known old agent, got %d", status)
+	if status := legacyStatus("legacy-signature-for-old-agent-default-off"); status != http.StatusUnauthorized {
+		t.Fatalf("expected legacy signature to be rejected while compatibility is disabled, got %d", status)
+	}
+
+	cookie := loginCookie(t, handler)
+	var enabledResponse struct {
+		Service serviceStatus `json:"service"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]bool{"legacy_agent_auth_enabled": true}, cookie, http.StatusOK, &enabledResponse)
+	if !enabledResponse.Service.LegacyAgentAuth {
+		t.Fatalf("expected legacy Agent compatibility to be enabled, got %+v", enabledResponse.Service)
+	}
+	assertAuditType(t, app, "legacy_agent_auth_enabled")
+	if status := legacyStatus("legacy-signature-for-old-agent-enabled"); status != http.StatusAccepted {
+		t.Fatalf("expected legacy signature to be accepted for known old agent after enabling compatibility, got %d", status)
 	}
 	assertAuditType(t, app, "device_auth_legacy_signature")
+	var disabledResponse struct {
+		Service serviceStatus `json:"service"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]bool{"legacy_agent_auth_enabled": false}, cookie, http.StatusOK, &disabledResponse)
+	if disabledResponse.Service.LegacyAgentAuth {
+		t.Fatalf("expected legacy Agent compatibility to be disabled, got %+v", disabledResponse.Service)
+	}
+	assertAuditType(t, app, "legacy_agent_auth_disabled")
+	if status := legacyStatus("legacy-signature-for-old-agent-disabled"); status != http.StatusUnauthorized {
+		t.Fatalf("expected legacy signature to be rejected after disabling compatibility, got %d", status)
+	}
+
 	if err := app.meta.UpdateHeartbeat(device.ID, func(device *Device) {
 		device.AgentVersion = version.Version
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.meta.UpdateLegacyAgentAuthEnabled(true); err != nil {
 		t.Fatal(err)
 	}
 	if status := legacyStatus("legacy-signature-for-current-agent"); status != http.StatusUnauthorized {

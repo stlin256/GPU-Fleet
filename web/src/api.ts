@@ -193,6 +193,7 @@ export type ServiceStatus = {
   guest_enabled: boolean;
   update_proxy?: string;
   auto_update_enabled: boolean;
+  legacy_agent_auth_enabled: boolean;
   min_free_bytes: number;
   energy: EnergySettings;
   cert_not_after?: string;
@@ -599,6 +600,7 @@ export function updateServerConfig(payload: {
   port?: number;
   min_free_mb?: number;
   auto_update_enabled?: boolean;
+  legacy_agent_auth_enabled?: boolean;
   energy_price_per_kwh?: number;
   energy_currency?: string;
   thermal_hot_celsius?: number;

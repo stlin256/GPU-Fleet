@@ -73,7 +73,9 @@ SHA256_HEX(BODY)
 - 签名和时间戳通过后，服务端再原子记录 nonce，并拒绝 10 分钟内重复出现的 nonce。
 - body 大小不超过限制。
 
-0.1.9 的签名串新增了 `DEVICE_ID`。为了避免服务端先升级时让已经登记过的旧 Agent 全部掉线，服务端只对 metadata 中已知且 `agent_version` 低于 0.1.9 的设备临时接受旧签名串，并写入 `device_auth_legacy_signature` 审计事件。未知设备、未记录版本的设备和 0.1.9 及之后版本的 Agent 仍必须使用包含 `DEVICE_ID` 的签名串。
+0.1.9 的签名串新增了 `DEVICE_ID`。旧版 Agent 兼容默认关闭；管理员只能在设置页显式开启“旧版 Agent 兼容”后，服务端才会对 metadata 中已知且 `agent_version` 低于 0.1.9 的设备临时接受旧签名串，并写入 `device_auth_legacy_signature` 审计事件。未知设备、未记录版本的设备和 0.1.9 及之后版本的 Agent 始终必须使用包含 `DEVICE_ID` 的签名串。
+
+该开关只建议在升级旧 Agent 的过渡窗口短时间开启。开启和关闭会分别写入 `legacy_agent_auth_enabled` / `legacy_agent_auth_disabled` 审计事件。
 
 后续增强可支持 mTLS，每台设备使用独立客户端证书。
 

@@ -61,6 +61,7 @@ type ServiceConfig struct {
 	GuestEnabled      bool      `json:"guest_enabled,omitempty"`
 	UpdateProxy       string    `json:"update_proxy,omitempty"`
 	AutoUpdateEnabled *bool     `json:"auto_update_enabled,omitempty"`
+	LegacyAgentAuth   bool      `json:"legacy_agent_auth_enabled,omitempty"`
 	MinFreeBytes      uint64    `json:"min_free_bytes,omitempty"`
 	EnergyPricePerKWh float64   `json:"energy_price_per_kwh,omitempty"`
 	EnergyCurrency    string    `json:"energy_currency,omitempty"`
@@ -489,6 +490,19 @@ func (s *MetadataStore) UpdateAutoUpdateEnabled(enabled bool) (ServiceConfig, er
 		s.addAuditLocked("auto_update_enabled", "enabled automatic update checks")
 	} else {
 		s.addAuditLocked("auto_update_disabled", "disabled automatic update checks")
+	}
+	return s.data.Service, s.saveLocked()
+}
+
+func (s *MetadataStore) UpdateLegacyAgentAuthEnabled(enabled bool) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data.Service.LegacyAgentAuth = enabled
+	s.bumpServiceConfigLocked()
+	if enabled {
+		s.addAuditLocked("legacy_agent_auth_enabled", "enabled legacy Agent HMAC compatibility")
+	} else {
+		s.addAuditLocked("legacy_agent_auth_disabled", "disabled legacy Agent HMAC compatibility")
 	}
 	return s.data.Service, s.saveLocked()
 }

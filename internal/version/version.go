@@ -244,6 +244,7 @@ func Changelog() []ChangelogEntry {
 				"Agent CLI 和 Windows/Linux 安装脚本不再提供 `local-dev` / `local-dev-secret` 默认凭据，上报和服务安装必须显式传入设备 ID 与密钥。",
 				"服务端入口移除自动生成管理员密码的明文日志分支，避免未来回归时把初始密码写入 stdout、systemd 或容器日志。",
 				"登录 Cookie 的 `Secure` 属性现在会识别可信反向代理传入的 `X-Forwarded-Proto: https`，修复 TLS 终止在代理层时后端因 `r.TLS` 为空而不设置 `Secure` 的问题。",
+				"设置页新增“旧版 Agent 兼容”安全开关，默认关闭；只有管理员显式开启时，服务端才会临时接受已登记且版本低于 0.1.9 的 Agent 旧 HMAC 签名，并写入审计日志。",
 			},
 			SecurityEN: []string{
 				"Automatic updates now include supply-chain source checks for the remote repository, upstream, worktree, fast-forward path, and exact build target, blocking updates when a network remote points outside the official repository.",
@@ -251,11 +252,12 @@ func Changelog() []ChangelogEntry {
 				"The Agent CLI and Windows/Linux installers no longer default to `local-dev` / `local-dev-secret`; uploads and service installation must receive an explicit device ID and secret.",
 				"The server entrypoint removed the plaintext generated-admin-password log branch to avoid future regressions that write initial passwords to stdout, systemd, or container logs.",
 				"Login cookies now honor trusted reverse-proxy `X-Forwarded-Proto: https`, fixing missing `Secure` attributes when TLS terminates at the proxy and backend `r.TLS` is empty.",
+				"Settings now includes a legacy Agent compatibility security switch that is off by default; only when an admin explicitly enables it will the server temporarily accept legacy HMAC signatures from known pre-0.1.9 Agents and audit the event.",
 			},
 			Fixed: []string{
 				"30D 统计查询现在和长范围曲线一样使用 rollup 边界容错，避免在 30 天边界附近回退扫描原始 gzip 分段导致响应变慢。",
 				"修复在线更新后等待恢复可能一直停在“重启中”的问题；更新响应会显式返回目标 commit，前端超时后会清理 pending 状态并刷新，服务端启动时也会自动补救遗留的 `.next` 二进制替换。",
-				"修复 0.1.9 服务端升级后旧版 Agent 因 HMAC 签名串尚未包含 `device_id` 而全部掉线的问题；服务端仅对 metadata 中已知的 0.1.9 之前 Agent 临时接受旧签名并记录审计，新版 Agent 仍必须使用绑定 `device_id` 的签名。",
+				"旧版 Agent 兼容路径现在受设置页开关控制；默认关闭时 0.1.9 服务端只接受绑定 `device_id` 的新 HMAC 签名，开启后才临时兼容 metadata 中已知的 0.1.9 前 Agent。",
 				"能源页长范围曲线现在按展示桶去重最新快照与 rollup 点，并裁掉首尾明显稀疏的长范围边界点，避免曲线两端异常尖峰或塌陷。",
 				"空转高耗低于 `0.005 kWh` 时不再计入 GPU 告警、诊断项或排行行状态，前端也移除了能源排行标题中的“只读”标签。",
 				"启动时补救遗留 `.next` 二进制替换现在带有冷却标记；如果替换未成功，不再每次启动都主动退出导致 systemd 无限重启，而是先保持旧二进制可用并等待下一次明确更新或冷却后重试。",
@@ -267,7 +269,7 @@ func Changelog() []ChangelogEntry {
 			FixedEN: []string{
 				"30D stats queries now use the same rollup boundary tolerance as long-range series, avoiding slow raw gzip scans near the 30-day edge.",
 				"Fixed post-update recovery potentially staying in the restarting state forever; update responses now include the exact target commit, the frontend clears stale pending recovery after timeout, and server startup can recover a leftover `.next` executable replacement.",
-				"Fixed older Agents going offline after a 0.1.9 server upgrade because their HMAC signing string did not yet include `device_id`; the server temporarily accepts legacy signatures only for known pre-0.1.9 Agents recorded in metadata and audits the compatibility path, while current Agents must still use device-bound signatures.",
+				"The legacy Agent compatibility path is now controlled by a Settings switch; by default the 0.1.9 server only accepts new device-bound HMAC signatures, and enabling the switch temporarily supports known pre-0.1.9 Agents recorded in metadata.",
 				"Energy long-range charts now deduplicate latest snapshots against rollup points per display bucket and trim visibly sparse edge buckets, avoiding abnormal spikes or dips at both ends.",
 				"High-idle-power waste below `0.005 kWh` no longer counts toward GPU warnings, diagnostics, or ranking row state, and the Energy ranking header no longer shows a read-only badge.",
 				"Startup recovery for leftover `.next` executables now uses a cooldown marker; if replacement does not complete, the server no longer exits on every start and causes an infinite systemd restart loop, keeping the old binary available until the next explicit update or cooldown retry.",

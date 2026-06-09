@@ -213,6 +213,7 @@ const en: Record<string, string> = {
   '凭据、端口、语言和 HTTPS 证书': 'Credentials, port, language, and HTTPS certificate',
   '重新打开端口、密码、语言和证书配置流程': 'Reopen the port, password, language, and certificate setup flow',
   '打开引导': 'Open wizard',
+  '旧版 Agent 兼容': 'Legacy Agent Compatibility',
   '维护与发布': 'Maintenance & Release',
   '数据库、在线更新和版本信息': 'Database, online update, and release information',
   '能耗展示': 'Energy Display',

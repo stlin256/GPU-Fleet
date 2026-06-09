@@ -2714,6 +2714,7 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
           <PortSettings service={service} onDone={refreshOverview} />
           <LanguageSettings service={service} onDone={refreshOverview} />
           <CertificateSettings service={service} onDone={refreshOverview} />
+          <LegacyAgentAuthSettings service={service} onDone={refreshOverview} />
           <article className="panel setting-operation">
             <div className="operation-head">
               <div className="operation-icon"><Settings size={18} /></div>
@@ -3635,6 +3636,91 @@ function CertificateSettings({ service, onDone }: { service?: ServiceStatus; onD
       </form>
       {message && <p className={message.includes('已') || message.includes('saved') ? 'notice' : 'error'}>{message}</p>}
     </article>
+  );
+}
+
+function LegacyAgentAuthSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const { t } = useI18n();
+  const [enabled, setEnabled] = useState(service?.legacy_agent_auth_enabled ?? false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
+  useEffect(() => {
+    setEnabled(service?.legacy_agent_auth_enabled ?? false);
+  }, [service?.legacy_agent_auth_enabled]);
+
+  async function toggle(next: boolean) {
+    setEnabled(next);
+    setMessage('');
+    setSaving(true);
+    try {
+      await updateServerConfig({ legacy_agent_auth_enabled: next });
+      setMessage(next ? '旧版 Agent 兼容已开启' : '旧版 Agent 兼容已关闭');
+      await onDone();
+    } catch (err) {
+      setEnabled(!next);
+      setMessage(err instanceof Error ? err.message : 'legacy Agent compatibility update failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const help = '开启后，服务端会临时接受已登记且版本低于 0.1.9 的 Agent 旧 HMAC 签名；关闭后只接受绑定 device_id 的新签名。建议只在升级旧 Agent 的过渡期短时间开启。';
+
+  return (
+    <article className="panel setting-operation" data-testid="settings-legacy-agent-auth">
+      <div className="operation-head">
+        <div className="operation-icon"><ShieldAlert size={18} /></div>
+        <div>
+          <h2>旧版 Agent 兼容</h2>
+          <p>控制是否接受 0.1.9 前的 HMAC 签名</p>
+        </div>
+      </div>
+      <label className="switch-row security-switch-row">
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={saving}
+          onChange={(event) => void toggle(event.target.checked)}
+        />
+        <span>{enabled ? '旧版兼容已开启' : '旧版兼容已关闭'}</span>
+        <button className="icon-button inline-help" type="button" onClick={() => setHelpOpen(true)} title={help} aria-label="旧版 Agent 兼容说明">
+          <CircleHelp size={14} />
+        </button>
+      </label>
+      <p>{enabled ? '仅建议在迁移旧 Agent 时临时开启。' : '默认关闭，要求 Agent 使用绑定 device_id 的新签名。'}</p>
+      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+      {helpOpen && <InfoDialog title={t('旧版 Agent 兼容')} body={help} onClose={() => setHelpOpen(false)} />}
+    </article>
+  );
+}
+
+function InfoDialog({ title, body, onClose }: { title: string; body: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return createPortal(
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <section className="confirm-dialog info-dialog" role="dialog" aria-modal="true" aria-labelledby="info-dialog-title">
+        <div className="confirm-copy">
+          <span className="confirm-icon"><CircleHelp size={22} /></span>
+          <div>
+            <h2 id="info-dialog-title">{title}</h2>
+            <p>{body}</p>
+          </div>
+        </div>
+        <div className="confirm-actions">
+          <button className="primary narrow" type="button" onClick={onClose}>知道了</button>
+        </div>
+      </section>
+    </div>,
+    document.body
   );
 }
 

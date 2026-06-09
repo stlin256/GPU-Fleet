@@ -921,6 +921,23 @@ const dashboardHTML = `<!doctype html>
       align-items: center;
       flex-wrap: wrap;
     }
+    .switch-row {
+      width: fit-content;
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      margin-top: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      color: var(--text);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .switch-row input { width: 18px; min-height: 18px; margin: 0; accent-color: var(--accent); }
+    .security-switch-row .inline-help { display: inline-flex; align-items: center; justify-content: center; width: 22px; min-width: 22px; height: 22px; min-height: 22px; padding: 0; border-radius: 999px; }
     .update-note {
       margin-top: -4px;
     }
@@ -1762,6 +1779,7 @@ const dashboardHTML = `<!doctype html>
               operationPanel('密码更改', '仅使用密码作为 Web 凭据', 'PW', '<button class="secondary action-button" type="button">更新密码</button>', 'settings-password') +
               operationPanel('端口配置', service.current_addr || '当前监听端口', '◎', '<button class="secondary action-button" type="button">保存端口</button>', 'settings-port') +
               operationPanel('HTTPS 证书', '到期 ' + (service.cert_not_after ? new Date(service.cert_not_after).toLocaleString() : '未配置'), 'TLS', '<button class="secondary action-button" type="button">上传证书</button>', 'settings-certificate') +
+              operationPanel('旧版 Agent 兼容', '控制是否接受 0.1.9 前的 HMAC 签名', 'SEC', legacyAgentAuthControl(service), 'settings-legacy-agent-auth') +
               operationPanel('配置引导', '重新打开端口、密码和证书配置流程', 'CFG', '<button class="secondary action-button" type="button">打开引导</button>', '') +
             '</div>' +
             '<div class="settings-column settings-column-operations">' +
@@ -1782,6 +1800,36 @@ const dashboardHTML = `<!doctype html>
     }
     function operationPanel(title, caption, icon, action, testID) {
       return '<article class="panel setting-operation"' + (testID ? ' data-testid="' + esc(testID) + '"' : '') + '><div class="operation-head"><div class="operation-icon">' + esc(icon) + '</div><div><h2>' + esc(title) + '</h2><p>' + esc(caption) + '</p></div></div>' + action + '</article>';
+    }
+    function legacyAgentAuthControl(service) {
+      const enabled = !!(service && service.legacy_agent_auth_enabled);
+      const help = '开启后，服务端会临时接受已登记且版本低于 0.1.9 的 Agent 旧 HMAC 签名；关闭后只接受绑定 device_id 的新签名。建议只在升级旧 Agent 的过渡期短时间开启。';
+      return '<label class="switch-row security-switch-row"><input id="legacyAgentAuthSwitch" type="checkbox" onchange="toggleLegacyAgentAuth(this.checked)" ' + (enabled ? 'checked' : '') + '><span id="legacyAgentAuthLabel">' + (enabled ? '旧版兼容已开启' : '旧版兼容已关闭') + '</span><button class="icon-button inline-help" type="button" onclick="alert(' + "'" + escJS(help) + "'" + ')" title="' + esc(help) + '">?</button></label><p>' + (enabled ? '仅建议在迁移旧 Agent 时临时开启。' : '默认关闭，要求 Agent 使用绑定 device_id 的新签名。') + '</p><p class="update-note" id="legacyAgentAuthMessage"></p>';
+    }
+    async function toggleLegacyAgentAuth(enabled) {
+      const input = document.getElementById('legacyAgentAuthSwitch');
+      const label = document.getElementById('legacyAgentAuthLabel');
+      const message = document.getElementById('legacyAgentAuthMessage');
+      if (input) input.disabled = true;
+      try {
+        const result = await api('/api/v1/admin/server-config', {method: 'POST', body: JSON.stringify({legacy_agent_auth_enabled: !!enabled})});
+        if (state.data && result.service) state.data.service = result.service;
+        const next = !!(result.service && result.service.legacy_agent_auth_enabled);
+        if (input) input.checked = next;
+        if (label) label.textContent = next ? '旧版兼容已开启' : '旧版兼容已关闭';
+        if (message) {
+          message.className = 'notice update-note';
+          message.textContent = next ? '旧版 Agent 兼容已开启' : '旧版 Agent 兼容已关闭';
+        }
+      } catch (err) {
+        if (input) input.checked = !enabled;
+        if (message) {
+          message.className = 'error update-note';
+          message.textContent = err.message;
+        }
+      } finally {
+        if (input) input.disabled = false;
+      }
     }
     function updatePanel() {
       const service = state.data && state.data.service || {};
