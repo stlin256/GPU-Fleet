@@ -540,6 +540,21 @@ func (s *MetadataStore) GuestVisits(limit int) []GuestVisit {
 	return visits
 }
 
+func (s *MetadataStore) RecentAuditEvents(limit int) []AuditEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit <= 0 || limit > 1000 {
+		limit = 100
+	}
+	start := len(s.data.AuditEvents) - limit
+	if start < 0 {
+		start = 0
+	}
+	events := append([]AuditEvent(nil), s.data.AuditEvents[start:]...)
+	sort.Slice(events, func(i, j int) bool { return events[i].At.After(events[j].At) })
+	return events
+}
+
 func (s *MetadataStore) SaveCertificate(certPEM, keyPEM []byte) (ServiceConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

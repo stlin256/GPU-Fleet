@@ -88,6 +88,7 @@ func TestBuiltInDashboardFallback(t *testing.T) {
 		"端口配置",
 		"HTTPS 证书",
 		"数据库下载",
+		"下载诊断包",
 		"在线更新",
 		"settings-update",
 		"版本与变更",
@@ -1059,8 +1060,8 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 		Service         serviceStatus `json:"service"`
 		RestartRequired bool          `json:"restart_required"`
 	}
-	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/proxy", map[string]string{"proxy_url": "http://127.0.0.1:7890"}, cookie, http.StatusOK, &proxyUpdate)
-	if !proxyUpdate.OK || proxyUpdate.Service.UpdateProxy != "http://127.0.0.1:7890" || proxyUpdate.RestartRequired {
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/proxy", map[string]string{"proxy_url": "http://proxy-user:local-dev-secret@127.0.0.1:7890"}, cookie, http.StatusOK, &proxyUpdate)
+	if !proxyUpdate.OK || proxyUpdate.Service.UpdateProxy != "http://proxy-user:local-dev-secret@127.0.0.1:7890" || proxyUpdate.RestartRequired {
 		t.Fatalf("unexpected update proxy response: %+v", proxyUpdate)
 	}
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/proxy", map[string]string{"proxy_url": "ftp://127.0.0.1:21"}, cookie, http.StatusBadRequest, nil)
@@ -1120,6 +1121,53 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 		if strings.HasPrefix(name, "certs/") {
 			t.Fatalf("database download must not include certificate private material, got %s", name)
 		}
+	}
+
+	if err := app.meta.AddAuditEvent(AuditEvent{
+		At:        time.Now().UTC(),
+		Type:      "diagnostics_test",
+		Message:   "captured remote address",
+		RemoteIP:  "203.0.113.42",
+		RequestID: "req-test",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app.updateMu.Lock()
+	app.updateStatusCache = updateStatus{
+		Supported: true,
+		Remote:    "https://repo-user:local-dev-secret@example.com/stlin256/GPU-Fleet.git",
+		CheckedAt: time.Now().UTC(),
+		Message:   "cached update status",
+		Detail:    "local-dev-secret",
+	}
+	app.updateStatusCacheOK = true
+	app.updateMu.Unlock()
+	diagnostics := downloadZipFileContents(t, handler, cookie, "/api/v1/admin/diagnostics/download")
+	raw, ok := diagnostics["diagnostics.json"]
+	if !ok {
+		t.Fatalf("expected diagnostics.json in diagnostics download, got %+v", diagnostics)
+	}
+	reportText := string(raw)
+	for _, forbidden := range []string{"local-dev-secret", "PRIVATE KEY", "203.0.113.42"} {
+		if strings.Contains(reportText, forbidden) {
+			t.Fatalf("diagnostics report leaked %q: %s", forbidden, reportText)
+		}
+	}
+	var report diagnosticsReport
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatal(err)
+	}
+	if report.Product != version.Product || report.Version != version.Version || report.Runtime.GoVersion == "" || report.Storage.DatabaseSizeBytes == 0 || len(report.Devices) == 0 {
+		t.Fatalf("unexpected diagnostics report summary: %+v", report)
+	}
+	if report.Service.UpdateProxy != "http://redacted:redacted@127.0.0.1:7890" {
+		t.Fatalf("expected redacted update proxy, got %q", report.Service.UpdateProxy)
+	}
+	if report.Update == nil || report.Update.Remote != "https://redacted:redacted@example.com/stlin256/GPU-Fleet.git" {
+		t.Fatalf("expected cached update status with redacted remote, got %+v", report.Update)
+	}
+	if len(report.Audit) == 0 || report.Audit[0].RemoteIP != "203.0.113.x" {
+		t.Fatalf("expected masked audit remote IP, got %+v", report.Audit)
 	}
 }
 
@@ -1447,28 +1495,44 @@ func sessionCookie(t *testing.T, rec *httptest.ResponseRecorder) *http.Cookie {
 
 func downloadZipEntries(t *testing.T, handler http.Handler, cookie *http.Cookie) map[string]bool {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/database/download", nil)
+	contents := downloadZipFileContents(t, handler, cookie, "/api/v1/admin/database/download")
+	entries := map[string]bool{}
+	for name := range contents {
+		entries[name] = true
+	}
+	return entries
+}
+
+func downloadZipFileContents(t *testing.T, handler http.Handler, cookie *http.Cookie, path string) map[string][]byte {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("database download: expected 200, got %d with body %q", rec.Code, rec.Body.String())
+		t.Fatalf("%s: expected 200, got %d with body %q", path, rec.Code, rec.Body.String())
 	}
 	reader, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries := map[string]bool{}
+	contents := map[string][]byte{}
 	for _, file := range reader.File {
-		entries[file.Name] = true
 		rc, err := file.Open()
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, _ = io.Copy(io.Discard, rc)
-		_ = rc.Close()
+		body, readErr := io.ReadAll(rc)
+		closeErr := rc.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if closeErr != nil {
+			t.Fatal(closeErr)
+		}
+		contents[file.Name] = body
 	}
-	return entries
+	return contents
 }
 
 func testCertificate(t *testing.T) ([]byte, []byte, time.Time) {

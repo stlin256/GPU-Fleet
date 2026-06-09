@@ -337,6 +337,7 @@ const en: Record<string, string> = {
   '数据库大小': 'Database size',
   '数据库大小 {size} · 已存储 {days} 天 · {free} 空闲': 'Database size {size} · stored {days} days · {free} free',
   '下载数据库': 'Download database',
+  '下载诊断包': 'Download diagnostics',
   '预留空间 MiB': 'Reserved space MiB',
   '保存预留': 'Save reserve',
   '磁盘预留至少 64 MiB': 'Disk reserve must be at least 64 MiB',

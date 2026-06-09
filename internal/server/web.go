@@ -1071,6 +1071,7 @@ const dashboardHTML = `<!doctype html>
         'HTTPS 证书': 'HTTPS certificate',
         'HTTPS 已启用': 'HTTPS enabled',
         '数据库下载': 'Database Download',
+        '下载诊断包': 'Download diagnostics',
         '数据库大小': 'Database size',
         '在线更新': 'Online Update',
         '版本与变更': 'Version & Changes',
@@ -1765,7 +1766,7 @@ const dashboardHTML = `<!doctype html>
             '</div>' +
             '<div class="settings-column settings-column-operations">' +
               settingsSectionHead('维护与发布', '数据库、在线更新和版本信息') +
-              operationPanel('数据库下载', '数据库大小 ' + fmtBytes(data.database_size_bytes || 0) + ' · ' + fmtStoredDays(data.metric_stored_days, data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a>', 'settings-database') +
+              operationPanel('数据库下载', '数据库大小 ' + fmtBytes(data.database_size_bytes || 0) + ' · ' + fmtStoredDays(data.metric_stored_days, data.retention_hours || 0) + ' · ' + fmtBytes(disk.free_bytes) + ' 空闲', 'DB', '<div class="settings-button-row"><a class="secondary action-button" href="/api/v1/admin/database/download" download>下载数据库</a><a class="secondary action-button" href="/api/v1/admin/diagnostics/download" download>下载诊断包</a></div>', 'settings-database') +
               updatePanel() +
               projectPanel() +
             '</div>' +

@@ -212,6 +212,12 @@ func Changelog() []ChangelogEntry {
 			Date:    "2026-06-09",
 			Title:   "运行诊断与长期数据查询强化",
 			TitleEN: "Operational diagnostics and long-range query hardening",
+			Added: []string{
+				"设置页新增只读诊断包下载，导出版本、运行时、磁盘、设备、GPU、进程、更新缓存和最近审计摘要，并脱敏代理凭据和远端 IP。",
+			},
+			AddedEN: []string{
+				"Settings now includes a read-only diagnostics package download with version, runtime, disk, device, GPU, process, cached update, and recent audit summaries while redacting proxy credentials and remote IPs.",
+			},
 			Fixed: []string{
 				"30D 统计查询现在和长范围曲线一样使用 rollup 边界容错，避免在 30 天边界附近回退扫描原始 gzip 分段导致响应变慢。",
 			},

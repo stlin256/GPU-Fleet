@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -58,6 +59,7 @@ type App struct {
 	updateExit            func()
 	logger                *log.Logger
 	scheme                string
+	startedAt             time.Time
 }
 
 const webSessionTTL = 30 * 24 * time.Hour
@@ -150,6 +152,7 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		updateExit:            func() { os.Exit(0) },
 		logger:                logger,
 		scheme:                scheme,
+		startedAt:             time.Now().UTC(),
 	}
 	if !config.DisableUpdateMonitor {
 		app.startUpdateMonitorLoop()
@@ -186,6 +189,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/admin/certificate", a.requireSession(a.handleAdminCertificate))
 	mux.HandleFunc("/api/v1/admin/restart", a.requireSession(a.handleAdminRestart))
 	mux.HandleFunc("/api/v1/admin/database/download", a.requireSession(a.handleDatabaseDownload))
+	mux.HandleFunc("/api/v1/admin/diagnostics/download", a.requireSession(a.handleDiagnosticsDownload))
 	mux.HandleFunc("/api/v1/admin/update/status", a.requireSession(a.handleUpdateStatus))
 	mux.HandleFunc("/api/v1/admin/update/apply", a.requireSession(a.handleUpdateApply))
 	mux.HandleFunc("/api/v1/admin/devices", a.requireSession(a.handleCreateDevice))
@@ -748,6 +752,39 @@ func (a *App) handleDatabaseDownload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (a *App) handleDiagnosticsDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	report := a.diagnosticsReport(r)
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", "gpufleet-diagnostics-"+time.Now().UTC().Format("20060102-150405")+".zip"))
+	archive := zip.NewWriter(w)
+	defer archive.Close()
+	if err := addJSONZipEntry(archive, "diagnostics.json", report); err != nil {
+		a.logger.Printf("diagnostics download failed: %v", err)
+	}
+}
+
+func addJSONZipEntry(archive *zip.Writer, name string, value any) error {
+	raw, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	header := &zip.FileHeader{
+		Name:   name,
+		Method: zip.Deflate,
+	}
+	header.SetModTime(time.Now().UTC())
+	writer, err := archive.CreateHeader(header)
+	if err != nil {
+		return err
+	}
+	_, err = writer.Write(raw)
+	return err
+}
+
 func (a *App) handleLogout(w http.ResponseWriter, r *http.Request) {
 	a.sessions.Clear(w, r)
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -947,6 +984,296 @@ func (a *App) overviewResponse(r *http.Request, guest bool) overviewResponse {
 		response.Service = serviceStatusFromGuest(a.guestServiceStatus())
 	}
 	return response
+}
+
+func (a *App) diagnosticsReport(r *http.Request) diagnosticsReport {
+	now := time.Now().UTC()
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	service := a.serviceStatus(r)
+	service.UpdateProxy = redactURLCredentials(service.UpdateProxy)
+
+	dataDir := a.config.DataDir
+	if abs, err := filepath.Abs(a.config.DataDir); err == nil {
+		dataDir = abs
+	}
+	diskStatus, diskErr := a.metrics.DiskStatus()
+	storage := diagnosticsStorage{
+		DataDir:             dataDir,
+		DatabaseSizeBytes:   databaseSizeBytes(a.config.DataDir),
+		RetentionHours:      int(a.config.Retention.Hours()),
+		MetricStoredDays:    a.metrics.StoredDays(),
+		MinFreeSpaceBytes:   a.config.MinFreeBytes,
+		Disk:                diskStatus,
+		MetricSegmentCount:  0,
+		MetricSegmentOldest: time.Time{},
+		MetricSegmentNewest: time.Time{},
+	}
+	if diskErr != nil {
+		storage.DiskError = diskErr.Error()
+	}
+	segments := a.metricSegmentDiagnostics()
+	storage.MetricSegmentCount = segments.Count
+	storage.MetricSegmentOldest = segments.Oldest
+	storage.MetricSegmentNewest = segments.Newest
+	storage.MetricSegmentError = segments.Error
+
+	processes := a.processDiagnostics(a.processes.Latest("", ""))
+	devices := diagnosticsDevices(a.meta.ListDevices(), now)
+	gpus := diagnosticsGPUs(a.metrics.Latest())
+
+	return diagnosticsReport{
+		Product:     version.Product,
+		Version:     version.Version,
+		Commit:      version.Commit,
+		BuildTime:   version.BuildTime,
+		GeneratedAt: now,
+		UptimeSeconds: func() int64 {
+			if a.startedAt.IsZero() {
+				return 0
+			}
+			return int64(now.Sub(a.startedAt).Seconds())
+		}(),
+		Runtime: diagnosticsRuntime{
+			GoVersion:        runtime.Version(),
+			GOOS:             runtime.GOOS,
+			GOARCH:           runtime.GOARCH,
+			NumCPU:           runtime.NumCPU(),
+			NumGoroutine:     runtime.NumGoroutine(),
+			MemoryAllocBytes: mem.Alloc,
+			MemorySysBytes:   mem.Sys,
+			HeapAllocBytes:   mem.HeapAlloc,
+			HeapObjects:      mem.HeapObjects,
+			NextGCBytes:      mem.NextGC,
+			NumGC:            mem.NumGC,
+		},
+		Service:   service,
+		Storage:   storage,
+		Devices:   devices,
+		GPUs:      gpus,
+		Processes: processes,
+		Update:    a.cachedDiagnosticsUpdateStatus(),
+		Audit:     diagnosticsAuditEvents(a.meta.RecentAuditEvents(100)),
+	}
+}
+
+func (a *App) metricSegmentDiagnostics() diagnosticsMetricSegments {
+	files, err := a.metrics.segmentFiles()
+	if err != nil {
+		return diagnosticsMetricSegments{Error: err.Error()}
+	}
+	out := diagnosticsMetricSegments{Count: len(files)}
+	for _, path := range files {
+		at, ok := segmentStart(path)
+		if !ok {
+			continue
+		}
+		if out.Oldest.IsZero() || at.Before(out.Oldest) {
+			out.Oldest = at
+		}
+		end := at.Add(time.Hour)
+		if out.Newest.IsZero() || end.After(out.Newest) {
+			out.Newest = end
+		}
+	}
+	return out
+}
+
+func diagnosticsDevices(devices []Device, now time.Time) []diagnosticsDevice {
+	out := make([]diagnosticsDevice, 0, len(devices))
+	for _, device := range devices {
+		status := "offline"
+		if device.Enabled && !device.LastSeenAt.IsZero() && now.Sub(device.LastSeenAt) <= 45*time.Second {
+			status = "online"
+		}
+		out = append(out, diagnosticsDevice{
+			ID:           device.ID,
+			Alias:        device.Alias,
+			Enabled:      device.Enabled,
+			Status:       status,
+			Hostname:     device.Hostname,
+			OS:           device.OS,
+			OSVersion:    device.OSVersion,
+			AgentVersion: device.AgentVersion,
+			GPUCount:     device.GPUCount,
+			CreatedAt:    device.CreatedAt,
+			LastSeenAt:   device.LastSeenAt,
+			LastSampleAt: device.LastSampleAt,
+			LastError:    device.LastError,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		left := out[i].Alias
+		if left == "" {
+			left = out[i].ID
+		}
+		right := out[j].Alias
+		if right == "" {
+			right = out[j].ID
+		}
+		if left == right {
+			return out[i].ID < out[j].ID
+		}
+		return left < right
+	})
+	return out
+}
+
+func diagnosticsGPUs(latest []StoredGPU) []diagnosticsGPU {
+	out := make([]diagnosticsGPU, 0, len(latest))
+	for _, item := range latest {
+		gpu := item.GPU
+		out = append(out, diagnosticsGPU{
+			DeviceID:              item.DeviceID,
+			GPUID:                 gpu.GPUID,
+			Timestamp:             item.Timestamp,
+			Name:                  gpu.Name,
+			MemoryTotalBytes:      gpu.MemoryTotalBytes,
+			MemoryUsedBytes:       gpu.MemoryUsedBytes,
+			MemoryFreeBytes:       gpu.MemoryFreeBytes,
+			MemoryReservedBytes:   gpu.MemoryReservedBytes,
+			UtilizationGPUPercent: gpu.UtilizationGPUPercent,
+			UtilizationMemPercent: gpu.UtilizationMemPercent,
+			TemperatureCelsius:    gpu.TemperatureCelsius,
+			TemperatureMemCelsius: gpu.TemperatureMemCelsius,
+			PowerDrawWatts:        gpu.PowerDrawWatts,
+			PowerLimitWatts:       gpu.PowerLimitWatts,
+			FanSpeedPercent:       gpu.FanSpeedPercent,
+			GraphicsClockMHz:      gpu.GraphicsClockMHz,
+			MemoryClockMHz:        gpu.MemoryClockMHz,
+			SMClockMHz:            gpu.SMClockMHz,
+			PState:                gpu.PState,
+			PCIeLinkGeneration:    gpu.PCIeLinkGeneration,
+			PCIeLinkWidth:         gpu.PCIeLinkWidth,
+			PCIeLinkGenerationMax: gpu.PCIeLinkGenerationMax,
+			PCIeLinkWidthMax:      gpu.PCIeLinkWidthMax,
+			ClockThrottleReasons:  gpu.ClockThrottleReasons,
+			CollectionError:       gpu.CollectionError,
+		})
+	}
+	return out
+}
+
+func (a *App) processDiagnostics(items []StoredProcessSnapshot) diagnosticsProcesses {
+	byGPU := map[string]*diagnosticsProcessGPU{}
+	for _, item := range items {
+		key := item.DeviceID + "/" + item.Process.GPUID
+		entry := byGPU[key]
+		if entry == nil {
+			entry = &diagnosticsProcessGPU{
+				DeviceID: item.DeviceID,
+				GPUID:    item.Process.GPUID,
+			}
+			byGPU[key] = entry
+		}
+		entry.ProcessCount++
+		if entry.LastSeenAt.IsZero() || item.Timestamp.After(entry.LastSeenAt) {
+			entry.LastSeenAt = item.Timestamp
+		}
+	}
+	out := diagnosticsProcesses{
+		TotalProcessCount: len(items),
+		ByGPU:             make([]diagnosticsProcessGPU, 0, len(byGPU)),
+	}
+	for _, entry := range byGPU {
+		out.ByGPU = append(out.ByGPU, *entry)
+	}
+	sort.Slice(out.ByGPU, func(i, j int) bool {
+		if out.ByGPU[i].DeviceID == out.ByGPU[j].DeviceID {
+			return out.ByGPU[i].GPUID < out.ByGPU[j].GPUID
+		}
+		return out.ByGPU[i].DeviceID < out.ByGPU[j].DeviceID
+	})
+	return out
+}
+
+func (a *App) cachedDiagnosticsUpdateStatus() *diagnosticsUpdateStatus {
+	a.updateMu.Lock()
+	if !a.updateStatusCacheOK || a.updateStatusCache.CheckedAt.IsZero() {
+		a.updateMu.Unlock()
+		return nil
+	}
+	cached := a.updateStatusCache
+	a.updateMu.Unlock()
+	return &diagnosticsUpdateStatus{
+		Available:      cached.Available,
+		Supported:      cached.Supported,
+		Dirty:          cached.Dirty,
+		Branch:         cached.Branch,
+		Remote:         redactURLCredentials(cached.Remote),
+		Upstream:       cached.Upstream,
+		LocalCommit:    cached.LocalCommit,
+		RemoteCommit:   cached.RemoteCommit,
+		RunningVersion: cached.RunningVersion,
+		RunningCommit:  cached.RunningCommit,
+		RunningBuild:   cached.RunningBuild,
+		RepoVersion:    cached.RepoVersion,
+		BinaryOutdated: cached.BinaryOutdated,
+		Behind:         cached.Behind,
+		Ahead:          cached.Ahead,
+		CheckedAt:      cached.CheckedAt,
+		Failed:         cached.Failed,
+		Message:        redactURLCredentials(cached.Message),
+	}
+}
+
+func diagnosticsAuditEvents(events []AuditEvent) []diagnosticsAuditEvent {
+	out := make([]diagnosticsAuditEvent, 0, len(events))
+	for _, event := range events {
+		out = append(out, diagnosticsAuditEvent{
+			At:        event.At,
+			Type:      event.Type,
+			Message:   event.Message,
+			Actor:     event.Actor,
+			RemoteIP:  maskRemoteIP(event.RemoteIP),
+			DeviceID:  event.DeviceID,
+			RequestID: event.RequestID,
+		})
+	}
+	return out
+}
+
+func redactURLCredentials(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User == nil {
+		return value
+	}
+	if _, hasPassword := parsed.User.Password(); hasPassword {
+		parsed.User = url.UserPassword("redacted", "redacted")
+	} else {
+		parsed.User = url.User("redacted")
+	}
+	return parsed.String()
+}
+
+func maskRemoteIP(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	host := value
+	if parsedHost, _, err := net.SplitHostPort(value); err == nil {
+		host = parsedHost
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return "redacted"
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return fmt.Sprintf("%d.%d.%d.x", ipv4[0], ipv4[1], ipv4[2])
+	}
+	ipv6 := ip.To16()
+	if ipv6 == nil {
+		return "redacted"
+	}
+	first := uint16(ipv6[0])<<8 | uint16(ipv6[1])
+	second := uint16(ipv6[2])<<8 | uint16(ipv6[3])
+	return fmt.Sprintf("%x:%x::x", first, second)
 }
 
 func chooseString(allowed bool, value string) string {
@@ -1627,6 +1954,145 @@ func (a *App) restartRequired(config ServiceConfig) bool {
 	portChanged := currentPortOK && config.Port > 0 && config.Port != currentPort
 	schemeChanged := config.HTTPS != (a.Scheme() == "https")
 	return portChanged || schemeChanged
+}
+
+type diagnosticsReport struct {
+	Product       string                   `json:"product"`
+	Version       string                   `json:"version"`
+	Commit        string                   `json:"commit"`
+	BuildTime     string                   `json:"build_time,omitempty"`
+	GeneratedAt   time.Time                `json:"generated_at"`
+	UptimeSeconds int64                    `json:"uptime_seconds"`
+	Runtime       diagnosticsRuntime       `json:"runtime"`
+	Service       serviceStatus            `json:"service"`
+	Storage       diagnosticsStorage       `json:"storage"`
+	Devices       []diagnosticsDevice      `json:"devices"`
+	GPUs          []diagnosticsGPU         `json:"gpus"`
+	Processes     diagnosticsProcesses     `json:"processes"`
+	Update        *diagnosticsUpdateStatus `json:"update,omitempty"`
+	Audit         []diagnosticsAuditEvent  `json:"audit"`
+}
+
+type diagnosticsRuntime struct {
+	GoVersion        string `json:"go_version"`
+	GOOS             string `json:"goos"`
+	GOARCH           string `json:"goarch"`
+	NumCPU           int    `json:"num_cpu"`
+	NumGoroutine     int    `json:"num_goroutine"`
+	MemoryAllocBytes uint64 `json:"memory_alloc_bytes"`
+	MemorySysBytes   uint64 `json:"memory_sys_bytes"`
+	HeapAllocBytes   uint64 `json:"heap_alloc_bytes"`
+	HeapObjects      uint64 `json:"heap_objects"`
+	NextGCBytes      uint64 `json:"next_gc_bytes"`
+	NumGC            uint32 `json:"num_gc"`
+}
+
+type diagnosticsStorage struct {
+	DataDir             string     `json:"data_dir"`
+	DatabaseSizeBytes   uint64     `json:"database_size_bytes"`
+	RetentionHours      int        `json:"retention_hours"`
+	MetricStoredDays    int        `json:"metric_stored_days"`
+	MinFreeSpaceBytes   uint64     `json:"min_free_space_bytes"`
+	Disk                DiskStatus `json:"disk"`
+	DiskError           string     `json:"disk_error,omitempty"`
+	MetricSegmentCount  int        `json:"metric_segment_count"`
+	MetricSegmentOldest time.Time  `json:"metric_segment_oldest,omitempty"`
+	MetricSegmentNewest time.Time  `json:"metric_segment_newest,omitempty"`
+	MetricSegmentError  string     `json:"metric_segment_error,omitempty"`
+}
+
+type diagnosticsMetricSegments struct {
+	Count  int
+	Oldest time.Time
+	Newest time.Time
+	Error  string
+}
+
+type diagnosticsDevice struct {
+	ID           string    `json:"id"`
+	Alias        string    `json:"alias"`
+	Enabled      bool      `json:"enabled"`
+	Status       string    `json:"status"`
+	Hostname     string    `json:"hostname,omitempty"`
+	OS           string    `json:"os,omitempty"`
+	OSVersion    string    `json:"os_version,omitempty"`
+	AgentVersion string    `json:"agent_version,omitempty"`
+	GPUCount     int       `json:"gpu_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	LastSeenAt   time.Time `json:"last_seen_at,omitempty"`
+	LastSampleAt time.Time `json:"last_sample_at,omitempty"`
+	LastError    string    `json:"last_error,omitempty"`
+}
+
+type diagnosticsGPU struct {
+	DeviceID              string    `json:"device_id"`
+	GPUID                 string    `json:"gpu_id"`
+	Timestamp             time.Time `json:"timestamp"`
+	Name                  string    `json:"name"`
+	MemoryTotalBytes      uint64    `json:"memory_total_bytes"`
+	MemoryUsedBytes       uint64    `json:"memory_used_bytes"`
+	MemoryFreeBytes       uint64    `json:"memory_free_bytes,omitempty"`
+	MemoryReservedBytes   uint64    `json:"memory_reserved_bytes,omitempty"`
+	UtilizationGPUPercent *float64  `json:"utilization_gpu_percent,omitempty"`
+	UtilizationMemPercent *float64  `json:"utilization_memory_percent,omitempty"`
+	TemperatureCelsius    *float64  `json:"temperature_celsius,omitempty"`
+	TemperatureMemCelsius *float64  `json:"temperature_memory_celsius,omitempty"`
+	PowerDrawWatts        *float64  `json:"power_draw_watts,omitempty"`
+	PowerLimitWatts       *float64  `json:"power_limit_watts,omitempty"`
+	FanSpeedPercent       *float64  `json:"fan_speed_percent,omitempty"`
+	GraphicsClockMHz      *float64  `json:"graphics_clock_mhz,omitempty"`
+	MemoryClockMHz        *float64  `json:"memory_clock_mhz,omitempty"`
+	SMClockMHz            *float64  `json:"sm_clock_mhz,omitempty"`
+	PState                string    `json:"pstate,omitempty"`
+	PCIeLinkGeneration    string    `json:"pcie_link_generation,omitempty"`
+	PCIeLinkWidth         string    `json:"pcie_link_width,omitempty"`
+	PCIeLinkGenerationMax string    `json:"pcie_link_generation_max,omitempty"`
+	PCIeLinkWidthMax      string    `json:"pcie_link_width_max,omitempty"`
+	ClockThrottleReasons  string    `json:"clock_throttle_reasons,omitempty"`
+	CollectionError       string    `json:"collection_error,omitempty"`
+}
+
+type diagnosticsProcesses struct {
+	TotalProcessCount int                     `json:"total_process_count"`
+	ByGPU             []diagnosticsProcessGPU `json:"by_gpu"`
+}
+
+type diagnosticsProcessGPU struct {
+	DeviceID     string    `json:"device_id"`
+	GPUID        string    `json:"gpu_id"`
+	ProcessCount int       `json:"process_count"`
+	LastSeenAt   time.Time `json:"last_seen_at,omitempty"`
+}
+
+type diagnosticsUpdateStatus struct {
+	Available      bool      `json:"available"`
+	Supported      bool      `json:"supported"`
+	Dirty          bool      `json:"dirty"`
+	Branch         string    `json:"branch,omitempty"`
+	Remote         string    `json:"remote,omitempty"`
+	Upstream       string    `json:"upstream,omitempty"`
+	LocalCommit    string    `json:"local_commit,omitempty"`
+	RemoteCommit   string    `json:"remote_commit,omitempty"`
+	RunningVersion string    `json:"running_version,omitempty"`
+	RunningCommit  string    `json:"running_commit,omitempty"`
+	RunningBuild   string    `json:"running_build_time,omitempty"`
+	RepoVersion    string    `json:"repo_version,omitempty"`
+	BinaryOutdated bool      `json:"binary_outdated"`
+	Behind         int       `json:"behind"`
+	Ahead          int       `json:"ahead"`
+	CheckedAt      time.Time `json:"checked_at"`
+	Failed         bool      `json:"failed,omitempty"`
+	Message        string    `json:"message,omitempty"`
+}
+
+type diagnosticsAuditEvent struct {
+	At        time.Time `json:"at"`
+	Type      string    `json:"type"`
+	Message   string    `json:"message"`
+	Actor     string    `json:"actor,omitempty"`
+	RemoteIP  string    `json:"remote_ip,omitempty"`
+	DeviceID  string    `json:"device_id,omitempty"`
+	RequestID string    `json:"request_id,omitempty"`
 }
 
 type overviewResponse struct {

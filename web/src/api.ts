@@ -542,3 +542,7 @@ export function restartService() {
 export function databaseDownloadURL() {
   return '/api/v1/admin/database/download';
 }
+
+export function diagnosticsDownloadURL() {
+  return '/api/v1/admin/diagnostics/download';
+}

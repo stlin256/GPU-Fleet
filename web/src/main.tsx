@@ -46,6 +46,7 @@ import {
   changePassword,
   createDevice,
   databaseDownloadURL,
+  diagnosticsDownloadURL,
   deleteDevice,
   Device,
   getGPUSeries,
@@ -3523,10 +3524,16 @@ function DatabaseSettings({ data }: { data?: Overview }) {
           <p>{t('数据库大小 {size} · 已存储 {days} 天 · {free} 空闲', { size, days, free })}</p>
         </div>
       </div>
-      <a className="secondary action-button" href={databaseDownloadURL()} download>
-        <Download size={16} />
-        {t('下载数据库')}
-      </a>
+      <div className="settings-button-row">
+        <a className="secondary action-button" href={databaseDownloadURL()} download>
+          <Download size={16} />
+          {t('下载数据库')}
+        </a>
+        <a className="secondary action-button" href={diagnosticsDownloadURL()} download>
+          <Download size={16} />
+          {t('下载诊断包')}
+        </a>
+      </div>
     </article>
   );
 }
