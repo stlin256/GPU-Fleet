@@ -1052,6 +1052,60 @@ func TestEnergySeriesForGPUUsesThirtyDayRollup(t *testing.T) {
 	}
 }
 
+func TestLegacyAgentSignatureAcceptedOnlyForKnownOldAgent(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	device, secret, err := app.meta.CreateDevice("legacy-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/agent/heartbeat"
+	at := time.Now().UTC().Truncate(time.Second)
+	heartbeat := model.Heartbeat{
+		AgentVersion: "0.1.0",
+		Hostname:     "legacy-host",
+		OS:           "linux",
+		GPUCount:     1,
+		Timestamp:    at,
+	}
+	body, err := json.Marshal(heartbeat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyStatus := func(nonce string) int {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+		req.Header.Set(auth.HeaderDeviceID, device.ID)
+		req.Header.Set(auth.HeaderTimestamp, at.Format(time.RFC3339))
+		req.Header.Set(auth.HeaderNonce, nonce)
+		req.Header.Set(auth.HeaderSignature, auth.LegacySign(http.MethodPost, path, body, secret, at, nonce))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if status := legacyStatus("legacy-signature-without-known-version"); status != http.StatusUnauthorized {
+		t.Fatalf("expected legacy signature to be rejected before the device is known old, got %d", status)
+	}
+	if err := app.meta.UpdateHeartbeat(device.ID, func(device *Device) {
+		device.AgentVersion = "0.1.0"
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if status := legacyStatus("legacy-signature-for-old-agent"); status != http.StatusAccepted {
+		t.Fatalf("expected legacy signature to be accepted for known old agent, got %d", status)
+	}
+	assertAuditType(t, app, "device_auth_legacy_signature")
+	if err := app.meta.UpdateHeartbeat(device.ID, func(device *Device) {
+		device.AgentVersion = version.Version
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if status := legacyStatus("legacy-signature-for-current-agent"); status != http.StatusUnauthorized {
+		t.Fatalf("expected legacy signature to be rejected for current agent, got %d", status)
+	}
+}
+
 func TestInvalidAgentSignatureDoesNotConsumeNonce(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))

@@ -137,6 +137,12 @@ type Device struct {
 	LastRemoteAddr string    `json:"last_remote_addr,omitempty"`
 }
 
+type DeviceAuthInfo struct {
+	Secret       string
+	Enabled      bool
+	AgentVersion string
+}
+
 type WebSession struct {
 	CreatedAt  time.Time `json:"created_at"`
 	LastSeenAt time.Time `json:"last_seen_at"`
@@ -790,6 +796,20 @@ func (s *MetadataStore) DeviceSecret(deviceID string) (string, bool, bool) {
 		return "", false, false
 	}
 	return device.Secret, device.Enabled, true
+}
+
+func (s *MetadataStore) DeviceAuth(deviceID string) (DeviceAuthInfo, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	device, ok := s.data.Devices[deviceID]
+	if !ok {
+		return DeviceAuthInfo{}, false
+	}
+	return DeviceAuthInfo{
+		Secret:       device.Secret,
+		Enabled:      device.Enabled,
+		AgentVersion: device.AgentVersion,
+	}, true
 }
 
 func (s *MetadataStore) UpdateHeartbeat(deviceID string, update func(*Device)) error {

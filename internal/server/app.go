@@ -50,6 +50,8 @@ type App struct {
 	loginRate             *RateLimiter
 	loginGuard            *LoginGuard
 	agentRate             *RateLimiter
+	agentAuthCompatMu     sync.Mutex
+	legacyAgentAuthAudit  map[string]time.Time
 	updateMu              sync.Mutex
 	updateStatusCache     updateStatus
 	updateStatusCacheOK   bool
@@ -146,6 +148,7 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		loginRate:             NewRateLimiter(10, time.Minute),
 		loginGuard:            NewLoginGuard(5, 30*time.Minute, 5*time.Minute, time.Hour),
 		agentRate:             NewRateLimiter(240, time.Minute),
+		legacyAgentAuthAudit:  map[string]time.Time{},
 		updateBuildServer:     defaultBuildServerForUpdate,
 		updateScheduleRestart: defaultScheduleRestartAfterUpdate,
 		updateMonitorWake:     make(chan struct{}, 1),
@@ -1681,13 +1684,13 @@ func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string,
 		writeError(w, http.StatusBadRequest, err.Error())
 		return "", nil, false
 	}
-	secret, enabled, exists := a.meta.DeviceSecret(deviceID)
+	deviceAuth, exists := a.meta.DeviceAuth(deviceID)
 	if !exists {
 		_ = a.meta.AddAudit("device_auth_failed", "unknown device attempted authentication")
 		writeError(w, http.StatusUnauthorized, "unknown device")
 		return "", nil, false
 	}
-	if !enabled {
+	if !deviceAuth.Enabled {
 		_ = a.meta.AddAudit("device_auth_failed", fmt.Sprintf("disabled device %s attempted authentication", deviceID))
 		writeError(w, http.StatusForbidden, "device disabled")
 		return "", nil, false
@@ -1705,19 +1708,95 @@ func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string,
 		r.Header.Get(auth.HeaderTimestamp),
 		nonce,
 		r.Header.Get(auth.HeaderSignature),
-		secret,
+		deviceAuth.Secret,
 		time.Now().UTC(),
 		5*time.Minute,
 	); err != nil {
-		_ = a.meta.AddAudit("device_auth_failed", fmt.Sprintf("authentication failed for %s: %v", deviceID, err))
-		writeError(w, http.StatusUnauthorized, err.Error())
-		return "", nil, false
+		if !allowLegacyAgentSignature(deviceAuth.AgentVersion) || auth.VerifyLegacy(
+			r.Method,
+			r.URL.EscapedPath(),
+			body,
+			r.Header.Get(auth.HeaderTimestamp),
+			nonce,
+			r.Header.Get(auth.HeaderSignature),
+			deviceAuth.Secret,
+			time.Now().UTC(),
+			5*time.Minute,
+		) != nil {
+			_ = a.meta.AddAudit("device_auth_failed", fmt.Sprintf("authentication failed for %s: %v", deviceID, err))
+			writeError(w, http.StatusUnauthorized, err.Error())
+			return "", nil, false
+		}
+		a.auditLegacyAgentSignature(deviceID, deviceAuth.AgentVersion)
 	}
 	if !a.nonces.Accept(deviceID, nonce, time.Now()) {
 		writeError(w, http.StatusConflict, "replayed nonce")
 		return "", nil, false
 	}
 	return deviceID, body, true
+}
+
+func allowLegacyAgentSignature(agentVersion string) bool {
+	parts, ok := parseVersionParts(agentVersion)
+	if !ok {
+		return false
+	}
+	target := [3]int{0, 1, 9}
+	for index := 0; index < len(parts); index++ {
+		if parts[index] != target[index] {
+			return parts[index] < target[index]
+		}
+	}
+	return false
+}
+
+func parseVersionParts(raw string) ([3]int, bool) {
+	var out [3]int
+	raw = strings.TrimSpace(strings.TrimPrefix(raw, "v"))
+	if raw == "" {
+		return out, false
+	}
+	parts := strings.Split(raw, ".")
+	if len(parts) < 3 {
+		return out, false
+	}
+	for index := 0; index < 3; index++ {
+		part := parts[index]
+		digits := strings.Builder{}
+		for _, item := range part {
+			if item < '0' || item > '9' {
+				break
+			}
+			digits.WriteRune(item)
+		}
+		if digits.Len() == 0 {
+			return out, false
+		}
+		value, err := strconv.Atoi(digits.String())
+		if err != nil {
+			return out, false
+		}
+		out[index] = value
+	}
+	return out, true
+}
+
+func (a *App) auditLegacyAgentSignature(deviceID, agentVersion string) {
+	now := time.Now().UTC()
+	a.agentAuthCompatMu.Lock()
+	last := a.legacyAgentAuthAudit[deviceID]
+	if !last.IsZero() && now.Sub(last) < time.Hour {
+		a.agentAuthCompatMu.Unlock()
+		return
+	}
+	a.legacyAgentAuthAudit[deviceID] = now
+	a.agentAuthCompatMu.Unlock()
+	_ = a.meta.AddAuditEvent(AuditEvent{
+		At:       now,
+		Type:     "device_auth_legacy_signature",
+		Message:  fmt.Sprintf("accepted legacy HMAC signature for %s from agent %s; upgrade the agent to %s or newer", deviceID, agentVersion, version.Version),
+		DeviceID: deviceID,
+	})
 }
 
 func (a *App) requireSession(next http.HandlerFunc) http.HandlerFunc {

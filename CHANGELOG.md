@@ -54,6 +54,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: 30D stats queries now use the same rollup boundary tolerance as long-range series, avoiding slow raw gzip scans near the 30-day edge.
 - zh-CN: 修复在线更新后等待恢复可能一直停在“重启中”的问题；更新响应会显式返回目标 commit，前端超时后会清理 pending 状态并刷新，服务端启动时也会自动补救遗留的 `.next` 二进制替换。
 - en-US: Fixed post-update recovery potentially staying in the restarting state forever; update responses now include the exact target commit, the frontend clears stale pending recovery after timeout, and server startup can recover a leftover `.next` executable replacement.
+- zh-CN: 修复 0.1.9 服务端升级后旧版 Agent 因 HMAC 签名串尚未包含 `device_id` 而全部掉线的问题；服务端仅对 metadata 中已知的 0.1.9 之前 Agent 临时接受旧签名并记录审计，新版 Agent 仍必须使用绑定 `device_id` 的签名。
+- en-US: Fixed older Agents going offline after a 0.1.9 server upgrade because their HMAC signing string did not yet include `device_id`; the server temporarily accepts legacy signatures only for known pre-0.1.9 Agents recorded in metadata and audits the compatibility path, while current Agents must still use device-bound signatures.
 
 ## [0.1.8] - 2026-06-09
 

@@ -20,6 +20,8 @@ Content-Encoding: gzip
 
 签名串包含请求方法、路径、`device_id`、时间戳、nonce 和请求体 SHA-256。`device_id` 是 HMAC 输入的一部分，避免同一 secret 被误复用时签名可跨设备重放。
 
+兼容说明：0.1.9 服务端会临时兼容 metadata 中已记录且版本低于 0.1.9 的旧 Agent 签名串，以避免服务端先升级导致旧 Agent 全部离线。该兼容路径只适用于已知旧设备，会写入 `device_auth_legacy_signature` 审计事件；新 Agent、未知设备和未记录版本的设备必须使用包含 `device_id` 的签名串。
+
 ## Agent 心跳
 
 ```text
