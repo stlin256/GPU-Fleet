@@ -7,13 +7,7 @@ Wants=network-online.target
 Type=simple
 EnvironmentFile=-/etc/gpufleet/agent.env
 ExecStart=/usr/local/bin/gpufleet-agent \
-  -server-url ${GPUFLEET_SERVER_URL} \
-  -device-id ${GPUFLEET_DEVICE_ID} \
-  -secret ${GPUFLEET_SECRET} \
-  -interval ${GPUFLEET_INTERVAL} \
-  -config-interval ${GPUFLEET_CONFIG_INTERVAL} \
-  -queue-path /var/lib/gpufleet-agent/queue \
-  -queue-max-mb ${GPUFLEET_QUEUE_MAX_MB}
+  -queue-path /var/lib/gpufleet-agent/queue
 Restart=always
 RestartSec=5
 NoNewPrivileges=true

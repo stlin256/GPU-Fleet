@@ -9,6 +9,7 @@ param(
   [string]$Secret,
   [int]$IntervalSeconds = 10,
   [int]$ConfigIntervalSeconds = 3600,
+  [int]$UpdateCheckIntervalSeconds = 1800,
   [int]$QueueMaxMB = 128,
   [string]$ServiceName = "GPUFleetAgent"
 )
@@ -31,6 +32,7 @@ $args = @(
   "-secret", $Secret,
   "-interval", $IntervalSeconds,
   "-config-interval", $ConfigIntervalSeconds,
+  "-update-check-interval", $UpdateCheckIntervalSeconds,
   "-queue-path", $queuePath,
   "-queue-max-mb", $QueueMaxMB
 )
@@ -50,4 +52,5 @@ New-Service `
   -StartupType Automatic
 
 Start-Service -Name $ServiceName
+sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
 Write-Host "Installed and started $ServiceName"

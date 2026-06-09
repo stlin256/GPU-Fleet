@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"runtime"
@@ -11,13 +12,14 @@ import (
 )
 
 type Runner struct {
-	Client           *Client
-	Collector        Collector
-	Queue            *SampleQueue
-	SampleInterval   time.Duration
-	ConfigInterval   time.Duration
-	CollectProcesses bool
-	Once             bool
+	Client              *Client
+	Collector           Collector
+	Queue               *SampleQueue
+	SampleInterval      time.Duration
+	ConfigInterval      time.Duration
+	UpdateCheckInterval time.Duration
+	CollectProcesses    bool
+	Once                bool
 }
 
 func (r Runner) Run(ctx context.Context) error {
@@ -30,11 +32,16 @@ func (r Runner) Run(ctx context.Context) error {
 	if r.ConfigInterval == 0 {
 		r.ConfigInterval = time.Hour
 	}
+	if r.UpdateCheckInterval == 0 {
+		r.UpdateCheckInterval = 30 * time.Minute
+	}
 	if r.Collector.Command == "" {
 		r.Collector = NewCollector("", 5*time.Second)
 	}
 
 	configUploadedAt := time.Time{}
+	updateCheckedAt := time.Time{}
+	updateCheckInterval := r.UpdateCheckInterval
 	if err := r.collectAndUpload(ctx, true); err != nil {
 		if r.Once {
 			return err
@@ -42,6 +49,17 @@ func (r Runner) Run(ctx context.Context) error {
 		fmt.Fprintf(os.Stderr, "upload failed: %v\n", err)
 	} else {
 		configUploadedAt = time.Now()
+		nextInterval, updateErr := r.checkAgentUpdate(ctx)
+		if nextInterval > 0 {
+			updateCheckInterval = nextInterval
+		}
+		updateCheckedAt = time.Now()
+		if errors.Is(updateErr, ErrAgentUpdateApplied) {
+			return updateErr
+		}
+		if updateErr != nil {
+			fmt.Fprintf(os.Stderr, "agent update check failed: %v\n", updateErr)
+		}
 	}
 	if r.Once {
 		return nil
@@ -59,6 +77,19 @@ func (r Runner) Run(ctx context.Context) error {
 				fmt.Fprintf(os.Stderr, "upload failed: %v\n", err)
 			} else if includeConfig {
 				configUploadedAt = time.Now()
+			}
+			if updateCheckInterval > 0 && time.Since(updateCheckedAt) >= updateCheckInterval {
+				nextInterval, updateErr := r.checkAgentUpdate(ctx)
+				if nextInterval > 0 {
+					updateCheckInterval = nextInterval
+				}
+				updateCheckedAt = time.Now()
+				if errors.Is(updateErr, ErrAgentUpdateApplied) {
+					return updateErr
+				}
+				if updateErr != nil {
+					fmt.Fprintf(os.Stderr, "agent update check failed: %v\n", updateErr)
+				}
 			}
 		}
 	}
@@ -108,6 +139,46 @@ func (r Runner) collectAndUpload(ctx context.Context, includeConfig bool) error 
 		}
 	}
 	return err
+}
+
+func (r Runner) checkAgentUpdate(ctx context.Context) (time.Duration, error) {
+	policy, err := r.Client.GetUpdatePolicy()
+	if err != nil {
+		return 0, err
+	}
+	nextInterval := time.Duration(policy.CheckIntervalSeconds) * time.Second
+	if nextInterval <= 0 {
+		nextInterval = r.UpdateCheckInterval
+	}
+	if !policy.Enabled {
+		return nextInterval, nil
+	}
+	result, err := AgentUpdater{CurrentVersion: model.AgentVersion}.ApplyPolicy(ctx, policy)
+	event := model.AgentUpdateEvent{
+		Status:         result.Status,
+		CurrentVersion: model.AgentVersion,
+		TargetVersion:  result.TargetVersion,
+		ManifestURL:    result.ManifestURL,
+		ArtifactURL:    result.ArtifactURL,
+		ArtifactSHA256: result.ArtifactSHA256,
+		Message:        result.Message,
+	}
+	if err != nil && event.Message == "" {
+		event.Message = err.Error()
+	}
+	if event.Status == "" {
+		event.Status = "failed"
+	}
+	if postErr := r.Client.PostUpdateEvent(event); postErr != nil {
+		fmt.Fprintf(os.Stderr, "agent update event upload failed: %v\n", postErr)
+	}
+	if err != nil {
+		return nextInterval, err
+	}
+	if result.Status == "applied" {
+		return nextInterval, ErrAgentUpdateApplied
+	}
+	return nextInterval, nil
 }
 
 func hostname() string {

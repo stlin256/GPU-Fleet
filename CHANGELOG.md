@@ -23,6 +23,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Agents now upload detailed configuration snapshots covering runtime parameters, platform/runtime, nvidia-smi path and version, queue settings, and GPU static capabilities; the server stores only the latest authenticated report with an audit event and does not present it in the UI yet.
 - zh-CN: 设置页新增 Agent 更新策略控制面，可配置目标版本、签名 manifest 地址、Ed25519 公钥、检查间隔和并发上限；Agent 通过 HMAC 拉取策略并上报更新事件，服务端只存储策略和审计，不下发 shell 命令。
 - en-US: Settings now includes an Agent update policy control plane for target version, signed manifest URL, Ed25519 public key, check interval, and max parallelism; Agents fetch the policy with HMAC and report update events while the server only stores policy/audit data and never sends shell commands.
+- zh-CN: Agent 新增自更新执行面，按服务端策略拉取签名 manifest，校验 Ed25519 签名和 artifact sha256 后写入 `.next`、保留 `.bak` 并替换自身；Linux 依赖 systemd 自动拉起，Windows 安装脚本补充服务失败自动重启。
+- en-US: Agents now include the self-update execution path: they fetch signed manifests from server policy, verify Ed25519 signatures and artifact sha256, write `.next`, keep `.bak`, and replace their own binary; Linux relies on systemd restart and the Windows installer now configures service failure restarts.
 
 ### Changed / 变更
 

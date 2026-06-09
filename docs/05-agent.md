@@ -70,6 +70,34 @@ Agent 更新采用 pull 模型。设置页只保存目标版本、签名 manifes
 
 服务端不会下发 shell 命令，也不会 SSH/RDP 到设备。Agent 只允许在签名 manifest 和 artifact sha256 都校验通过后替换自己的二进制。
 
+Manifest 使用 JSON，`signature` 是对去掉 `signature` 字段后的 manifest JSON 做 Ed25519 签名并 base64 编码：
+
+```json
+{
+  "version": "0.1.10",
+  "created_at": "2026-06-09T12:00:00Z",
+  "artifacts": [
+    {
+      "os": "linux",
+      "arch": "amd64",
+      "url": "https://example.com/gpufleet-agent-linux-amd64",
+      "sha256": "..."
+    }
+  ],
+  "signature": "base64-ed25519-signature"
+}
+```
+
+更新执行流程：
+
+- Agent 使用设置页配置的 Ed25519 公钥验证 manifest。
+- 按本机 `GOOS/GOARCH` 选择 artifact。
+- 下载 artifact 后校验 sha256。
+- 写入当前二进制旁的 `.next` 文件。
+- 替换前保留 `.bak`。
+- Linux systemd 依靠 `Restart=always` 拉起新进程；Windows 安装脚本配置服务失败自动重启，当前 exe 被锁定时使用本地 helper 等待进程退出后替换。
+- 检查、跳过、失败、应用结果都会上报为 Agent 更新事件，服务端写入审计。
+
 ## 本地权限
 
 Agent 不应以高权限运行，除非采集环境确实需要。

@@ -23,6 +23,7 @@ func main() {
 	var intervalSeconds int
 	var queueMaxMB int
 	var configIntervalSeconds int
+	var updateCheckIntervalSeconds int
 	var once bool
 	var printOnly bool
 	var collectProcesses bool
@@ -36,6 +37,7 @@ func main() {
 	flag.StringVar(&queuePath, "queue-path", env("GPUFLEET_QUEUE_PATH", "agent-queue"), "local offline queue directory")
 	flag.IntVar(&intervalSeconds, "interval", envInt("GPUFLEET_INTERVAL", 10), "sample interval seconds")
 	flag.IntVar(&configIntervalSeconds, "config-interval", envInt("GPUFLEET_CONFIG_INTERVAL", 3600), "device configuration upload interval seconds")
+	flag.IntVar(&updateCheckIntervalSeconds, "update-check-interval", envInt("GPUFLEET_UPDATE_CHECK_INTERVAL", 1800), "agent update policy check interval seconds")
 	flag.IntVar(&queueMaxMB, "queue-max-mb", envInt("GPUFLEET_QUEUE_MAX_MB", 128), "maximum local queue size in MiB")
 	flag.BoolVar(&once, "once", false, "collect and upload one sample")
 	flag.BoolVar(&printOnly, "print", false, "collect one sample and print JSON without uploading")
@@ -86,12 +88,13 @@ func main() {
 			Timeout:   10 * time.Second,
 			UseGzip:   gzipBody,
 		},
-		Collector:        agent.NewCollector(nvidiaSMI, 5*time.Second),
-		Queue:            queue,
-		SampleInterval:   time.Duration(intervalSeconds) * time.Second,
-		ConfigInterval:   time.Duration(configIntervalSeconds) * time.Second,
-		CollectProcesses: collectProcesses,
-		Once:             once,
+		Collector:           agent.NewCollector(nvidiaSMI, 5*time.Second),
+		Queue:               queue,
+		SampleInterval:      time.Duration(intervalSeconds) * time.Second,
+		ConfigInterval:      time.Duration(configIntervalSeconds) * time.Second,
+		UpdateCheckInterval: time.Duration(updateCheckIntervalSeconds) * time.Second,
+		CollectProcesses:    collectProcesses,
+		Once:                once,
 	}
 	if err := runner.Run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "gpufleet-agent: %v\n", err)

@@ -218,6 +218,7 @@ func Changelog() []ChangelogEntry {
 				"新增只读能耗与热状态聚合 API，基于现有 GPU 功率、温度、利用率和限速原因计算 24H/7D/30D kWh、电费估算、空转高耗、高温和限速诊断，不下发任何功耗、风扇或频率控制。",
 				"Agent 新增详细配置快照上报，采集运行参数、平台/runtime、nvidia-smi 路径与版本、队列设置和 GPU 静态能力；服务端通过 HMAC 认证后仅存储最近一次报告并记录审计，暂不在前端呈现。",
 				"设置页新增 Agent 更新策略控制面，可配置目标版本、签名 manifest 地址、Ed25519 公钥、检查间隔和并发上限；Agent 通过 HMAC 拉取策略并上报更新事件，服务端只存储策略和审计，不下发 shell 命令。",
+				"Agent 新增自更新执行面，按服务端策略拉取签名 manifest，校验 Ed25519 签名和 artifact sha256 后写入 `.next`、保留 `.bak` 并替换自身；Linux 依赖 systemd 自动拉起，Windows 安装脚本补充服务失败自动重启。",
 			},
 			AddedEN: []string{
 				"Settings now includes a read-only diagnostics package download with version, runtime, disk, device, GPU, process, cached update, and recent audit summaries while redacting proxy credentials and remote IPs.",
@@ -225,6 +226,7 @@ func Changelog() []ChangelogEntry {
 				"Added a read-only energy and thermal summary API that derives 24H/7D/30D kWh, cost estimates, high-idle-power, thermal, and throttle diagnostics from existing GPU power, temperature, utilization, and throttle metrics without issuing power, fan, or clock controls.",
 				"Agents now upload detailed configuration snapshots covering runtime parameters, platform/runtime, nvidia-smi path and version, queue settings, and GPU static capabilities; the server stores only the latest authenticated report with an audit event and does not present it in the UI yet.",
 				"Settings now includes an Agent update policy control plane for target version, signed manifest URL, Ed25519 public key, check interval, and max parallelism; Agents fetch the policy with HMAC and report update events while the server only stores policy/audit data and never sends shell commands.",
+				"Agents now include the self-update execution path: they fetch signed manifests from server policy, verify Ed25519 signatures and artifact sha256, write `.next`, keep `.bak`, and replace their own binary; Linux relies on systemd restart and the Windows installer now configures service failure restarts.",
 			},
 			Changed: []string{
 				"前端 Chrome/CDP 验证脚本补充诊断包入口、关键设置弹窗和截图非空检查，并支持显式期望版本参数。",

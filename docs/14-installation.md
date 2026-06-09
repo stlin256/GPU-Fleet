@@ -173,6 +173,7 @@ DEVICE_ID="device_xxx" \
 SECRET="replace-with-one-time-secret" \
 INTERVAL="10" \
 CONFIG_INTERVAL="3600" \
+UPDATE_CHECK_INTERVAL="1800" \
 QUEUE_MAX_MB="128" \
 sh ./scripts/install-agent-linux.sh
 ```
@@ -212,6 +213,7 @@ Use an elevated PowerShell window. Run from the repository or release directory 
   -Secret "replace-with-one-time-secret" `
   -IntervalSeconds 10 `
   -ConfigIntervalSeconds 3600 `
+  -UpdateCheckIntervalSeconds 1800 `
   -QueueMaxMB 128
 ```
 
