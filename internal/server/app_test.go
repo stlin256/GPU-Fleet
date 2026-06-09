@@ -1022,6 +1022,29 @@ func TestLoginSessionRemembersBrowserForThirtyDays(t *testing.T) {
 	responseBodyWithCookie(t, restartedHandler, "/api/v1/overview", cookie, http.StatusOK)
 }
 
+func TestLoginCookieUsesForwardedProtoForSecureFlag(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+
+	rec := doJSON(t, handler, http.MethodPost, "/api/v1/auth/login", map[string]string{"password": "admin-test"}, nil, http.StatusOK, nil)
+	if cookie := sessionCookie(t, rec); cookie.Secure {
+		t.Fatal("plain HTTP login should not set Secure cookie")
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader([]byte(`{"password":"admin-test"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected forwarded HTTPS login to succeed, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if cookie := sessionCookie(t, rec); !cookie.Secure {
+		t.Fatal("forwarded HTTPS login should set Secure cookie")
+	}
+}
+
 func TestInitialSetupCreatesPasswordCredential(t *testing.T) {
 	root := t.TempDir()
 	app, generated, err := NewApp(Config{

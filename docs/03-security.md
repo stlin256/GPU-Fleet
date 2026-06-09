@@ -80,7 +80,7 @@ SHA256_HEX(BODY)
 Web 侧使用本地管理员密码登录：
 
 - 当前实现使用 PBKDF2-SHA256 加盐派生密码哈希；旧版自定义 SHA-256 多轮 hash 在登录成功后会自动迁移到 PBKDF2 格式。
-- Cookie 使用 `HttpOnly`、`Secure`、`SameSite=Lax`。
+- Cookie 使用 `HttpOnly`、`Secure`、`SameSite=Lax`。服务端直连 HTTPS 时根据 `r.TLS` 设置 `Secure`；反向代理 TLS 终止时会使用可信代理传入的 `X-Forwarded-Proto: https` 识别外部 HTTPS。
 - 登录成功和失败写入审计日志。
 - 登录接口按客户端 IP 做基础限流：默认 10 次/分钟。
 - 登录失败按客户端 IP 记录递进锁定：同一来源连续 5 次密码错误后锁定 5 分钟，后续重复触发按 5、10、20、40、60 分钟上限递增；锁定响应返回 `429`、`Retry-After` 和 `retry_after_seconds`。

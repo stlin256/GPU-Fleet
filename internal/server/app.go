@@ -317,7 +317,7 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.loginGuard.RecordSuccess(loginKey)
-	if err := a.sessions.Create(w, r.TLS != nil); err != nil {
+	if err := a.sessions.Create(w, requestScheme(r, a.scheme) == "https"); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

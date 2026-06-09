@@ -35,6 +35,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: The Agent CLI and Windows/Linux installers no longer default to `local-dev` / `local-dev-secret`; uploads and service installation must receive an explicit device ID and secret.
 - zh-CN: 服务端入口移除自动生成管理员密码的明文日志分支，避免未来回归时把初始密码写入 stdout、systemd 或容器日志。
 - en-US: The server entrypoint removed the plaintext generated-admin-password log branch to avoid future regressions that write initial passwords to stdout, systemd, or container logs.
+- zh-CN: 登录 Cookie 的 `Secure` 属性现在会识别可信反向代理传入的 `X-Forwarded-Proto: https`，修复 TLS 终止在代理层时后端因 `r.TLS` 为空而不设置 `Secure` 的问题。
+- en-US: Login cookies now honor trusted reverse-proxy `X-Forwarded-Proto: https`, fixing missing `Secure` attributes when TLS terminates at the proxy and backend `r.TLS` is empty.
 
 ### Fixed / 修复
 
