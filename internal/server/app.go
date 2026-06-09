@@ -204,6 +204,7 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/agent/heartbeat", a.handleAgentHeartbeat)
 	mux.HandleFunc("/api/v1/agent/samples", a.handleAgentSamples)
 	mux.HandleFunc("/api/v1/agent/process-snapshots", a.handleAgentProcesses)
+	mux.HandleFunc("/api/v1/agent/config", a.handleAgentConfig)
 	return securityHeaders(mux)
 }
 
@@ -1675,6 +1676,77 @@ func (a *App) handleAgentProcesses(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "accepted_processes": len(batch.Processes)})
+}
+
+func (a *App) handleAgentConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	deviceID, body, ok := a.authenticateAgent(w, r)
+	if !ok {
+		return
+	}
+	var report model.AgentConfigReport
+	if err := json.Unmarshal(body, &report); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid config report")
+		return
+	}
+	report = sanitizeAgentConfigReport(deviceID, report)
+	if err := a.meta.RecordAgentConfig(deviceID, report); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
+}
+
+func sanitizeAgentConfigReport(deviceID string, report model.AgentConfigReport) model.AgentConfigReport {
+	report.DeviceID = deviceID
+	report.AgentVersion = limitText(strings.TrimSpace(report.AgentVersion), 80)
+	report.Hostname = limitText(strings.TrimSpace(report.Hostname), 160)
+	report.OS = limitText(strings.TrimSpace(report.OS), 80)
+	report.OSVersion = limitText(strings.TrimSpace(report.OSVersion), 160)
+	report.Architecture = limitText(strings.TrimSpace(report.Architecture), 80)
+	report.Runtime = limitText(strings.TrimSpace(report.Runtime), 120)
+	report.ExecutablePath = limitText(strings.TrimSpace(report.ExecutablePath), 260)
+	report.WorkingDirectory = limitText(strings.TrimSpace(report.WorkingDirectory), 260)
+	report.ServerURL = limitText(redactURLCredentials(report.ServerURL), 260)
+	report.NvidiaSMICommand = limitText(strings.TrimSpace(report.NvidiaSMICommand), 160)
+	report.NvidiaSMIResolvedPath = limitText(strings.TrimSpace(report.NvidiaSMIResolvedPath), 260)
+	report.NvidiaSMIVersion = limitText(strings.TrimSpace(report.NvidiaSMIVersion), 2000)
+	report.QueuePath = limitText(strings.TrimSpace(report.QueuePath), 260)
+	if len(report.GPUs) > 64 {
+		report.GPUs = report.GPUs[:64]
+	}
+	for index := range report.GPUs {
+		gpu := &report.GPUs[index]
+		gpu.GPUID = limitText(strings.TrimSpace(gpu.GPUID), 80)
+		gpu.UUIDHash = limitText(strings.TrimSpace(gpu.UUIDHash), 96)
+		gpu.Name = limitText(strings.TrimSpace(gpu.Name), 160)
+		gpu.DriverVersion = limitText(strings.TrimSpace(gpu.DriverVersion), 80)
+		gpu.VBIOSVersion = limitText(strings.TrimSpace(gpu.VBIOSVersion), 80)
+		gpu.PCIeLinkGeneration = limitText(strings.TrimSpace(gpu.PCIeLinkGeneration), 40)
+		gpu.PCIeLinkGenerationMax = limitText(strings.TrimSpace(gpu.PCIeLinkGenerationMax), 40)
+		gpu.PCIeLinkWidth = limitText(strings.TrimSpace(gpu.PCIeLinkWidth), 40)
+		gpu.PCIeLinkWidthMax = limitText(strings.TrimSpace(gpu.PCIeLinkWidthMax), 40)
+		gpu.ComputeMode = limitText(strings.TrimSpace(gpu.ComputeMode), 80)
+		gpu.ComputeCapability = limitText(strings.TrimSpace(gpu.ComputeCapability), 40)
+		gpu.DisplayActive = limitText(strings.TrimSpace(gpu.DisplayActive), 40)
+		gpu.DisplayAttached = limitText(strings.TrimSpace(gpu.DisplayAttached), 40)
+		gpu.PersistenceMode = limitText(strings.TrimSpace(gpu.PersistenceMode), 40)
+		gpu.DriverModel = limitText(strings.TrimSpace(gpu.DriverModel), 80)
+		gpu.ECCModeCurrent = limitText(strings.TrimSpace(gpu.ECCModeCurrent), 80)
+		gpu.MIGModeCurrent = limitText(strings.TrimSpace(gpu.MIGModeCurrent), 80)
+		gpu.ClockThrottleReasons = limitText(strings.TrimSpace(gpu.ClockThrottleReasons), 200)
+		gpu.CollectionError = limitText(strings.TrimSpace(gpu.CollectionError), 240)
+	}
+	if len(report.CollectionErrors) > 20 {
+		report.CollectionErrors = report.CollectionErrors[:20]
+	}
+	for index := range report.CollectionErrors {
+		report.CollectionErrors[index] = limitText(strings.TrimSpace(report.CollectionErrors[index]), 240)
+	}
+	return report
 }
 
 func (a *App) authenticateAgent(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {

@@ -26,6 +26,7 @@ upload_timeout_seconds = 10
 
 local_queue_path = "./agent-queue"
 local_queue_max_mb = 128
+config_report_interval_seconds = 3600
 
 collect_process_username = false
 collect_process_commandline = false
@@ -33,6 +34,8 @@ gpu_uuid_mode = "hash"
 ```
 
 配置文件只在本机修改，服务端不能远程覆盖。
+
+Agent 启动时和默认每 1 小时会上传一次详细配置快照。快照包含 Agent 运行参数、平台/runtime、`nvidia-smi` 命令与版本、队列设置和 GPU 静态能力字段；不包含设备密钥。服务端目前只存储每台设备最近一次配置报告并写入审计，后续再做前端呈现。
 
 ## 采集方式
 
@@ -59,6 +62,7 @@ Agent 批量上报 JSON：
 - 弱网络：最多聚合 300 条样本后上报。
 - 失败重试：指数退避，最大 5 分钟。
 - 请求体压缩：支持 gzip。
+- 配置快照：启动时立即上报，之后默认每 1 小时上报一次，可通过 `-config-interval` 或 `GPUFLEET_CONFIG_INTERVAL` 调整。
 
 ## 本地权限
 

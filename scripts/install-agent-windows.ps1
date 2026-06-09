@@ -8,6 +8,7 @@ param(
   [ValidateNotNullOrEmpty()]
   [string]$Secret,
   [int]$IntervalSeconds = 10,
+  [int]$ConfigIntervalSeconds = 3600,
   [int]$QueueMaxMB = 128,
   [string]$ServiceName = "GPUFleetAgent"
 )
@@ -29,6 +30,7 @@ $args = @(
   "-device-id", $DeviceId,
   "-secret", $Secret,
   "-interval", $IntervalSeconds,
+  "-config-interval", $ConfigIntervalSeconds,
   "-queue-path", $queuePath,
   "-queue-max-mb", $QueueMaxMB
 )

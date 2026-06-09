@@ -172,6 +172,7 @@ SERVER_URL="https://your-server:9008" \
 DEVICE_ID="device_xxx" \
 SECRET="replace-with-one-time-secret" \
 INTERVAL="10" \
+CONFIG_INTERVAL="3600" \
 QUEUE_MAX_MB="128" \
 sh ./scripts/install-agent-linux.sh
 ```
@@ -210,6 +211,7 @@ Use an elevated PowerShell window. Run from the repository or release directory 
   -DeviceId "device_xxx" `
   -Secret "replace-with-one-time-secret" `
   -IntervalSeconds 10 `
+  -ConfigIntervalSeconds 3600 `
   -QueueMaxMB 128
 ```
 

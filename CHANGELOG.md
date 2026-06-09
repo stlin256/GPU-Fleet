@@ -19,6 +19,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Added Linux server data backup and restore scripts, with installation and operations docs for live backup, cold backup, explicit restore confirmation, rollback directories, and troubleshooting flow.
 - zh-CN: 新增只读能耗与热状态聚合 API，基于现有 GPU 功率、温度、利用率和限速原因计算 24H/7D/30D kWh、电费估算、空转高耗、高温和限速诊断，不下发任何功耗、风扇或频率控制。
 - en-US: Added a read-only energy and thermal summary API that derives 24H/7D/30D kWh, cost estimates, high-idle-power, thermal, and throttle diagnostics from existing GPU power, temperature, utilization, and throttle metrics without issuing power, fan, or clock controls.
+- zh-CN: Agent 新增详细配置快照上报，采集运行参数、平台/runtime、nvidia-smi 路径与版本、队列设置和 GPU 静态能力；服务端通过 HMAC 认证后仅存储最近一次报告并记录审计，暂不在前端呈现。
+- en-US: Agents now upload detailed configuration snapshots covering runtime parameters, platform/runtime, nvidia-smi path and version, queue settings, and GPU static capabilities; the server stores only the latest authenticated report with an audit event and does not present it in the UI yet.
 
 ### Changed / 变更
 

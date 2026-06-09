@@ -402,6 +402,7 @@ Agent API：
 POST /api/v1/agent/heartbeat
 POST /api/v1/agent/samples
 POST /api/v1/agent/process-snapshots
+POST /api/v1/agent/config
 ```
 
 Web API：

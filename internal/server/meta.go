@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"gpufleet/internal/model"
+
 	"golang.org/x/crypto/pbkdf2"
 )
 
@@ -122,20 +124,21 @@ type UpdateNotice struct {
 }
 
 type Device struct {
-	ID             string    `json:"id"`
-	Alias          string    `json:"alias"`
-	Secret         string    `json:"secret,omitempty"`
-	Enabled        bool      `json:"enabled"`
-	CreatedAt      time.Time `json:"created_at"`
-	LastSeenAt     time.Time `json:"last_seen_at,omitempty"`
-	AgentVersion   string    `json:"agent_version,omitempty"`
-	Hostname       string    `json:"hostname,omitempty"`
-	OS             string    `json:"os,omitempty"`
-	OSVersion      string    `json:"os_version,omitempty"`
-	GPUCount       int       `json:"gpu_count"`
-	LastSampleAt   time.Time `json:"last_sample_at,omitempty"`
-	LastError      string    `json:"last_error,omitempty"`
-	LastRemoteAddr string    `json:"last_remote_addr,omitempty"`
+	ID             string                   `json:"id"`
+	Alias          string                   `json:"alias"`
+	Secret         string                   `json:"secret,omitempty"`
+	Enabled        bool                     `json:"enabled"`
+	CreatedAt      time.Time                `json:"created_at"`
+	LastSeenAt     time.Time                `json:"last_seen_at,omitempty"`
+	AgentVersion   string                   `json:"agent_version,omitempty"`
+	Hostname       string                   `json:"hostname,omitempty"`
+	OS             string                   `json:"os,omitempty"`
+	OSVersion      string                   `json:"os_version,omitempty"`
+	GPUCount       int                      `json:"gpu_count"`
+	LastSampleAt   time.Time                `json:"last_sample_at,omitempty"`
+	LastError      string                   `json:"last_error,omitempty"`
+	LastRemoteAddr string                   `json:"last_remote_addr,omitempty"`
+	ConfigReport   *model.AgentConfigReport `json:"config_report,omitempty"`
 }
 
 type DeviceAuthInfo struct {
@@ -847,6 +850,24 @@ func (s *MetadataStore) RecordSample(deviceID string, sampleAt time.Time) error 
 	}
 	device.LastSeenAt = time.Now().UTC()
 	device.LastSampleAt = sampleAt
+	return s.saveLocked()
+}
+
+func (s *MetadataStore) RecordAgentConfig(deviceID string, report model.AgentConfigReport) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	device, ok := s.data.Devices[deviceID]
+	if !ok {
+		return errors.New("device not found")
+	}
+	now := time.Now().UTC()
+	if report.CollectedAt.IsZero() {
+		report.CollectedAt = now
+	}
+	report.DeviceID = deviceID
+	device.ConfigReport = &report
+	device.LastSeenAt = now
+	s.addAuditLocked("device_config_reported", fmt.Sprintf("stored Agent configuration report for %s", deviceID))
 	return s.saveLocked()
 }
 

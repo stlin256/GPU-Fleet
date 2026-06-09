@@ -30,6 +30,20 @@ func NewSampleQueue(dir string, maxBytes int64) (*SampleQueue, error) {
 	}, nil
 }
 
+func (q *SampleQueue) Path() string {
+	if q == nil {
+		return ""
+	}
+	return q.path
+}
+
+func (q *SampleQueue) MaxBytes() int64 {
+	if q == nil {
+		return 0
+	}
+	return q.maxBytes
+}
+
 func (q *SampleQueue) Enqueue(batch model.SampleBatch) error {
 	if q == nil || len(batch.Samples) == 0 {
 		return nil

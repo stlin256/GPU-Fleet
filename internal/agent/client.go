@@ -36,6 +36,10 @@ func (c *Client) PostProcesses(batch model.ProcessBatch) error {
 	return c.postJSON("/api/v1/agent/process-snapshots", batch)
 }
 
+func (c *Client) PostConfig(report model.AgentConfigReport) error {
+	return c.postJSON("/api/v1/agent/config", report)
+}
+
 func (c *Client) postJSON(path string, value any) error {
 	if c.Timeout == 0 {
 		c.Timeout = 10 * time.Second

@@ -1294,6 +1294,72 @@ func TestLegacyAgentSignatureAcceptedOnlyForKnownOldAgent(t *testing.T) {
 	}
 }
 
+func TestAgentConfigReportStoredAndAudited(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	device, secret, err := app.meta.CreateDevice("config-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/v1/agent/config"
+	report := model.AgentConfigReport{
+		AgentVersion:     model.AgentVersion,
+		CollectedAt:      time.Now().UTC(),
+		Hostname:         "config-host",
+		OS:               "linux",
+		Architecture:     "amd64",
+		Runtime:          "go-test",
+		ServerURL:        "https://agent:secret@example.com:9008",
+		NvidiaSMIVersion: strings.Repeat("v", 2200),
+		QueuePath:        "/var/lib/gpufleet-agent/queue",
+		GPUs: []model.AgentGPUConfig{{
+			GPUID:            "gpu0",
+			Name:             "Tesla V100",
+			UUIDHash:         "sha256:test",
+			DriverVersion:    "550.01",
+			MemoryTotalBytes: 16 * 1024 * 1024 * 1024,
+		}},
+		CollectionErrors: []string{strings.Repeat("e", 300)},
+	}
+	body, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	if err := auth.AttachSignedHeaders(req, body, device.ID, secret, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected config report accepted, got %d with body %q", rec.Code, rec.Body.String())
+	}
+	var stored *model.AgentConfigReport
+	for _, item := range app.meta.ListDevices() {
+		if item.ID == device.ID {
+			stored = item.ConfigReport
+			break
+		}
+	}
+	if stored == nil {
+		t.Fatal("expected config report to be stored on device metadata")
+	}
+	if stored.DeviceID != device.ID || stored.Hostname != "config-host" || len(stored.GPUs) != 1 {
+		t.Fatalf("unexpected stored config report: %+v", stored)
+	}
+	if strings.Contains(stored.ServerURL, "secret") || !strings.Contains(stored.ServerURL, "redacted") {
+		t.Fatalf("expected server URL credentials to be redacted, got %q", stored.ServerURL)
+	}
+	if len(stored.NvidiaSMIVersion) != 2003 || !strings.HasSuffix(stored.NvidiaSMIVersion, "...") {
+		t.Fatalf("expected nvidia-smi version to be limited, got %d", len(stored.NvidiaSMIVersion))
+	}
+	if len(stored.CollectionErrors[0]) != 243 || !strings.HasSuffix(stored.CollectionErrors[0], "...") {
+		t.Fatalf("expected collection error to be limited, got %d", len(stored.CollectionErrors[0]))
+	}
+	assertAuditType(t, app, "device_config_reported")
+}
+
 func TestInvalidAgentSignatureDoesNotConsumeNonce(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
