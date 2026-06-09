@@ -83,7 +83,7 @@ body::before {
   animation: scanline-boot 1180ms var(--ease) 110ms both;
 }
 
-button, input, select { font: inherit; }
+button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 h1, h2, h3, p { margin: 0; }
 h1 { font-size: 30px; line-height: 1.1; }
@@ -1618,16 +1618,29 @@ select {
   transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
 }
 
+textarea {
+  min-height: 92px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text);
+  resize: vertical;
+  transition: border-color var(--motion-fast) var(--ease), box-shadow var(--motion-fast) var(--ease), background var(--motion-fast) var(--ease);
+}
+
 select:hover {
   border-color: var(--line-strong);
 }
 
-select:focus {
+select:focus,
+textarea:focus {
   border-color: color-mix(in srgb, var(--accent) 68%, var(--line));
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
-input:hover {
+input:hover,
+textarea:hover {
   border-color: var(--line-strong);
 }
 
@@ -2726,6 +2739,7 @@ input:focus {
 
 .settings-form input,
 .settings-form select,
+.settings-form textarea,
 .setup-grid input,
 .setup-grid select {
   width: 100%;
