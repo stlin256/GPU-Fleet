@@ -4,6 +4,22 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in the MVP preview stage.
 
+## [0.1.8] - 2026-06-09
+
+### Title / 标题
+
+- zh-CN: 数据洞察与监控呈现增强
+- en-US: Data insight and monitoring presentation improvements
+
+### Changed / 变更
+
+- zh-CN: 总览高温 GPU 统计统一使用服务端 85°C 高温口径，避免和卡片健康状态出现不一致。
+- en-US: Overview hot-GPU counts now use the same server-side 85°C threshold as card health state to avoid inconsistent totals.
+- zh-CN: 利用率分布图按利用率排序，并在横轴和悬浮提示中显示设备名称与 GPU ID，避免多设备 `gpu0` 标签混淆。
+- en-US: Utilization distribution charts are sorted by utilization and label each bar with the device name plus GPU ID, avoiding ambiguous multi-device `gpu0` labels.
+- zh-CN: 总览巡检摘要新增 PCIe 降级和时钟限速 GPU 计数，并在 GPU 卡片元信息中突出这些需要关注的硬件状态。
+- en-US: Overview inspection facts now include PCIe-degraded and clock-throttled GPU counts, and GPU cards highlight those hardware states in their metadata.
+
 ## [0.1.7] - 2026-06-08
 
 ### Title / 标题

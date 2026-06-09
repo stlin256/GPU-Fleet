@@ -117,6 +117,10 @@ const deviceBorderPalette = ['#146c78', '#6750a4', '#b26a00', '#198754', '#c5404
 const repositoryOwner = 'stlin256';
 const repositoryName = 'GPU-Fleet';
 const repositoryURL = `https://github.com/${repositoryOwner}/${repositoryName}`;
+const idleGPUThreshold = 10;
+const busyGPUThreshold = 80;
+const warmGPUThreshold = 80;
+const hotGPUThreshold = 85;
 const updatePendingKey = 'gpufleet-update-pending';
 const updateNoticeKey = 'gpufleet-update-notice';
 const updateStatusCacheKey = 'gpufleet-update-status-cache';
@@ -876,8 +880,8 @@ function OverviewPage({ data, statRows, theme, guest = false }: { data?: Overvie
   const gpus = data?.latest_gpus ?? [];
   const aggregateSeries = useAggregateSeries(gpus, guest);
   const devices = data?.devices ?? [];
-  const hotCount = gpus.filter((item) => (item.gpu.temperature_celsius ?? 0) >= 80).length;
-  const busyCount = gpus.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) >= 80).length;
+  const hotCount = data?.hot_gpu_count ?? gpus.filter((item) => (item.gpu.temperature_celsius ?? 0) >= hotGPUThreshold).length;
+  const busyCount = gpus.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) >= busyGPUThreshold).length;
   const onlineText = data ? `${data.online_device_count}/${data.device_count}` : '-';
   const gpuCountText = data ? String(data.gpu_count) : '-';
   const busyText = data ? String(busyCount) : '-';
@@ -907,7 +911,7 @@ function OverviewPage({ data, statRows, theme, guest = false }: { data?: Overvie
       <section className="overview-layout">
         <FleetBoard items={gpus} devices={devices} guest={guest} />
         <div className="overview-side">
-          <FleetUtilPanel items={gpus} theme={theme} />
+          <FleetUtilPanel items={gpus} devices={devices} theme={theme} />
           <DevicePanel data={data} />
         </div>
       </section>
@@ -951,7 +955,7 @@ function GPUDetailPage({ data, statRows, theme }: { data?: Overview; statRows: G
             <div className="gpu-grid">
               {(data?.latest_gpus ?? []).map((item) => <GPUCard key={`${item.device_id}-${item.gpu.gpu_id}`} item={item} device={deviceMap.get(item.device_id)} />)}
             </div>
-            <UtilChart items={data?.latest_gpus ?? []} theme={theme} />
+            <UtilChart items={data?.latest_gpus ?? []} devices={data?.devices ?? []} theme={theme} />
           </div>
           <StatsPanel statRows={statRows} devices={data?.devices ?? []} />
         </div>
@@ -1040,8 +1044,8 @@ function FleetGPUCard({ item, device, health, guest = false }: { item: StoredGPU
       </div>
 
       <div className="gpu-card-meta">
-        <span>{pcieLabel(item)}</span>
-        <span>{gpu.pstate || '-'}</span>
+        <span className={isPCIeDegraded(item) ? 'warn' : ''}>{pcieLabel(item)}</span>
+        <span className={hasClockThrottle(item) ? 'warn' : ''}>{hasClockThrottle(item) ? 'Throttle' : gpu.pstate || '-'}</span>
         <span>{gpu.compute_capability ? `Compute ${gpu.compute_capability}` : gpu.driver_model || '-'}</span>
       </div>
 
@@ -1100,9 +1104,11 @@ function TrendTile({ label, value, caption, values, timestamps, max, tone, forma
   );
 }
 
-function FleetUtilPanel({ items, theme }: { items: StoredGPU[]; theme: Theme }) {
+function FleetUtilPanel({ items, devices, theme }: { items: StoredGPU[]; devices: Device[]; theme: Theme }) {
   const peak = items.reduce((max, item) => Math.max(max, item.gpu.utilization_gpu_percent ?? 0), 0);
-  const idle = items.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) < 10).length;
+  const idle = items.filter((item) => (item.gpu.utilization_gpu_percent ?? 0) < idleGPUThreshold).length;
+  const pcieDegraded = items.filter(isPCIeDegraded).length;
+  const throttled = items.filter(hasClockThrottle).length;
   return (
     <section className="panel fleet-chart-panel">
       <div className="panel-head">
@@ -1112,10 +1118,12 @@ function FleetUtilPanel({ items, theme }: { items: StoredGPU[]; theme: Theme }) 
         </div>
         <span>峰值 {pct(peak)}</span>
       </div>
-      <UtilChart items={items} theme={theme} compact />
+      <UtilChart items={items} devices={devices} theme={theme} compact />
       <div className="rail-facts">
         <div><span>空闲 GPU</span><strong>{idle}</strong></div>
         <div><span>活跃 GPU</span><strong>{Math.max(0, items.length - idle)}</strong></div>
+        <div className={pcieDegraded > 0 ? 'warn' : ''}><span>PCIe 降级</span><strong>{pcieDegraded}</strong></div>
+        <div className={throttled > 0 ? 'warn' : ''}><span>限速 GPU</span><strong>{throttled}</strong></div>
       </div>
     </section>
   );
@@ -1436,13 +1444,40 @@ function deviceBorderColor(deviceID: string) {
 
 function pcieLabel(item: StoredGPU) {
   const current = [item.gpu.pcie_link_generation ? `Gen ${item.gpu.pcie_link_generation}` : '', item.gpu.pcie_link_width ? `x${item.gpu.pcie_link_width}` : ''].filter(Boolean).join(' ');
-  return current || 'PCIe -';
+  const max = [item.gpu.pcie_link_generation_max ? `Gen ${item.gpu.pcie_link_generation_max}` : '', item.gpu.pcie_link_width_max ? `x${item.gpu.pcie_link_width_max}` : ''].filter(Boolean).join(' ');
+  if (current && max && isPCIeDegraded(item)) return `PCIe ${current} / ${max}`;
+  return current ? `PCIe ${current}` : 'PCIe -';
+}
+
+function isPCIeDegraded(item: StoredGPU) {
+  const currentGen = parseNumericLabel(item.gpu.pcie_link_generation);
+  const maxGen = parseNumericLabel(item.gpu.pcie_link_generation_max);
+  const currentWidth = parseNumericLabel(item.gpu.pcie_link_width);
+  const maxWidth = parseNumericLabel(item.gpu.pcie_link_width_max);
+  return (currentGen !== undefined && maxGen !== undefined && currentGen < maxGen) ||
+    (currentWidth !== undefined && maxWidth !== undefined && currentWidth < maxWidth);
+}
+
+function parseNumericLabel(value?: string) {
+  if (!value) return undefined;
+  const match = value.match(/\d+(\.\d+)?/);
+  if (!match) return undefined;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function hasClockThrottle(item: StoredGPU) {
+  const reason = item.gpu.clock_throttle_reasons?.trim();
+  if (!reason || reason === '-') return false;
+  if (/^0x0+$/i.test(reason)) return false;
+  if (/^(none|not active|inactive)$/i.test(reason)) return false;
+  return true;
 }
 
 function tempToneText(value?: number) {
   if (typeof value !== 'number') return '-';
-  if (value >= 85) return '过热';
-  if (value >= 80) return '偏高';
+  if (value >= hotGPUThreshold) return '过热';
+  if (value >= warmGPUThreshold) return '偏高';
   return '正常';
 }
 
@@ -1460,8 +1495,8 @@ function timeAgo(value: string, language: AppLanguage) {
 function gpuHealth(item: StoredGPU, device?: Device): { tone: 'good' | 'warn' | 'bad' | 'offline'; label: string } {
   if (!device?.enabled || device.status === 'offline') return { tone: 'offline', label: '离线' };
   if (item.gpu.collection_error) return { tone: 'bad', label: '采集异常' };
-  if ((item.gpu.temperature_celsius ?? 0) >= 85) return { tone: 'bad', label: '高温' };
-  if ((item.gpu.temperature_celsius ?? 0) >= 80 || (memoryUsagePercent(item) ?? 0) >= 90) return { tone: 'warn', label: '关注' };
+  if ((item.gpu.temperature_celsius ?? 0) >= hotGPUThreshold) return { tone: 'bad', label: '高温' };
+  if ((item.gpu.temperature_celsius ?? 0) >= warmGPUThreshold || (memoryUsagePercent(item) ?? 0) >= 90 || isPCIeDegraded(item) || hasClockThrottle(item)) return { tone: 'warn', label: '关注' };
   return { tone: 'good', label: '正常' };
 }
 
@@ -3241,20 +3276,41 @@ function DiskReserveSettings({ data, onDone }: { data?: Overview; onDone: () => 
   );
 }
 
-function UtilChart({ items, theme, compact = false }: { items: StoredGPU[]; theme: Theme; compact?: boolean }) {
+function UtilChart({ items, devices = [], theme, compact = false }: { items: StoredGPU[]; devices?: Device[]; theme: Theme; compact?: boolean }) {
+  const { t } = useI18n();
+  const deviceMap = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
+  const rows = useMemo(() => items
+    .map((item) => ({
+      item,
+      label: `${deviceName(deviceMap.get(item.device_id), item.device_id)} · ${item.gpu.gpu_id}`,
+      value: item.gpu.utilization_gpu_percent ?? 0
+    }))
+    .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label)), [deviceMap, items]);
   const axisColor = theme === 'dark' ? '#9aa8b5' : '#697789';
   const barColor = theme === 'dark' ? '#4db6ac' : '#146c78';
   const option = useMemo(() => ({
-    tooltip: {},
+    tooltip: {
+      formatter: (params: { name?: string; value?: number }) => `${params.name ?? ''}<br/>${t('利用率 {value}', { value: pct(params.value) })}`
+    },
     animation: true,
     animationDuration: 260,
     animationDurationUpdate: 360,
     animationEasingUpdate: 'cubicOut' as const,
-    grid: { left: 32, right: 12, top: compact ? 12 : 22, bottom: compact ? 18 : 24 },
-    xAxis: { type: 'category', data: items.map((item) => item.gpu.gpu_id), axisLabel: { color: axisColor } },
+    grid: { left: 32, right: 12, top: compact ? 12 : 22, bottom: compact ? 32 : 42 },
+    xAxis: {
+      type: 'category',
+      data: rows.map((row) => row.label),
+      axisLabel: {
+        color: axisColor,
+        interval: 0,
+        width: compact ? 58 : 92,
+        overflow: 'truncate',
+        rotate: compact ? 0 : 18
+      }
+    },
     yAxis: { type: 'value', max: 100, axisLabel: { color: axisColor }, splitLine: { lineStyle: { color: theme === 'dark' ? '#2c3741' : '#d9e0e7' } } },
-    series: [{ type: 'bar', id: 'gpu-utilization', animationDuration: 0, animationDurationUpdate: 360, data: items.map((item) => item.gpu.utilization_gpu_percent ?? 0), itemStyle: { color: barColor, borderRadius: [4, 4, 0, 0] } }]
-  }), [axisColor, barColor, compact, items, theme]);
+    series: [{ type: 'bar', id: 'gpu-utilization', animationDuration: 0, animationDurationUpdate: 360, data: rows.map((row) => row.value), itemStyle: { color: barColor, borderRadius: [4, 4, 0, 0] } }]
+  }), [axisColor, barColor, compact, rows, t, theme]);
 
   return <EChart option={option} />;
 }

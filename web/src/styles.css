@@ -591,6 +591,12 @@ input:focus-visible {
   max-width: none;
 }
 
+.gpu-card-meta span.warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 .gpu-trend-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -820,6 +826,16 @@ input:focus-visible {
   display: block;
   margin-top: 5px;
   font-size: 22px;
+}
+
+.rail-facts .warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+  background: var(--warn-soft);
+}
+
+.rail-facts .warn span,
+.rail-facts .warn strong {
+  color: var(--warn);
 }
 
 .stat-grid {
