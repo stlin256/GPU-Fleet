@@ -1360,6 +1360,97 @@ func TestAgentConfigReportStoredAndAudited(t *testing.T) {
 	assertAuditType(t, app, "device_config_reported")
 }
 
+func TestAgentUpdatePolicyAndEvents(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	handler := app.Handler()
+	cookie := loginCookie(t, handler)
+
+	policy := model.AgentUpdatePolicy{
+		Enabled:              true,
+		Mode:                 "patch",
+		DesiredVersion:       "0.1.10",
+		ManifestURL:          "https://updates.example.com/gpufleet-agent.json",
+		PublicKey:            "base64-public-key",
+		CheckIntervalSeconds: 600,
+		Rollout:              "all",
+		MaxParallel:          2,
+	}
+	var configResponse struct {
+		Service serviceStatus `json:"service"`
+	}
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": policy}, cookie, http.StatusOK, &configResponse)
+	if !configResponse.Service.AgentUpdate.Enabled || configResponse.Service.AgentUpdate.DesiredVersion != "0.1.10" {
+		t.Fatalf("unexpected agent update policy in service status: %+v", configResponse.Service.AgentUpdate)
+	}
+	assertAuditType(t, app, "agent_update_policy_enabled")
+
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]any{"agent_update": model.AgentUpdatePolicy{
+		Enabled:        true,
+		Mode:           "patch",
+		DesiredVersion: "0.1.10",
+		ManifestURL:    "https://user:secret@updates.example.com/manifest.json",
+		PublicKey:      "base64-public-key",
+	}}, cookie, http.StatusBadRequest, nil)
+
+	device, secret, err := app.meta.CreateDevice("updating-agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyBody := []byte(`{"agent_version":"` + model.AgentVersion + `"}`)
+	policyReq := httptest.NewRequest(http.MethodPost, "/api/v1/agent/update-policy", bytes.NewReader(policyBody))
+	if err := auth.AttachSignedHeaders(policyReq, policyBody, device.ID, secret, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	policyRec := httptest.NewRecorder()
+	handler.ServeHTTP(policyRec, policyReq)
+	if policyRec.Code != http.StatusOK {
+		t.Fatalf("expected policy request ok, got %d with body %q", policyRec.Code, policyRec.Body.String())
+	}
+	var policyResult struct {
+		Policy model.AgentUpdatePolicy `json:"policy"`
+	}
+	if err := json.Unmarshal(policyRec.Body.Bytes(), &policyResult); err != nil {
+		t.Fatal(err)
+	}
+	if !policyResult.Policy.Enabled || policyResult.Policy.ManifestURL != policy.ManifestURL {
+		t.Fatalf("unexpected policy response: %+v", policyResult.Policy)
+	}
+
+	event := model.AgentUpdateEvent{
+		Status:         "staged",
+		CurrentVersion: model.AgentVersion,
+		TargetVersion:  "0.1.10",
+		ManifestURL:    policy.ManifestURL,
+		ArtifactSHA256: strings.Repeat("a", 64),
+		Message:        "downloaded and verified",
+	}
+	eventBody, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventReq := httptest.NewRequest(http.MethodPost, "/api/v1/agent/update-events", bytes.NewReader(eventBody))
+	if err := auth.AttachSignedHeaders(eventReq, eventBody, device.ID, secret, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	eventRec := httptest.NewRecorder()
+	handler.ServeHTTP(eventRec, eventReq)
+	if eventRec.Code != http.StatusAccepted {
+		t.Fatalf("expected update event accepted, got %d with body %q", eventRec.Code, eventRec.Body.String())
+	}
+	var stored *model.AgentUpdateState
+	for _, item := range app.meta.ListDevices() {
+		if item.ID == device.ID {
+			stored = item.UpdateState
+			break
+		}
+	}
+	if stored == nil || stored.Status != "staged" || stored.TargetVersion != "0.1.10" {
+		t.Fatalf("expected update state to be stored, got %+v", stored)
+	}
+	assertAuditType(t, app, "agent_update_event")
+}
+
 func TestInvalidAgentSignatureDoesNotConsumeNonce(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))

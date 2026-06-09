@@ -183,6 +183,20 @@ export type EnergySummaryResponse = {
   diagnostics: EnergyDiagnostic[];
 };
 
+export type AgentUpdatePolicy = {
+  enabled: boolean;
+  mode?: 'notify' | 'patch' | 'minor' | string;
+  desired_version?: string;
+  manifest_url?: string;
+  public_key?: string;
+  check_interval_seconds?: number;
+  rollout?: 'all' | 'canary' | string;
+  max_parallel?: number;
+  maintenance_window?: string;
+  allow_prerelease?: boolean;
+  require_manual_approval?: boolean;
+};
+
 export type ServiceStatus = {
   current_addr: string;
   current_scheme: 'http' | 'https';
@@ -194,6 +208,7 @@ export type ServiceStatus = {
   update_proxy?: string;
   auto_update_enabled: boolean;
   legacy_agent_auth_enabled: boolean;
+  agent_update: AgentUpdatePolicy;
   min_free_bytes: number;
   energy: EnergySettings;
   cert_not_after?: string;
@@ -601,6 +616,7 @@ export function updateServerConfig(payload: {
   min_free_mb?: number;
   auto_update_enabled?: boolean;
   legacy_agent_auth_enabled?: boolean;
+  agent_update?: AgentUpdatePolicy;
   energy_price_per_kwh?: number;
   energy_currency?: string;
   thermal_hot_celsius?: number;

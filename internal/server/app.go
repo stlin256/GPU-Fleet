@@ -205,6 +205,8 @@ func (a *App) Handler() http.Handler {
 	mux.HandleFunc("/api/v1/agent/samples", a.handleAgentSamples)
 	mux.HandleFunc("/api/v1/agent/process-snapshots", a.handleAgentProcesses)
 	mux.HandleFunc("/api/v1/agent/config", a.handleAgentConfig)
+	mux.HandleFunc("/api/v1/agent/update-policy", a.handleAgentUpdatePolicy)
+	mux.HandleFunc("/api/v1/agent/update-events", a.handleAgentUpdateEvents)
 	return securityHeaders(mux)
 }
 
@@ -490,15 +492,16 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Port                   int      `json:"port"`
-		MinFreeMB              int      `json:"min_free_mb"`
-		AutoUpdateEnabled      *bool    `json:"auto_update_enabled"`
-		LegacyAgentAuthEnabled *bool    `json:"legacy_agent_auth_enabled"`
-		EnergyPricePerKWh      *float64 `json:"energy_price_per_kwh"`
-		EnergyCurrency         *string  `json:"energy_currency"`
-		ThermalHotCelsius      *float64 `json:"thermal_hot_celsius"`
-		IdleUtilizationPercent *float64 `json:"idle_utilization_percent"`
-		IdlePowerWatts         *float64 `json:"idle_power_watts"`
+		Port                   int                      `json:"port"`
+		MinFreeMB              int                      `json:"min_free_mb"`
+		AutoUpdateEnabled      *bool                    `json:"auto_update_enabled"`
+		LegacyAgentAuthEnabled *bool                    `json:"legacy_agent_auth_enabled"`
+		AgentUpdate            *model.AgentUpdatePolicy `json:"agent_update"`
+		EnergyPricePerKWh      *float64                 `json:"energy_price_per_kwh"`
+		EnergyCurrency         *string                  `json:"energy_currency"`
+		ThermalHotCelsius      *float64                 `json:"thermal_hot_celsius"`
+		IdleUtilizationPercent *float64                 `json:"idle_utilization_percent"`
+		IdlePowerWatts         *float64                 `json:"idle_power_watts"`
 	}
 	if err := decodeJSON(r, &body, 1<<20); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -537,6 +540,13 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.LegacyAgentAuthEnabled != nil {
 		config, err = a.meta.UpdateLegacyAgentAuthEnabled(*body.LegacyAgentAuthEnabled)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if body.AgentUpdate != nil {
+		config, err = a.meta.UpdateAgentUpdatePolicy(*body.AgentUpdate)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
@@ -1700,6 +1710,56 @@ func (a *App) handleAgentConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
 }
 
+func (a *App) handleAgentUpdatePolicy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	deviceID, _, ok := a.authenticateAgent(w, r)
+	if !ok {
+		return
+	}
+	policy := a.meta.ServiceConfig().AgentUpdate
+	writeJSON(w, http.StatusOK, map[string]any{
+		"device_id":   deviceID,
+		"policy":      policy,
+		"server_time": time.Now().UTC(),
+	})
+}
+
+func (a *App) handleAgentUpdateEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	deviceID, body, ok := a.authenticateAgent(w, r)
+	if !ok {
+		return
+	}
+	var event model.AgentUpdateEvent
+	if err := json.Unmarshal(body, &event); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid update event")
+		return
+	}
+	event = sanitizeAgentUpdateEvent(event)
+	if err := a.meta.RecordAgentUpdateEvent(deviceID, event); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true})
+}
+
+func sanitizeAgentUpdateEvent(event model.AgentUpdateEvent) model.AgentUpdateEvent {
+	event.Status = limitText(strings.TrimSpace(event.Status), 80)
+	event.CurrentVersion = limitText(strings.TrimSpace(event.CurrentVersion), 80)
+	event.TargetVersion = limitText(strings.TrimSpace(event.TargetVersion), 80)
+	event.ManifestURL = limitText(redactURLCredentials(event.ManifestURL), 260)
+	event.ArtifactURL = limitText(redactURLCredentials(event.ArtifactURL), 260)
+	event.ArtifactSHA256 = limitText(strings.TrimSpace(event.ArtifactSHA256), 96)
+	event.Message = limitText(strings.TrimSpace(event.Message), 240)
+	return event
+}
+
 func sanitizeAgentConfigReport(deviceID string, report model.AgentConfigReport) model.AgentConfigReport {
 	report.DeviceID = deviceID
 	report.AgentVersion = limitText(strings.TrimSpace(report.AgentVersion), 80)
@@ -2124,6 +2184,7 @@ func (a *App) serviceStatusFromConfig(config ServiceConfig, r *http.Request) ser
 		UpdateProxy:       config.UpdateProxy,
 		AutoUpdateEnabled: config.AutoUpdateOn(),
 		LegacyAgentAuth:   config.LegacyAgentAuth,
+		AgentUpdate:       config.AgentUpdate,
 		MinFreeBytes:      config.MinFreeBytes,
 		Energy:            config.EnergySettings(),
 		CertNotAfter:      config.CertNotAfter,
@@ -2323,24 +2384,25 @@ type setupStatusResponse struct {
 }
 
 type serviceStatus struct {
-	CurrentAddr       string         `json:"current_addr"`
-	CurrentScheme     string         `json:"current_scheme"`
-	ConfiguredAddr    string         `json:"configured_addr"`
-	ConfiguredPort    int            `json:"configured_port"`
-	HTTPSEnabled      bool           `json:"https_enabled"`
-	Language          string         `json:"language"`
-	GuestEnabled      bool           `json:"guest_enabled"`
-	UpdateProxy       string         `json:"update_proxy,omitempty"`
-	AutoUpdateEnabled bool           `json:"auto_update_enabled"`
-	LegacyAgentAuth   bool           `json:"legacy_agent_auth_enabled"`
-	MinFreeBytes      uint64         `json:"min_free_bytes"`
-	Energy            EnergySettings `json:"energy"`
-	CertNotAfter      time.Time      `json:"cert_not_after,omitempty"`
-	ConfigRevision    int            `json:"config_revision"`
-	UpdatedAt         time.Time      `json:"updated_at,omitempty"`
-	RestartRequired   bool           `json:"restart_required"`
-	FirstStartupHTTP  bool           `json:"first_startup_http"`
-	ManagementBaseURL string         `json:"management_base_url,omitempty"`
+	CurrentAddr       string                  `json:"current_addr"`
+	CurrentScheme     string                  `json:"current_scheme"`
+	ConfiguredAddr    string                  `json:"configured_addr"`
+	ConfiguredPort    int                     `json:"configured_port"`
+	HTTPSEnabled      bool                    `json:"https_enabled"`
+	Language          string                  `json:"language"`
+	GuestEnabled      bool                    `json:"guest_enabled"`
+	UpdateProxy       string                  `json:"update_proxy,omitempty"`
+	AutoUpdateEnabled bool                    `json:"auto_update_enabled"`
+	LegacyAgentAuth   bool                    `json:"legacy_agent_auth_enabled"`
+	AgentUpdate       model.AgentUpdatePolicy `json:"agent_update"`
+	MinFreeBytes      uint64                  `json:"min_free_bytes"`
+	Energy            EnergySettings          `json:"energy"`
+	CertNotAfter      time.Time               `json:"cert_not_after,omitempty"`
+	ConfigRevision    int                     `json:"config_revision"`
+	UpdatedAt         time.Time               `json:"updated_at,omitempty"`
+	RestartRequired   bool                    `json:"restart_required"`
+	FirstStartupHTTP  bool                    `json:"first_startup_http"`
+	ManagementBaseURL string                  `json:"management_base_url,omitempty"`
 }
 
 type guestServiceStatus struct {

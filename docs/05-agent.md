@@ -64,6 +64,12 @@ Agent 批量上报 JSON：
 - 请求体压缩：支持 gzip。
 - 配置快照：启动时立即上报，之后默认每 1 小时上报一次，可通过 `-config-interval` 或 `GPUFLEET_CONFIG_INTERVAL` 调整。
 
+## 更新策略
+
+Agent 更新采用 pull 模型。设置页只保存目标版本、签名 manifest URL、Ed25519 公钥、检查间隔和并发上限；Agent 使用 HMAC 从 `/api/v1/agent/update-policy` 拉取策略，并把检查、跳过、成功、失败或回滚事件上报到 `/api/v1/agent/update-events`。
+
+服务端不会下发 shell 命令，也不会 SSH/RDP 到设备。Agent 只允许在签名 manifest 和 artifact sha256 都校验通过后替换自己的二进制。
+
 ## 本地权限
 
 Agent 不应以高权限运行，除非采集环境确实需要。

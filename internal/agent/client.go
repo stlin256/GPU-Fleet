@@ -40,7 +40,27 @@ func (c *Client) PostConfig(report model.AgentConfigReport) error {
 	return c.postJSON("/api/v1/agent/config", report)
 }
 
+func (c *Client) GetUpdatePolicy() (model.AgentUpdatePolicy, error) {
+	var response struct {
+		Policy model.AgentUpdatePolicy `json:"policy"`
+	}
+	if err := c.postJSONDecode("/api/v1/agent/update-policy", map[string]string{
+		"agent_version": model.AgentVersion,
+	}, &response); err != nil {
+		return model.AgentUpdatePolicy{}, err
+	}
+	return response.Policy, nil
+}
+
+func (c *Client) PostUpdateEvent(event model.AgentUpdateEvent) error {
+	return c.postJSON("/api/v1/agent/update-events", event)
+}
+
 func (c *Client) postJSON(path string, value any) error {
+	return c.postJSONDecode(path, value, nil)
+}
+
+func (c *Client) postJSONDecode(path string, value any, out any) error {
 	if c.Timeout == 0 {
 		c.Timeout = 10 * time.Second
 	}
@@ -94,6 +114,11 @@ func (c *Client) postJSON(path string, value any) error {
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		limited, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
 		return fmt.Errorf("server returned %s: %s", res.Status, strings.TrimSpace(string(limited)))
+	}
+	if out != nil {
+		if err := json.NewDecoder(res.Body).Decode(out); err != nil {
+			return err
+		}
 	}
 	return nil
 }

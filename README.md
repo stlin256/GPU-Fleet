@@ -403,6 +403,8 @@ POST /api/v1/agent/heartbeat
 POST /api/v1/agent/samples
 POST /api/v1/agent/process-snapshots
 POST /api/v1/agent/config
+POST /api/v1/agent/update-policy
+POST /api/v1/agent/update-events
 ```
 
 Web API：

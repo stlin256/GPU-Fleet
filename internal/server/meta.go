@@ -56,25 +56,26 @@ type AdminAccount struct {
 }
 
 type ServiceConfig struct {
-	Addr              string    `json:"addr"`
-	Port              int       `json:"port"`
-	HTTPS             bool      `json:"https"`
-	Language          string    `json:"language,omitempty"`
-	GuestEnabled      bool      `json:"guest_enabled,omitempty"`
-	UpdateProxy       string    `json:"update_proxy,omitempty"`
-	AutoUpdateEnabled *bool     `json:"auto_update_enabled,omitempty"`
-	LegacyAgentAuth   bool      `json:"legacy_agent_auth_enabled,omitempty"`
-	MinFreeBytes      uint64    `json:"min_free_bytes,omitempty"`
-	EnergyPricePerKWh float64   `json:"energy_price_per_kwh,omitempty"`
-	EnergyCurrency    string    `json:"energy_currency,omitempty"`
-	ThermalHotCelsius float64   `json:"thermal_hot_celsius,omitempty"`
-	IdleUtilPercent   float64   `json:"idle_utilization_percent,omitempty"`
-	IdlePowerWatts    float64   `json:"idle_power_watts,omitempty"`
-	CertPath          string    `json:"cert_path,omitempty"`
-	KeyPath           string    `json:"key_path,omitempty"`
-	CertNotAfter      time.Time `json:"cert_not_after,omitempty"`
-	ConfigRevision    int       `json:"config_revision"`
-	UpdatedAt         time.Time `json:"updated_at,omitempty"`
+	Addr              string                  `json:"addr"`
+	Port              int                     `json:"port"`
+	HTTPS             bool                    `json:"https"`
+	Language          string                  `json:"language,omitempty"`
+	GuestEnabled      bool                    `json:"guest_enabled,omitempty"`
+	UpdateProxy       string                  `json:"update_proxy,omitempty"`
+	AutoUpdateEnabled *bool                   `json:"auto_update_enabled,omitempty"`
+	LegacyAgentAuth   bool                    `json:"legacy_agent_auth_enabled,omitempty"`
+	AgentUpdate       model.AgentUpdatePolicy `json:"agent_update,omitempty"`
+	MinFreeBytes      uint64                  `json:"min_free_bytes,omitempty"`
+	EnergyPricePerKWh float64                 `json:"energy_price_per_kwh,omitempty"`
+	EnergyCurrency    string                  `json:"energy_currency,omitempty"`
+	ThermalHotCelsius float64                 `json:"thermal_hot_celsius,omitempty"`
+	IdleUtilPercent   float64                 `json:"idle_utilization_percent,omitempty"`
+	IdlePowerWatts    float64                 `json:"idle_power_watts,omitempty"`
+	CertPath          string                  `json:"cert_path,omitempty"`
+	KeyPath           string                  `json:"key_path,omitempty"`
+	CertNotAfter      time.Time               `json:"cert_not_after,omitempty"`
+	ConfigRevision    int                     `json:"config_revision"`
+	UpdatedAt         time.Time               `json:"updated_at,omitempty"`
 }
 
 func (c ServiceConfig) AutoUpdateOn() bool {
@@ -139,6 +140,7 @@ type Device struct {
 	LastError      string                   `json:"last_error,omitempty"`
 	LastRemoteAddr string                   `json:"last_remote_addr,omitempty"`
 	ConfigReport   *model.AgentConfigReport `json:"config_report,omitempty"`
+	UpdateState    *model.AgentUpdateState  `json:"update_state,omitempty"`
 }
 
 type DeviceAuthInfo struct {
@@ -510,6 +512,23 @@ func (s *MetadataStore) UpdateLegacyAgentAuthEnabled(enabled bool) (ServiceConfi
 	return s.data.Service, s.saveLocked()
 }
 
+func (s *MetadataStore) UpdateAgentUpdatePolicy(policy model.AgentUpdatePolicy) (ServiceConfig, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	normalized, err := normalizeAgentUpdatePolicy(policy)
+	if err != nil {
+		return ServiceConfig{}, err
+	}
+	s.data.Service.AgentUpdate = normalized
+	s.bumpServiceConfigLocked()
+	if normalized.Enabled {
+		s.addAuditLocked("agent_update_policy_enabled", fmt.Sprintf("enabled Agent update policy for %s", normalized.DesiredVersion))
+	} else {
+		s.addAuditLocked("agent_update_policy_disabled", "disabled Agent update policy")
+	}
+	return s.data.Service, s.saveLocked()
+}
+
 func (s *MetadataStore) UpdateEnergySettings(settings EnergySettings) (ServiceConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -871,6 +890,39 @@ func (s *MetadataStore) RecordAgentConfig(deviceID string, report model.AgentCon
 	return s.saveLocked()
 }
 
+func (s *MetadataStore) RecordAgentUpdateEvent(deviceID string, event model.AgentUpdateEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	device, ok := s.data.Devices[deviceID]
+	if !ok {
+		return errors.New("device not found")
+	}
+	now := time.Now().UTC()
+	if event.At.IsZero() {
+		event.At = now
+	}
+	state := model.AgentUpdateState{
+		Status:         limitText(strings.TrimSpace(event.Status), 80),
+		CurrentVersion: limitText(strings.TrimSpace(event.CurrentVersion), 80),
+		TargetVersion:  limitText(strings.TrimSpace(event.TargetVersion), 80),
+		ManifestURL:    limitText(redactURLCredentials(event.ManifestURL), 260),
+		ArtifactSHA256: limitText(strings.TrimSpace(event.ArtifactSHA256), 96),
+		Message:        limitText(strings.TrimSpace(event.Message), 240),
+		UpdatedAt:      event.At,
+	}
+	device.UpdateState = &state
+	device.LastSeenAt = now
+	message := fmt.Sprintf("Agent update event for %s: %s", deviceID, state.Status)
+	if state.TargetVersion != "" {
+		message += " -> " + state.TargetVersion
+	}
+	if state.Message != "" {
+		message += "; " + state.Message
+	}
+	s.addAuditLocked("agent_update_event", message)
+	return s.saveLocked()
+}
+
 func (s *MetadataStore) ListDevices() []Device {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1169,6 +1221,69 @@ func normalizeProxyURL(proxyURL string) (string, error) {
 	default:
 		return "", errors.New("proxy URL scheme must be http, https, socks5, or socks5h")
 	}
+}
+
+func normalizeAgentUpdatePolicy(policy model.AgentUpdatePolicy) (model.AgentUpdatePolicy, error) {
+	policy.Mode = strings.ToLower(strings.TrimSpace(policy.Mode))
+	if policy.Mode == "" {
+		policy.Mode = "patch"
+	}
+	switch policy.Mode {
+	case "notify", "patch", "minor":
+	default:
+		return model.AgentUpdatePolicy{}, errors.New("agent update mode must be notify, patch, or minor")
+	}
+	policy.DesiredVersion = strings.TrimSpace(strings.TrimPrefix(policy.DesiredVersion, "v"))
+	policy.ManifestURL = strings.TrimSpace(policy.ManifestURL)
+	policy.PublicKey = strings.TrimSpace(policy.PublicKey)
+	policy.Rollout = strings.ToLower(strings.TrimSpace(policy.Rollout))
+	if policy.Rollout == "" {
+		policy.Rollout = "all"
+	}
+	switch policy.Rollout {
+	case "all", "canary":
+	default:
+		return model.AgentUpdatePolicy{}, errors.New("agent update rollout must be all or canary")
+	}
+	if policy.CheckIntervalSeconds == 0 {
+		policy.CheckIntervalSeconds = 1800
+	}
+	if policy.CheckIntervalSeconds < 300 {
+		return model.AgentUpdatePolicy{}, errors.New("agent update check interval must be at least 300 seconds")
+	}
+	if policy.MaxParallel == 0 {
+		policy.MaxParallel = 1
+	}
+	if policy.MaxParallel < 1 || policy.MaxParallel > 64 {
+		return model.AgentUpdatePolicy{}, errors.New("agent update max parallel must be between 1 and 64")
+	}
+	policy.MaintenanceWindow = strings.TrimSpace(policy.MaintenanceWindow)
+	if !policy.Enabled {
+		return policy, nil
+	}
+	if policy.DesiredVersion == "" {
+		return model.AgentUpdatePolicy{}, errors.New("agent update desired version is required when enabled")
+	}
+	if len(policy.DesiredVersion) > 80 {
+		return model.AgentUpdatePolicy{}, errors.New("agent update desired version is too long")
+	}
+	if policy.ManifestURL == "" {
+		return model.AgentUpdatePolicy{}, errors.New("agent update manifest URL is required when enabled")
+	}
+	parsed, err := url.Parse(policy.ManifestURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return model.AgentUpdatePolicy{}, errors.New("agent update manifest URL must be absolute")
+	}
+	if parsed.User != nil {
+		return model.AgentUpdatePolicy{}, errors.New("agent update manifest URL must not include credentials")
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return model.AgentUpdatePolicy{}, errors.New("agent update manifest URL must use http or https")
+	}
+	if policy.PublicKey == "" {
+		return model.AgentUpdatePolicy{}, errors.New("agent update public key is required when enabled")
+	}
+	return policy, nil
 }
 
 func portFromAddr(addr string) (int, bool) {

@@ -137,6 +137,41 @@ type AgentGPUConfig struct {
 	CollectionError       string   `json:"collection_error,omitempty"`
 }
 
+type AgentUpdatePolicy struct {
+	Enabled               bool   `json:"enabled"`
+	Mode                  string `json:"mode,omitempty"`
+	DesiredVersion        string `json:"desired_version,omitempty"`
+	ManifestURL           string `json:"manifest_url,omitempty"`
+	PublicKey             string `json:"public_key,omitempty"`
+	CheckIntervalSeconds  int    `json:"check_interval_seconds,omitempty"`
+	Rollout               string `json:"rollout,omitempty"`
+	MaxParallel           int    `json:"max_parallel,omitempty"`
+	MaintenanceWindow     string `json:"maintenance_window,omitempty"`
+	AllowPrerelease       bool   `json:"allow_prerelease,omitempty"`
+	RequireManualApproval bool   `json:"require_manual_approval,omitempty"`
+}
+
+type AgentUpdateEvent struct {
+	At             time.Time `json:"at,omitempty"`
+	Status         string    `json:"status"`
+	CurrentVersion string    `json:"current_version,omitempty"`
+	TargetVersion  string    `json:"target_version,omitempty"`
+	ManifestURL    string    `json:"manifest_url,omitempty"`
+	ArtifactURL    string    `json:"artifact_url,omitempty"`
+	ArtifactSHA256 string    `json:"artifact_sha256,omitempty"`
+	Message        string    `json:"message,omitempty"`
+}
+
+type AgentUpdateState struct {
+	Status         string    `json:"status,omitempty"`
+	CurrentVersion string    `json:"current_version,omitempty"`
+	TargetVersion  string    `json:"target_version,omitempty"`
+	ManifestURL    string    `json:"manifest_url,omitempty"`
+	ArtifactSHA256 string    `json:"artifact_sha256,omitempty"`
+	Message        string    `json:"message,omitempty"`
+	UpdatedAt      time.Time `json:"updated_at,omitempty"`
+}
+
 type APIError struct {
 	Error             string `json:"error"`
 	RetryAfterSeconds int    `json:"retry_after_seconds,omitempty"`
