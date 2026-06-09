@@ -540,6 +540,61 @@ func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
 	}
 }
 
+func TestBinaryOutdatedAcceptsShortCommitPrefix(t *testing.T) {
+	fullCommit := "0123456789abcdef0123456789abcdef01234567"
+	status := updateStatus{
+		LocalCommit:    fullCommit,
+		RunningCommit:  fullCommit[:7],
+		RepoVersion:    "0.1.8",
+		RunningVersion: "0.1.8",
+	}
+	if binaryOutdated(status) {
+		t.Fatalf("short running commit prefix should match local commit: %+v", status)
+	}
+	status.RunningCommit = strings.ToUpper(fullCommit[:12])
+	if binaryOutdated(status) {
+		t.Fatalf("commit prefix matching should be case-insensitive: %+v", status)
+	}
+	status.RunningCommit = fullCommit[:6]
+	if !binaryOutdated(status) {
+		t.Fatalf("ambiguous commit prefixes shorter than 7 chars should not match: %+v", status)
+	}
+	status.RunningCommit = "fedcba9876543210fedcba9876543210fedcba98"
+	if !binaryOutdated(status) {
+		t.Fatalf("different running commit should be outdated: %+v", status)
+	}
+}
+
+func TestRecentUpdateNoticeSuppressesRepeatedAutoRebuild(t *testing.T) {
+	now := time.Now().UTC()
+	fullCommit := "0123456789abcdef0123456789abcdef01234567"
+	status := updateStatus{
+		LocalCommit:    fullCommit,
+		BinaryOutdated: true,
+	}
+	notice := &UpdateNotice{
+		TargetCommit: fullCommit[:12],
+		CompletedAt:  now.Add(-time.Minute),
+	}
+	if !automaticUpdateRecentlyCompletedForTarget(notice, status, now) {
+		t.Fatalf("expected recent same-target update notice to suppress automatic rebuild")
+	}
+	status.Available = true
+	if automaticUpdateRecentlyCompletedForTarget(notice, status, now) {
+		t.Fatalf("remote updates should not be suppressed by a stale same-target rebuild notice")
+	}
+	status.Available = false
+	notice.CompletedAt = now.Add(-(updateRestartGrace + time.Second))
+	if automaticUpdateRecentlyCompletedForTarget(notice, status, now) {
+		t.Fatalf("old update notices should not suppress automatic rebuild")
+	}
+	notice.CompletedAt = now.Add(-time.Minute)
+	notice.TargetCommit = "fedcba9876543210fedcba9876543210fedcba98"
+	if automaticUpdateRecentlyCompletedForTarget(notice, status, now) {
+		t.Fatalf("different target commits should not suppress automatic rebuild")
+	}
+}
+
 func TestLinuxRestartScriptReplacesBinaryBeforeWaitingForOldProcess(t *testing.T) {
 	req := updateRestartRequest{
 		CurrentExe:        "/opt/gpufleet/gpufleet-server",

@@ -342,7 +342,7 @@ flowchart LR
 注入构建信息示例：
 
 ```powershell
-$commit = git rev-parse --short HEAD
+$commit = git rev-parse HEAD
 $buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 go build `
   -ldflags "-X gpufleet/internal/version.Commit=$commit -X gpufleet/internal/version.BuildTime=$buildTime" `

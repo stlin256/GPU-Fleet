@@ -28,6 +28,8 @@ const (
 	updateOutputLimit    = 6000
 	updateSourceEntry    = "./cmd/gpufleet-server"
 	updateRestartLogName = "gpufleet-update-restart.log"
+	updateRestartGrace   = 10 * time.Minute
+	minCommitPrefixLen   = 7
 )
 
 type updateStatus struct {
@@ -317,6 +319,12 @@ func (a *App) runUpdateMonitorCycle() bool {
 	if !automatic || !status.Supported || status.Failed || status.Upstream == "" || status.Dirty || status.Ahead > 0 || (!status.Available && !status.BinaryOutdated) {
 		return false
 	}
+	if automaticUpdateRecentlyCompletedForTarget(a.meta.PeekUpdateNotice(), status, time.Now().UTC()) {
+		if a.logger != nil {
+			a.logger.Printf("auto update skipped: recent update already targeted %s", shortCommit(status.LocalCommit))
+		}
+		return false
+	}
 	response, statusCode, message := a.applyUpdateLockedWithStatus(context.Background(), true, status, time.Now().UTC())
 	if statusCode >= http.StatusBadRequest {
 		if a.logger != nil {
@@ -604,13 +612,45 @@ func binaryOutdated(status updateStatus) bool {
 	if status.LocalCommit == "" {
 		return false
 	}
-	if status.RunningCommit != "" && status.RunningCommit != "dev" && status.RunningCommit != status.LocalCommit {
+	if status.RunningCommit != "" && status.RunningCommit != "dev" && !commitRefMatches(status.RunningCommit, status.LocalCommit) {
 		return true
 	}
 	if status.RepoVersion != "" && status.RunningVersion != "" && status.RunningVersion != status.RepoVersion {
 		return true
 	}
 	return false
+}
+
+func commitRefMatches(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if left == "" || right == "" {
+		return false
+	}
+	if strings.EqualFold(left, right) {
+		return true
+	}
+	if len(left) >= minCommitPrefixLen && len(right) >= minCommitPrefixLen {
+		return strings.HasPrefix(strings.ToLower(left), strings.ToLower(right)) || strings.HasPrefix(strings.ToLower(right), strings.ToLower(left))
+	}
+	return false
+}
+
+func automaticUpdateRecentlyCompletedForTarget(notice *UpdateNotice, status updateStatus, now time.Time) bool {
+	if notice == nil || status.Available || !status.BinaryOutdated || strings.TrimSpace(status.LocalCommit) == "" {
+		return false
+	}
+	if !commitRefMatches(notice.TargetCommit, status.LocalCommit) && !commitRefMatches(notice.CurrentCommit, status.LocalCommit) {
+		return false
+	}
+	completedAt := notice.CompletedAt
+	if completedAt.IsZero() {
+		completedAt = notice.UpdatedAt
+	}
+	if completedAt.IsZero() {
+		return false
+	}
+	return completedAt.Add(updateRestartGrace).After(now)
 }
 
 func (a *App) workingTreeDirty(ctx context.Context) bool {

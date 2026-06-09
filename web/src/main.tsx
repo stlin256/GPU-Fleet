@@ -314,10 +314,18 @@ async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
 function releaseMatchesPendingTarget(release: ReleaseInfo | undefined, pending: PendingUpdateNotice) {
   if (!release) return false;
   if (!pendingTargetKnown(pending)) return true;
-  if (pending.target_commit && release.commit === pending.target_commit) return true;
-  if (pending.current_commit && release.commit === pending.current_commit) return true;
+  if (pending.target_commit && commitRefMatches(release.commit, pending.target_commit)) return true;
+  if (pending.current_commit && commitRefMatches(release.commit, pending.current_commit)) return true;
   if (pending.target_commit || pending.current_commit) return false;
   return Boolean(pending.current_version && release.version === pending.current_version);
+}
+
+function commitRefMatches(left?: string, right?: string) {
+  const a = left?.trim().toLowerCase();
+  const b = right?.trim().toLowerCase();
+  if (!a || !b || a === 'dev' || b === 'dev') return false;
+  if (a === b) return true;
+  return a.length >= 7 && b.length >= 7 && (a.startsWith(b) || b.startsWith(a));
 }
 
 function pendingTargetKnown(pending: PendingUpdateNotice) {

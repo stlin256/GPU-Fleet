@@ -39,7 +39,7 @@ mkdir -p "${INSTALL_DIR}" "${DATA_DIR}" "${ENV_DIR}"
 
 COMMIT="dev"
 if command -v git >/dev/null 2>&1; then
-  COMMIT="$(git -C "${REPO_DIR}" rev-parse --short HEAD 2>/dev/null || printf dev)"
+  COMMIT="$(git -C "${REPO_DIR}" rev-parse HEAD 2>/dev/null || printf dev)"
 fi
 BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 

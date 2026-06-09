@@ -43,7 +43,7 @@ Remove-Item Env:\GOARCH
 发布构建时建议注入当前提交和构建时间，设置页会通过 `GET /api/v1/version` 展示这些信息：
 
 ```powershell
-$commit = git rev-parse --short HEAD
+$commit = git rev-parse HEAD
 $buildTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
 go build `
   -ldflags "-X gpufleet/internal/version.Commit=$commit -X gpufleet/internal/version.BuildTime=$buildTime" `

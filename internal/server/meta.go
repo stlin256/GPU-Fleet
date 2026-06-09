@@ -484,6 +484,16 @@ func (s *MetadataStore) TakeUpdateNotice() *UpdateNotice {
 	return &notice
 }
 
+func (s *MetadataStore) PeekUpdateNotice() *UpdateNotice {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.PendingUpdateNotice == nil {
+		return nil
+	}
+	notice := *s.data.PendingUpdateNotice
+	return &notice
+}
+
 func (s *MetadataStore) RecordGuestVisit(visit GuestVisit) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
