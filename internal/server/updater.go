@@ -145,12 +145,12 @@ func (a *App) handleUpdateApply(w http.ResponseWriter, r *http.Request) {
 	a.updateMu.Lock()
 	defer a.updateMu.Unlock()
 
+	_ = a.addAuditForRequest(r, "server_update_requested", "manual server update requested from settings", "")
 	response, statusCode, message := a.applyUpdateLocked(r.Context(), false)
 	if statusCode >= http.StatusBadRequest {
 		writeError(w, statusCode, message)
 		return
 	}
-	_ = a.addAuditForRequest(r, "server_update_requested", "manual server update requested from settings", "")
 	writeJSON(w, statusCode, response)
 }
 
@@ -196,15 +196,22 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 		return updateApplyResponse{}, http.StatusBadRequest, status.Message
 	}
 	if status.Upstream == "" {
-		return updateApplyResponse{}, http.StatusBadRequest, "current branch has no upstream"
+		message := "current branch has no upstream"
+		_ = a.meta.AddAudit("server_update_blocked", message)
+		return updateApplyResponse{}, http.StatusBadRequest, message
 	}
 	if status.Dirty {
-		return updateApplyResponse{}, http.StatusConflict, "server working tree has uncommitted changes"
+		message := "server working tree has uncommitted changes"
+		_ = a.meta.AddAudit("server_update_blocked", message)
+		return updateApplyResponse{}, http.StatusConflict, message
 	}
 	if status.Ahead > 0 {
-		return updateApplyResponse{}, http.StatusConflict, "local branch is ahead of upstream; fast-forward update is not available"
+		message := "local branch is ahead of upstream; fast-forward update is not available"
+		_ = a.meta.AddAudit("server_update_blocked", message)
+		return updateApplyResponse{}, http.StatusConflict, message
 	}
 	if status.Failed {
+		_ = a.meta.AddAudit("server_update_failed", status.Message)
 		return updateApplyResponse{}, http.StatusBadGateway, status.Message
 	}
 	if status.SupplyChain.Blocked {

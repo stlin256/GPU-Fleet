@@ -409,6 +409,8 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	if !applied.DependencyStatus.OK || applied.DependencyStatus.Platform == "" {
 		t.Fatalf("expected dependency status in update response, got %+v", applied.DependencyStatus)
 	}
+	assertAuditType(t, app, "server_update_requested")
+	assertAuditType(t, app, "server_update_scheduled")
 	raw, err := os.ReadFile(filepath.Join(local, "version.txt"))
 	if err != nil {
 		t.Fatal(err)
@@ -439,6 +441,7 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 		t.Fatalf("expected dirty worktree to be reported, got %+v", dirty)
 	}
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/update/apply", nil, cookie, http.StatusConflict, nil)
+	assertAuditType(t, app, "server_update_blocked")
 }
 
 func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
@@ -1722,6 +1725,16 @@ func assertRetryAfter(t *testing.T, rec *httptest.ResponseRecorder) {
 	if body.RetryAfterSeconds <= 0 {
 		t.Fatalf("expected retry_after_seconds > 0, got %+v", body)
 	}
+}
+
+func assertAuditType(t *testing.T, app *App, eventType string) {
+	t.Helper()
+	for _, event := range app.meta.RecentAuditEvents(100) {
+		if event.Type == eventType {
+			return
+		}
+	}
+	t.Fatalf("expected audit event %q, got %+v", eventType, app.meta.RecentAuditEvents(100))
 }
 
 func assertSignedHeartbeat(t *testing.T, handler http.Handler, deviceID, secret string, wantStatus int) {

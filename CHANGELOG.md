@@ -24,6 +24,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: The frontend Chrome/CDP verification script now covers the diagnostics entry, key settings dialogs, non-empty screenshot checks, and an explicit expected-version parameter.
 - zh-CN: README、产品、路线图、API、前端、测试和当前实现文档同步到 0.1.9 状态，减少旧 MVP 口径和已完成能力之间的偏差。
 - en-US: README, product, roadmap, API, frontend, testing, and current implementation docs now match the 0.1.9 state, reducing mismatches between older MVP wording and implemented capabilities.
+- zh-CN: 在线更新流程补齐手动请求和 dirty/no-upstream/ahead/检查失败阻止路径审计，并在测试中覆盖请求、调度和阻止事件。
+- en-US: Online update flow now audits manual requests and dirty/no-upstream/ahead/check-failure blocking paths, with tests covering request, scheduled restart, and blocked events.
 
 ### Security / 安全
 
