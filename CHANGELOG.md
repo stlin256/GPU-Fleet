@@ -27,6 +27,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: The frontend now consumes the richer stats fields already returned by the server, showing sample coverage, average memory, and peak utilization to reduce snapshot-only misreads.
 - zh-CN: 版本号、README、前端包元数据和内置版本 API 变更记录同步到 0.1.8。
 - en-US: Version numbers, README files, frontend package metadata, and the built-in version API changelog fallback now point to 0.1.8.
+- zh-CN: 页面打开时加入更灵动的 Scanline 风格启动扫描、卡片错峰进入、状态点呼吸和曲线绘制节奏，仅调整动效，不改变现有元素风格。
+- en-US: Page entry now adds livelier Scanline-style startup sweep, staggered card entry, status-dot pulse, and chart draw timing while preserving the existing element styling.
 
 ### Fixed / 修复
 

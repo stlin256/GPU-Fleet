@@ -220,6 +220,7 @@ func Changelog() []ChangelogEntry {
 				"统计面板新增筛选、排序和摘要卡片，可按平均/峰值利用率、空闲率、峰值显存、峰值温度、峰值功耗和样本数分析 GPU。",
 				"前端补齐服务端已返回的统计字段，显示采样覆盖范围、平均显存和峰值利用率，减少只看瞬时快照造成的误判。",
 				"版本号、README、前端包元数据和内置版本 API 变更记录同步到 0.1.8。",
+				"页面打开时加入更灵动的 Scanline 风格启动扫描、卡片错峰进入、状态点呼吸和曲线绘制节奏，仅调整动效，不改变现有元素风格。",
 			},
 			ChangedEN: []string{
 				"Overview hot-GPU counts now use the same server-side 85°C threshold as card health state to avoid inconsistent totals.",
@@ -229,6 +230,7 @@ func Changelog() []ChangelogEntry {
 				"Stats panels now include filters, sorting, and summary cards for analyzing GPUs by average/peak utilization, idle rate, peak memory, peak temperature, peak power, and sample count.",
 				"The frontend now consumes the richer stats fields already returned by the server, showing sample coverage, average memory, and peak utilization to reduce snapshot-only misreads.",
 				"Version numbers, README files, frontend package metadata, and the built-in version API changelog fallback now point to 0.1.8.",
+				"Page entry now adds livelier Scanline-style startup sweep, staggered card entry, status-dot pulse, and chart draw timing while preserving the existing element styling.",
 			},
 			Fixed: []string{
 				"修复 GPU 卡片 tag 区域在 PCIe 降级文案较长时出现横向滚动条的问题，标签改为固定网格并保留完整 hover 提示。",
