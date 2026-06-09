@@ -100,15 +100,22 @@ async function main() {
       await waitForText(cdp, [text('device management'), text('register device')], 5000);
       screenshotSizes.desktop_devices = await screenshot(cdp, path.join(outDir, 'desktop-devices.png'));
 
+      logStep('checking energy view');
+      await clickButton(cdp, text('energy'));
+      await waitForText(cdp, [text('thermal energy'), text('current power'), text('gpu energy ranking'), text('energy diagnostics')], 5000);
+      const energyLayout = await assertEnergyPage(cdp);
+      screenshotSizes.desktop_energy = await screenshot(cdp, path.join(outDir, 'desktop-energy.png'));
+
       logStep('checking settings view');
       await clickButton(cdp, text('settings'));
-      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('database download'), text('download diagnostics'), text('online update'), text('setup wizard'), text('release info'), text('latest changelog'), expectedVersion, 'stlin256', 'https://github.com/stlin256/GPU-Fleet'], 5000);
+      await waitForText(cdp, [text('service settings'), text('service status'), text('password change'), text('port config'), text('https certificate'), text('energy display'), text('database download'), text('download diagnostics'), text('online update'), text('setup wizard'), text('release info'), text('latest changelog'), expectedVersion, 'stlin256', 'https://github.com/stlin256/GPU-Fleet'], 5000);
       const settingsLayout = await evaluate(cdp, () => ({
         statCount: document.querySelectorAll('[data-testid="setting-stat"]').length,
         operationCount: document.querySelectorAll('.setting-operation').length,
         passwordPanel: Boolean(document.querySelector('[data-testid="settings-password"]')),
         portPanel: Boolean(document.querySelector('[data-testid="settings-port"]')),
         certPanel: Boolean(document.querySelector('[data-testid="settings-certificate"]')),
+        energyPanel: Boolean(document.querySelector('[data-testid="settings-energy-display"]')),
         guestPanel: Boolean(document.querySelector('[data-testid="settings-guest"]')),
         restartPanel: Boolean(document.querySelector('[data-testid="settings-restart"]')),
         databasePanel: Boolean(document.querySelector('[data-testid="settings-database"]')),
@@ -123,10 +130,10 @@ async function main() {
         hasSettingsPage: Boolean(document.querySelector('[data-testid="settings-page"]')),
         bodyText: document.body.innerText
       }));
-      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.operationCount < 9) {
+      if (!settingsLayout.hasSettingsPage || settingsLayout.statCount < 4 || settingsLayout.operationCount < 10) {
         throw new Error(`settings page is incomplete: ${JSON.stringify(settingsLayout)}`);
       }
-      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.guestPanel || !settingsLayout.restartPanel || !settingsLayout.databasePanel || !settingsLayout.diskReservePanel || !settingsLayout.updatePanel || !settingsLayout.projectPanel || !settingsLayout.changelogPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || !settingsLayout.diagnosticsLink.includes('/api/v1/admin/diagnostics/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPU-Fleet') {
+      if (!settingsLayout.passwordPanel || !settingsLayout.portPanel || !settingsLayout.certPanel || !settingsLayout.energyPanel || !settingsLayout.guestPanel || !settingsLayout.restartPanel || !settingsLayout.databasePanel || !settingsLayout.diskReservePanel || !settingsLayout.updatePanel || !settingsLayout.projectPanel || !settingsLayout.changelogPanel || !settingsLayout.databaseLink.includes('/api/v1/admin/database/download') || !settingsLayout.diagnosticsLink.includes('/api/v1/admin/diagnostics/download') || settingsLayout.projectLink !== 'https://github.com/stlin256/GPU-Fleet') {
         throw new Error(`settings page does not expose operational controls: ${JSON.stringify(settingsLayout)}`);
       }
       if (settingsLayout.brandLogoCount < 1 || !settingsLayout.bodyText.includes('版本与变更') || !settingsLayout.bodyText.includes('最近变更') || !settingsLayout.bodyText.includes(expectedVersion) || !settingsLayout.bodyText.includes('stlin256')) {
@@ -166,7 +173,7 @@ async function main() {
       if (mobileOverviewLayout.fleetCardCount < 1) {
         throw new Error('fleet overview GPU cards were not rendered in mobile browser');
       }
-      if (mobileOverviewLayout.navButtonCount < 4 || mobileOverviewLayout.navPosition !== 'fixed' || Math.abs(mobileOverviewLayout.navBottom - mobileOverviewLayout.height) > 2) {
+      if (mobileOverviewLayout.navButtonCount < 5 || mobileOverviewLayout.navPosition !== 'fixed' || Math.abs(mobileOverviewLayout.navBottom - mobileOverviewLayout.height) > 2) {
         throw new Error(`mobile bottom navigation is not fixed at the viewport bottom: ${JSON.stringify(mobileOverviewLayout)}`);
       }
 
@@ -214,6 +221,7 @@ async function main() {
           desktop_overview: path.join(outDir, 'desktop-overview.png'),
           desktop_overview_dark: path.join(outDir, 'desktop-overview-dark.png'),
           desktop_devices: path.join(outDir, 'desktop-devices.png'),
+          desktop_energy: path.join(outDir, 'desktop-energy.png'),
           desktop_settings: path.join(outDir, 'desktop-settings.png'),
           mobile_overview: path.join(outDir, 'mobile-overview.png'),
           mobile_gpu: path.join(outDir, 'mobile-gpu.png')
@@ -231,6 +239,10 @@ async function main() {
           dualDeviceColorMatched: fleetStatus.dualDeviceColorMatched,
           distinctDeviceColorCount: fleetStatus.distinctDeviceColorCount,
           sparkTooltipCount: tooltipStatus.count,
+          energyMetricCount: energyLayout.metricCount,
+          energyTrendCount: energyLayout.trendCount,
+          energyRangeButtonCount: energyLayout.rangeButtonCount,
+          energySettingsPanel: settingsLayout.energyPanel,
           detailTrendCount: layout.detailTrendCount,
           meterCount: layout.meterCount,
           settingsStatCount: settingsLayout.statCount,
@@ -294,9 +306,15 @@ function text(id) {
     'restart service': '\u91cd\u542f\u670d\u52a1',
     overview: '\u603b\u89c8',
     devices: '\u8bbe\u5907',
+    energy: '\u80fd\u8017',
     gpu: '\u0047\u0050\u0055',
     settings: '\u8bbe\u7f6e',
     'gpu monitoring': '\u0047\u0050\u0055 \u76d1\u63a7',
+    'thermal energy': '\u70ed\u80fd\u4e0e\u80fd\u6e90',
+    'current power': '\u5f53\u524d\u529f\u7387',
+    'gpu energy ranking': '\u0047\u0050\u0055 \u80fd\u8017\u6392\u884c',
+    'energy diagnostics': '\u80fd\u6e90\u8bca\u65ad',
+    'energy display': '\u80fd\u8017\u5c55\u793a',
     'login panel': '\u767b\u5f55\u9762\u677f'
   };
   return values[id] || id;
@@ -504,6 +522,46 @@ async function assertTrendTooltip(cdp) {
     throw new Error(`sparkline tooltip did not show a numeric value: ${JSON.stringify(status)}`);
   }
   return status;
+}
+
+async function assertEnergyPage(cdp) {
+  const before = await evaluate(cdp, () => {
+    const root = document.querySelector('[data-view="energy"]');
+    return {
+      hasRoot: Boolean(root),
+      hasEnergyPage: Boolean(document.querySelector('[data-testid="energy-page"]')),
+      metricCount: document.querySelectorAll('[data-testid="energy-page"] .metric').length,
+      trendCount: document.querySelectorAll('.energy-trend-panel [data-testid="gpu-trend-tile"]').length,
+      rangeButtonCount: root ? root.querySelectorAll('.segmented-control button').length : 0,
+      hasDiagnostics: Boolean(document.querySelector('.energy-diagnostics-panel')),
+      hasRanking: Boolean(document.querySelector('.energy-gpu-panel')),
+      controlWords: /\u98ce\u6247|\u9891\u7387|\u529f\u8017\u5899|\u6682\u505c\u4efb\u52a1|\u6740\u8fdb\u7a0b/.test(document.body.innerText || ''),
+      bodyText: document.body.innerText
+    };
+  });
+  if (!before.hasRoot || !before.hasEnergyPage || before.metricCount < 5 || before.trendCount < 3 || before.rangeButtonCount < 3 || !before.hasDiagnostics || !before.hasRanking || before.controlWords) {
+    throw new Error(`energy page is incomplete or exposes control wording: ${JSON.stringify(before)}`);
+  }
+
+  for (const label of ['7D', '30D']) {
+    await evaluate(cdp, (label) => {
+      const root = document.querySelector('[data-view="energy"]');
+      if (!root) throw new Error('energy view root not found');
+      const button = Array.from(root.querySelectorAll('.segmented-control button')).find((item) => (item.textContent || '').includes(label));
+      if (!button) throw new Error(`energy range button not found: ${label}`);
+      button.click();
+    }, label);
+    await delay(200);
+    const activeLabel = await evaluate(cdp, () => {
+      const active = document.querySelector('[data-view="energy"] .segmented-control button.active');
+      return active?.textContent || '';
+    });
+    if (!activeLabel.includes(label)) {
+      throw new Error(`energy range did not switch to ${label}: ${activeLabel}`);
+    }
+  }
+
+  return before;
 }
 
 async function assertSettingsDialogs(cdp) {

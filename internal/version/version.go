@@ -224,12 +224,14 @@ func Changelog() []ChangelogEntry {
 			},
 			Changed: []string{
 				"前端 Chrome/CDP 验证脚本补充诊断包入口、关键设置弹窗和截图非空检查，并支持显式期望版本参数。",
+				"前端 Chrome/CDP 验证脚本补充能源页 KPI、24H/7D/30D 范围切换、GPU 能耗排行、能源诊断和设置页能耗展示表单断言。",
 				"README、产品、路线图、API、前端、测试和当前实现文档同步到 0.1.9 状态，减少旧 MVP 口径和已完成能力之间的偏差。",
 				"在线更新流程补齐手动请求和 dirty/no-upstream/ahead/检查失败阻止路径审计，并在测试中覆盖请求、调度和阻止事件。",
 				"前端新增“能耗”导航页，展示当前功率、范围耗电、电费估算、热状态趋势、GPU 能耗排行和结构化诊断，并在设置页提供仅影响展示估算的电价与阈值配置。",
 			},
 			ChangedEN: []string{
 				"The frontend Chrome/CDP verification script now covers the diagnostics entry, key settings dialogs, non-empty screenshot checks, and an explicit expected-version parameter.",
+				"The frontend Chrome/CDP verification script now covers Energy-page KPIs, 24H/7D/30D range switching, GPU energy ranking, energy diagnostics, and the Settings energy display form.",
 				"README, product, roadmap, API, frontend, testing, and current implementation docs now match the 0.1.9 state, reducing mismatches between older MVP wording and implemented capabilities.",
 				"Online update flow now audits manual requests and dirty/no-upstream/ahead/check-failure blocking paths, with tests covering request, scheduled restart, and blocked events.",
 				"Added an Energy navigation page showing current power, range energy, cost estimates, thermal trends, per-GPU energy ranking, and structured diagnostics, plus display-only price and threshold settings.",
