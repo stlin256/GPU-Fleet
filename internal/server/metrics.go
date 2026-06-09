@@ -230,6 +230,13 @@ func (s *MetricsStore) Series(deviceID, gpuID string, since time.Time) ([]Series
 	return points, nil
 }
 
+func (s *MetricsStore) SeriesRollup(deviceID, gpuID string, since time.Time) ([]SeriesPoint, error) {
+	if points, ok := s.seriesRollupFromIndex(deviceID, gpuID, since); ok {
+		return points, nil
+	}
+	return s.Series(deviceID, gpuID, since)
+}
+
 func (s *MetricsStore) Stats(deviceID string, since time.Time) ([]GPUStats, error) {
 	if stats, ok := s.statsFromIndex(deviceID, since); ok {
 		return stats, nil
@@ -440,6 +447,25 @@ func seriesFromRollups(buckets map[int64]*metricRollupBucket, since time.Time) [
 	}
 	sortSeriesPoints(points)
 	return points
+}
+
+func (s *MetricsStore) seriesRollupFromIndex(deviceID, gpuID string, since time.Time) ([]SeriesPoint, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.indexReady {
+		return nil, false
+	}
+	now := time.Now().UTC()
+	var source map[string]map[int64]*metricRollupBucket
+	if !since.Before(now.Add(-minuteRollupAge)) {
+		source = s.minuteRollups
+	} else if !since.Before(now.Add(-hourRollupAge)) {
+		source = s.hourRollups
+	} else {
+		return nil, false
+	}
+	key := latestKey(deviceID, gpuID)
+	return seriesFromRollups(source[key], since), true
 }
 
 func (s *MetricsStore) statsFromIndex(deviceID string, since time.Time) ([]GPUStats, bool) {

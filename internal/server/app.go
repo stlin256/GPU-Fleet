@@ -822,12 +822,20 @@ func (a *App) handleGuestGPUSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hours := parseHours(r, 1)
-	points, err := a.metrics.Series(deviceID, gpuID, time.Now().Add(-time.Duration(hours)*time.Hour))
+	points, err := a.gpuSeries(deviceID, gpuID, hours)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, points)
+}
+
+func (a *App) gpuSeries(deviceID, gpuID string, hours int) ([]SeriesPoint, error) {
+	since := time.Now().Add(-time.Duration(hours) * time.Hour)
+	if hours > 1 {
+		return a.metrics.SeriesRollup(deviceID, gpuID, since)
+	}
+	return a.metrics.Series(deviceID, gpuID, since)
 }
 
 func (a *App) overviewResponse(r *http.Request, guest bool) overviewResponse {
@@ -1169,7 +1177,7 @@ func (a *App) handleGPUSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hours := parseHours(r, 1)
-	points, err := a.metrics.Series(deviceID, gpuID, time.Now().Add(-time.Duration(hours)*time.Hour))
+	points, err := a.gpuSeries(deviceID, gpuID, hours)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -177,6 +177,8 @@ const en: Record<string, string> = {
   '无匹配统计': 'No matching stats',
   '{range} 统计': '{range} Stats',
   '过去 {range} 曲线': 'Past {range} charts',
+  '曲线加载失败': 'Chart loading failed',
+  '暂无曲线数据': 'No chart data',
   '服务状态': 'Service Status',
   '等待服务端配置': 'Waiting for server configuration',
   '需要重启': 'Restart required',

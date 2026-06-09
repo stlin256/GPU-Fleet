@@ -2035,7 +2035,6 @@ function StatsPanel({
   hours: number;
   onHoursChange?: (hours: number) => void;
 }) {
-  const query = useQueryClient();
   const { language, t } = useI18n();
   const deviceByID = useMemo(() => new Map(devices.map((device) => [device.id, device])), [devices]);
   const [sortKey, setSortKey] = useState<StatsSortKey>('avg_util');
@@ -2045,13 +2044,6 @@ function StatsPanel({
     .filter((row) => statsFilterMatch(row, filterKey))
     .sort((left, right) => statsSortValue(right, sortKey) - statsSortValue(left, sortKey) || statsRowLabel(left, deviceByID).localeCompare(statsRowLabel(right, deviceByID))), [deviceByID, filterKey, sortKey, statRows]);
   const summary = useMemo(() => statsSummary(statRows), [statRows]);
-  useEffect(() => {
-    const activeRows = visibleRows.slice(0, 8);
-    const timers = activeRows.map((row, index) => window.setTimeout(() => {
-      void prefetchStatsSeries(query, row, hours);
-    }, 2500 + index * 220));
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [hours, query, visibleRows]);
   useEffect(() => {
     const current = new Set(statRows.map((row) => statsRowKey(row)));
     setExpanded((previous) => {
@@ -2120,7 +2112,6 @@ function StatsPanel({
                     return next;
                   });
                 }}
-                onPointerEnter={() => prefetchStatsSeries(query, row, hours)}
                 aria-expanded={open}
               >
                 <div>
@@ -2234,6 +2225,9 @@ function StatsTrendCard({ row, hours }: { row: GPUStats; hours: number }) {
     retry: false
   });
   const points = series.data ?? [];
+  const error = series.error instanceof Error ? series.error : undefined;
+  const isInitialLoading = series.isLoading && points.length === 0;
+  const isEmpty = !isInitialLoading && !error && points.length === 0;
   const memoryValues = points.map((point) => point.memory_total_bytes ? (point.memory_used_bytes / point.memory_total_bytes) * 100 : undefined);
   return (
     <div className="stats-trend-card">
@@ -2242,29 +2236,30 @@ function StatsTrendCard({ row, hours }: { row: GPUStats; hours: number }) {
           <strong>{t('过去 {range} 曲线', { range: statsRangeLabel(hours) })}</strong>
           <p>{row.gpu_name || row.gpu_id}</p>
         </div>
-        <span>{series.isLoading ? '加载中' : `${points.length} samples`}</span>
+        <span>{isInitialLoading ? t('加载中') : error ? t('失败') : `${points.length} samples`}</span>
       </div>
-      <div className="gpu-detail-trend-grid stats-trend-grid">
-        <TrendTile label="利用率" value={pct(row.average_utilization_percent)} caption="平均" values={points.map((point) => point.utilization_gpu_percent)} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(row.average_utilization_percent, 70, 92)} formatValue={pct} />
-        <TrendTile label="显存" value={fmtMemoryG(row.peak_memory_used_bytes, row.memory_total_bytes)} caption="峰值" values={memoryValues} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(maxSeries(memoryValues, 0), 75, 92)} formatValue={pct} />
-        <TrendTile label="温度" value={row.peak_temperature_celsius ? `${Math.round(row.peak_temperature_celsius)}°C` : '-'} caption="峰值" values={points.map((point) => point.temperature_celsius)} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(row.peak_temperature_celsius, 80, 88)} formatValue={temp} />
-        <TrendTile label="功耗" value={watts(row.peak_power_draw_watts)} caption="峰值" values={points.map((point) => point.power_draw_watts)} timestamps={points.map((point) => point.timestamp)} max={maxSeries(points.map((point) => point.power_draw_watts), Math.max(row.peak_power_draw_watts ?? 1, 1))} tone={metricTone(row.peak_power_draw_watts, 240, 300)} formatValue={watts} />
-      </div>
-      {series.error instanceof Error && <p className="error">{series.error.message}</p>}
+      {isInitialLoading && <div className="stats-trend-state">{t('加载中')}</div>}
+      {error && (
+        <div className="stats-trend-state error">
+          <strong>{t('曲线加载失败')}</strong>
+          <p>{error.message}</p>
+        </div>
+      )}
+      {isEmpty && <div className="stats-trend-state">{t('暂无曲线数据')}</div>}
+      {!isInitialLoading && !error && points.length > 0 && (
+        <div className="gpu-detail-trend-grid stats-trend-grid">
+          <TrendTile label="利用率" value={pct(row.average_utilization_percent)} caption="平均" values={points.map((point) => point.utilization_gpu_percent)} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(row.average_utilization_percent, 70, 92)} formatValue={pct} />
+          <TrendTile label="显存" value={fmtMemoryG(row.peak_memory_used_bytes, row.memory_total_bytes)} caption="峰值" values={memoryValues} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(maxSeries(memoryValues, 0), 75, 92)} formatValue={pct} />
+          <TrendTile label="温度" value={row.peak_temperature_celsius ? `${Math.round(row.peak_temperature_celsius)}°C` : '-'} caption="峰值" values={points.map((point) => point.temperature_celsius)} timestamps={points.map((point) => point.timestamp)} max={100} tone={metricTone(row.peak_temperature_celsius, 80, 88)} formatValue={temp} />
+          <TrendTile label="功耗" value={watts(row.peak_power_draw_watts)} caption="峰值" values={points.map((point) => point.power_draw_watts)} timestamps={points.map((point) => point.timestamp)} max={maxSeries(points.map((point) => point.power_draw_watts), Math.max(row.peak_power_draw_watts ?? 1, 1))} tone={metricTone(row.peak_power_draw_watts, 240, 300)} formatValue={watts} />
+        </div>
+      )}
     </div>
   );
 }
 
 function statsSeriesQueryKey(row: Pick<GPUStats, 'device_id' | 'gpu_id'>, hours: number) {
   return ['gpu-series-stats', row.device_id, row.gpu_id, hours] as const;
-}
-
-function prefetchStatsSeries(query: QueryClient, row: Pick<GPUStats, 'device_id' | 'gpu_id'>, hours: number) {
-  return query.prefetchQuery({
-    queryKey: statsSeriesQueryKey(row, hours),
-    queryFn: () => getGPUSeries(row.device_id, row.gpu_id, hours),
-    staleTime: 30_000
-  });
 }
 
 function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme: Theme; onToggleTheme: () => void }) {
