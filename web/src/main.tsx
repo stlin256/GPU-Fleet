@@ -310,6 +310,9 @@ async function waitForServerAfterUpdate(pending: PendingUpdateNotice) {
       sawFailure = true;
     }
   }
+  window.localStorage.removeItem(updatePendingKey);
+  clearCachedUpdateStatus();
+  window.location.reload();
 }
 
 function releaseMatchesPendingTarget(release: ReleaseInfo | undefined, pending: PendingUpdateNotice) {
@@ -355,6 +358,9 @@ async function waitForServerAfterRestart(pending: PendingUpdateNotice) {
       sawFailure = true;
     }
   }
+  window.localStorage.removeItem(updatePendingKey);
+  clearCachedUpdateStatus();
+  window.location.reload();
 }
 
 function portFromLocation() {
@@ -2609,9 +2615,9 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
         const pending = {
           kind: resultNotice?.kind || 'update',
           previous_commit: resultNotice?.previous_commit || status?.local_commit,
-          target_commit: resultNotice?.target_commit || result.status.local_commit || status?.remote_commit,
+          target_commit: resultNotice?.target_commit || result.target_commit || status?.remote_commit || result.status.local_commit,
           previous_version: resultNotice?.previous_version || release.data?.version,
-          current_commit: resultNotice?.current_commit,
+          current_commit: resultNotice?.current_commit || result.target_commit,
           current_version: resultNotice?.current_version,
           summary: resultNotice?.summary,
           summary_en: resultNotice?.summary_en,
@@ -2628,9 +2634,9 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           setProgressStep(5);
           const notice = {
             previous_commit: status?.local_commit,
-            target_commit: result.status.local_commit || status?.remote_commit,
+            target_commit: result.target_commit || result.status.local_commit || status?.remote_commit,
             previous_version: release.data?.version,
-            current_commit: result.status.local_commit,
+            current_commit: result.target_commit || result.status.local_commit,
             current_version: release.data?.version,
             started_at: new Date().toISOString(),
             completed_at: new Date().toISOString()

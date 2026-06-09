@@ -154,6 +154,9 @@ func NewApp(config Config, logger *log.Logger) (*App, string, error) {
 		scheme:                scheme,
 		startedAt:             time.Now().UTC(),
 	}
+	if app.schedulePendingExecutableRecovery() {
+		return app, generatedPassword, nil
+	}
 	if !config.DisableUpdateMonitor {
 		app.startUpdateMonitorLoop()
 	}

@@ -19,19 +19,20 @@ import (
 )
 
 const (
-	updateCheckTimeout   = 25 * time.Second
-	updatePullTimeout    = 60 * time.Second
-	updateBuildTimeout   = 3 * time.Minute
-	updateRestartDelay   = 1200 * time.Millisecond
-	autoUpdateInterval   = 30 * time.Minute
-	updateCheckInterval  = time.Hour
-	updateOutputLimit    = 6000
-	updateSourceEntry    = "./cmd/gpufleet-server"
-	updateRestartLogName = "gpufleet-update-restart.log"
-	updateRestartGrace   = 10 * time.Minute
-	minCommitPrefixLen   = 7
-	trustedUpdateHost    = "github.com"
-	trustedUpdateRepo    = "stlin256/gpu-fleet"
+	updateCheckTimeout         = 25 * time.Second
+	updatePullTimeout          = 60 * time.Second
+	updateBuildTimeout         = 3 * time.Minute
+	updateRestartDelay         = 1200 * time.Millisecond
+	autoUpdateInterval         = 30 * time.Minute
+	updateCheckInterval        = time.Hour
+	updateOutputLimit          = 6000
+	updateSourceEntry          = "./cmd/gpufleet-server"
+	updateRestartLogName       = "gpufleet-update-restart.log"
+	updateRestartGrace         = 10 * time.Minute
+	updateRecoveryCheckTimeout = 2 * time.Second
+	minCommitPrefixLen         = 7
+	trustedUpdateHost          = "github.com"
+	trustedUpdateRepo          = "stlin256/gpu-fleet"
 )
 
 type updateStatus struct {
@@ -82,6 +83,7 @@ type updateApplyResponse struct {
 	OK               bool                   `json:"ok"`
 	Status           updateStatus           `json:"status"`
 	Notice           *UpdateNotice          `json:"notice,omitempty"`
+	TargetCommit     string                 `json:"target_commit,omitempty"`
 	Output           string                 `json:"output,omitempty"`
 	BuildOutput      string                 `json:"build_output,omitempty"`
 	DependencyStatus updateDependencyStatus `json:"dependency_status,omitempty"`
@@ -314,6 +316,7 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 			BuildOutput:      limitText(buildResult.Output, updateOutputLimit),
 			DependencyStatus: deps,
 			Notice:           notice,
+			TargetCommit:     targetCommit,
 			RestartRequired:  true,
 			Restarting:       true,
 			RestartAt:        restartAt,
@@ -327,6 +330,7 @@ func (a *App) applyUpdateLockedWithStatus(ctx context.Context, automatic bool, s
 		Output:           limitText(output, updateOutputLimit),
 		BuildOutput:      limitText(buildResult.Output, updateOutputLimit),
 		DependencyStatus: deps,
+		TargetCommit:     targetCommit,
 		RestartRequired:  false,
 		Restarting:       false,
 	}, http.StatusOK, ""
@@ -360,6 +364,62 @@ func (a *App) runUpdateMonitorCycle() bool {
 		return false
 	}
 	return response.Restarting
+}
+
+func (a *App) schedulePendingExecutableRecovery() bool {
+	exePath, err := currentExecutablePath()
+	if err != nil {
+		return false
+	}
+	nextPath := exePath + ".next"
+	if info, err := os.Stat(nextPath); err != nil || info.IsDir() || info.Size() == 0 {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), updateRecoveryCheckTimeout)
+	defer cancel()
+	localCommit, err := a.runGit(ctx, "rev-parse", "HEAD")
+	if err != nil {
+		return false
+	}
+	localCommit = strings.TrimSpace(localCommit)
+	repoVersion, _ := a.repoVersionAt(ctx, "HEAD")
+	if !binaryOutdated(updateStatus{
+		LocalCommit:    localCommit,
+		RunningCommit:  version.Commit,
+		RepoVersion:    repoVersion,
+		RunningVersion: version.Version,
+	}) {
+		return false
+	}
+	restartAt := time.Now().UTC().Add(updateRestartDelay)
+	req := updateRestartRequest{
+		CurrentExe:        exePath,
+		NextExe:           nextPath,
+		BackupExe:         exePath + ".bak",
+		Args:              append([]string(nil), os.Args[1:]...),
+		WorkDir:           mustGetwd(),
+		PID:               os.Getpid(),
+		RestartAt:         restartAt,
+		ReplaceExecutable: true,
+	}
+	if err := a.updateScheduleRestart(req); err != nil {
+		if a.logger != nil {
+			a.logger.Printf("pending update recovery failed: %v", err)
+		}
+		return false
+	}
+	if a.logger != nil {
+		a.logger.Printf("pending update recovery scheduled for repository commit %s", shortCommit(localCommit))
+	}
+	go func() {
+		time.Sleep(updateRestartDelay)
+		if a.updateExit != nil {
+			a.updateExit()
+			return
+		}
+		os.Exit(0)
+	}()
+	return true
 }
 
 func updateMonitorInterval(autoUpdateOn bool) time.Duration {
@@ -874,6 +934,9 @@ func scheduleLinuxRestart(req updateRestartRequest) error {
 }
 
 func windowsRestartScript(req updateRestartRequest, logPath, helperPath string) string {
+	if req.BackupExe == "" {
+		req.BackupExe = req.CurrentExe + ".bak"
+	}
 	args := make([]string, 0, len(req.Args))
 	for _, arg := range req.Args {
 		args = append(args, psQuote(arg))
@@ -885,10 +948,28 @@ func windowsRestartScript(req updateRestartRequest, logPath, helperPath string) 
 	replace := ""
 	rollback := ""
 	if req.ReplaceExecutable {
-		replace = fmt.Sprintf(`  Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue
-  Copy-Item -LiteralPath %s -Destination %s -Force
-  Move-Item -LiteralPath %s -Destination %s -Force
-`, psQuote(req.BackupExe), psQuote(req.CurrentExe), psQuote(req.BackupExe), psQuote(req.NextExe), psQuote(req.CurrentExe))
+		replace = fmt.Sprintf(`  $waitUntil = (Get-Date).AddSeconds(60)
+  while ((Get-Date) -lt $waitUntil) {
+    $existing = Get-Process -Id %d -ErrorAction SilentlyContinue
+    if (-not $existing) { break }
+    Start-Sleep -Milliseconds 250
+  }
+  if (Get-Process -Id %d -ErrorAction SilentlyContinue) {
+    throw "current process did not exit before replacement"
+  }
+  $replaceUntil = (Get-Date).AddSeconds(60)
+  while ($true) {
+    try {
+      Remove-Item -LiteralPath %s -Force -ErrorAction SilentlyContinue
+      Copy-Item -LiteralPath %s -Destination %s -Force
+      Move-Item -LiteralPath %s -Destination %s -Force
+      break
+    } catch {
+      if ((Get-Date) -ge $replaceUntil) { throw }
+      Start-Sleep -Milliseconds 250
+    }
+  }
+`, req.PID, req.PID, psQuote(req.BackupExe), psQuote(req.CurrentExe), psQuote(req.BackupExe), psQuote(req.NextExe), psQuote(req.CurrentExe))
 		rollback = fmt.Sprintf(`  if (Test-Path -LiteralPath %s) {
     Copy-Item -LiteralPath %s -Destination %s -Force
   }
@@ -897,7 +978,6 @@ func windowsRestartScript(req updateRestartRequest, logPath, helperPath string) 
 	return fmt.Sprintf(`$ErrorActionPreference = 'Stop'
 Start-Sleep -Milliseconds %d
 try {
-  Wait-Process -Id %d -Timeout 30 -ErrorAction SilentlyContinue
 %s
   Start-Process -FilePath %s -ArgumentList @(%s) -WorkingDirectory %s -WindowStyle Hidden
   "restarted at $(Get-Date -Format o)" | Out-File -FilePath %s -Append -Encoding utf8
@@ -910,7 +990,6 @@ try {
 }
 `,
 		delayMs,
-		req.PID,
 		replace,
 		psQuote(req.CurrentExe),
 		strings.Join(args, ", "),
@@ -923,6 +1002,9 @@ try {
 }
 
 func linuxRestartScript(req updateRestartRequest, logPath, helperPath string) string {
+	if req.BackupExe == "" {
+		req.BackupExe = req.CurrentExe + ".bak"
+	}
 	args := make([]string, 0, len(req.Args))
 	for _, arg := range req.Args {
 		args = append(args, shQuote(arg))
@@ -933,25 +1015,35 @@ func linuxRestartScript(req updateRestartRequest, logPath, helperPath string) st
 	}
 	replace := ""
 	if req.ReplaceExecutable {
-		replace = fmt.Sprintf(`rm -f %s
-cp -p %s %s
-if ! mv -f %s %s; then
-  cp -p %s %s
-  printf 'rollback restored previous executable at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
+		replace = fmt.Sprintf(`i=0
+while kill -0 %d 2>/dev/null && [ "$i" -lt 600 ]; do
+  i=$((i + 1))
+  sleep 0.1
+done
+if kill -0 %d 2>/dev/null; then
+  printf 'current process did not exit before replacement at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
   exit 1
 fi
-chmod 0755 %s
-`, shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.NextExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(logPath), shQuote(req.CurrentExe))
+i=0
+while [ "$i" -lt 600 ]; do
+  rm -f %s
+  if cp -p %s %s && mv -f %s %s && chmod 0755 %s; then
+    break
+  fi
+  i=$((i + 1))
+  sleep 0.1
+done
+if [ "$i" -ge 600 ]; then
+  cp -p %s %s 2>/dev/null || true
+  printf 'replacement failed and rollback was attempted at %%s\n' "$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)" >> %s
+  exit 1
+fi
+`, req.PID, req.PID, shQuote(logPath), shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.NextExe), shQuote(req.CurrentExe), shQuote(req.CurrentExe), shQuote(req.BackupExe), shQuote(req.CurrentExe), shQuote(logPath))
 	}
 	return fmt.Sprintf(`#!/bin/sh
 set -eu
 sleep %.3f
 %s
-i=0
-while kill -0 %d 2>/dev/null && [ "$i" -lt 300 ]; do
-  i=$((i + 1))
-  sleep 0.1
-done
 already_running=0
 for exe in /proc/[0-9]*/exe; do
   target=$(readlink "$exe" 2>/dev/null || true)
@@ -971,7 +1063,6 @@ rm -f %s
 `,
 		delay,
 		replace,
-		req.PID,
 		shQuote(req.CurrentExe),
 		shQuote(req.WorkDir),
 		shQuote(req.CurrentExe),

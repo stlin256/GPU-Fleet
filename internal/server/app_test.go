@@ -397,6 +397,9 @@ func TestUpdateAPIReportsAndPullsFastForwardUpdates(t *testing.T) {
 	if !applied.OK || applied.RestartRequired == false || !applied.Restarting || applied.RestartAt.IsZero() || applied.Status.Available || applied.Status.LocalCommit != applied.Status.RemoteCommit {
 		t.Fatalf("unexpected update apply response: %+v", applied)
 	}
+	if applied.TargetCommit != available.RemoteCommit {
+		t.Fatalf("expected response target commit %s, got %+v", available.RemoteCommit, applied)
+	}
 	if !buildCalled || buildReq.RemoteCommit != available.RemoteCommit || buildReq.OutputPath == "" {
 		t.Fatalf("expected update build hook to run for remote commit %s, got called=%v req=%+v", available.RemoteCommit, buildCalled, buildReq)
 	}
@@ -528,6 +531,9 @@ func TestUpdateAPIRebuildsWhenRunningBinaryIsOutdated(t *testing.T) {
 	if !applied.OK || !applied.RestartRequired || !applied.Restarting || applied.RestartAt.IsZero() {
 		t.Fatalf("expected rebuild restart response, got %+v", applied)
 	}
+	if applied.TargetCommit != status.LocalCommit {
+		t.Fatalf("expected rebuild response target commit %s, got %+v", status.LocalCommit, applied)
+	}
 	if buildReq.RemoteCommit != status.LocalCommit {
 		t.Fatalf("expected rebuild from local commit %q, got %+v", status.LocalCommit, buildReq)
 	}
@@ -596,6 +602,30 @@ func TestUpdateSupplyChainStatusRequiresExactTargetCommit(t *testing.T) {
 	}
 }
 
+func TestRestartScriptsWaitBeforeReplacingExecutable(t *testing.T) {
+	req := updateRestartRequest{
+		CurrentExe:        "/opt/gpufleet/gpufleet-server",
+		NextExe:           "/opt/gpufleet/gpufleet-server.next",
+		BackupExe:         "/opt/gpufleet/gpufleet-server.bak",
+		WorkDir:           "/opt/gpufleet/repo",
+		PID:               12345,
+		RestartAt:         time.Now().UTC().Add(time.Second),
+		ReplaceExecutable: true,
+	}
+	windows := windowsRestartScript(req, "C:\\gpufleet-update.log", "C:\\gpufleet-update.ps1")
+	for _, want := range []string{"current process did not exit before replacement", "Move-Item", "Start-Process"} {
+		if !strings.Contains(windows, want) {
+			t.Fatalf("expected Windows restart script to contain %q:\n%s", want, windows)
+		}
+	}
+	linux := linuxRestartScript(req, "/opt/gpufleet/update.log", "/tmp/gpufleet-update.sh")
+	for _, want := range []string{"current process did not exit before replacement", "mv -f", "nohup"} {
+		if !strings.Contains(linux, want) {
+			t.Fatalf("expected Linux restart script to contain %q:\n%s", want, linux)
+		}
+	}
+}
+
 func TestBinaryOutdatedAcceptsShortCommitPrefix(t *testing.T) {
 	fullCommit := "0123456789abcdef0123456789abcdef01234567"
 	status := updateStatus{
@@ -651,7 +681,7 @@ func TestRecentUpdateNoticeSuppressesRepeatedAutoRebuild(t *testing.T) {
 	}
 }
 
-func TestLinuxRestartScriptReplacesBinaryBeforeWaitingForOldProcess(t *testing.T) {
+func TestLinuxRestartScriptWaitsBeforeReplacingBinary(t *testing.T) {
 	req := updateRestartRequest{
 		CurrentExe:        "/opt/gpufleet/gpufleet-server",
 		NextExe:           "/opt/gpufleet/gpufleet-server.next",
@@ -664,10 +694,10 @@ func TestLinuxRestartScriptReplacesBinaryBeforeWaitingForOldProcess(t *testing.T
 	script := linuxRestartScript(req, "/opt/gpufleet/gpufleet-update-restart.log", "/tmp/gpufleet-update.sh")
 	moveIndex := strings.Index(script, "mv -f '/opt/gpufleet/gpufleet-server.next' '/opt/gpufleet/gpufleet-server'")
 	waitIndex := strings.Index(script, "while kill -0 1234")
-	if moveIndex < 0 || waitIndex < 0 || moveIndex > waitIndex {
-		t.Fatalf("expected Linux restart script to replace binary before waiting for old process, got:\n%s", script)
+	if moveIndex < 0 || waitIndex < 0 || waitIndex > moveIndex {
+		t.Fatalf("expected Linux restart script to wait for old process before replacing binary, got:\n%s", script)
 	}
-	if !strings.Contains(script, "already_running=0") || !strings.Contains(script, "/proc/[0-9]*/exe") {
+	if !strings.Contains(script, "'/opt/gpufleet/gpufleet-server.bak'") || !strings.Contains(script, "already_running=0") || !strings.Contains(script, "/proc/[0-9]*/exe") {
 		t.Fatalf("expected Linux restart script to avoid duplicate process starts, got:\n%s", script)
 	}
 }

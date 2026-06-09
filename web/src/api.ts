@@ -238,6 +238,7 @@ export type UpdateApplyResponse = {
   ok: boolean;
   status: UpdateStatus;
   notice?: UpdateNotice;
+  target_commit?: string;
   output?: string;
   build_output?: string;
   dependency_status?: UpdateDependencyStatus;

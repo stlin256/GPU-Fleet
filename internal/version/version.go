@@ -226,9 +226,11 @@ func Changelog() []ChangelogEntry {
 			},
 			Fixed: []string{
 				"30D 统计查询现在和长范围曲线一样使用 rollup 边界容错，避免在 30 天边界附近回退扫描原始 gzip 分段导致响应变慢。",
+				"修复在线更新后等待恢复可能一直停在“重启中”的问题；更新响应会显式返回目标 commit，前端超时后会清理 pending 状态并刷新，服务端启动时也会自动补救遗留的 `.next` 二进制替换。",
 			},
 			FixedEN: []string{
 				"30D stats queries now use the same rollup boundary tolerance as long-range series, avoiding slow raw gzip scans near the 30-day edge.",
+				"Fixed post-update recovery potentially staying in the restarting state forever; update responses now include the exact target commit, the frontend clears stale pending recovery after timeout, and server startup can recover a leftover `.next` executable replacement.",
 			},
 		},
 		{
