@@ -16,6 +16,7 @@ const (
 	maxEnergyCurrencyLength       = 12
 	energySeriesMinuteRangeHours  = 24
 	energyThermalCriticalDeltaC   = 5
+	minDisplayIdleWasteKWh        = 0.005
 )
 
 type EnergySettings struct {
@@ -181,6 +182,12 @@ func (a *App) energySummary(hours int, now time.Time) (energySummaryResponse, er
 		points = mergeEnergyLatestPoint(points, latest, since)
 		addEnergySeriesBuckets(buckets, points, settings, hours)
 		integration := integrateEnergyPoints(points, settings, gapCap, rangeSeconds)
+		idleWasteKWh := integration.idleWasteKWh
+		idleSeconds := integration.idleSeconds
+		if !hasDisplayableIdleWasteKWh(idleWasteKWh) {
+			idleWasteKWh = 0
+			idleSeconds = 0
+		}
 		stat := energyGPUStat{
 			DeviceID:               latest.DeviceID,
 			DeviceAlias:            deviceNameForEnergy(device, latest.DeviceID),
@@ -200,14 +207,14 @@ func (a *App) energySummary(hours int, now time.Time) (energySummaryResponse, er
 			HotSeconds:             integration.hotSeconds,
 			Throttled:              isActiveThrottleReason(latest.GPU.ClockThrottleReasons),
 			ThrottleReason:         strings.TrimSpace(latest.GPU.ClockThrottleReasons),
-			IdleWasteKWh:           integration.idleWasteKWh,
-			HighIdlePowerSeconds:   integration.idleSeconds,
+			IdleWasteKWh:           idleWasteKWh,
+			HighIdlePowerSeconds:   idleSeconds,
 			CoveragePercent:        integration.coveragePercent(rangeSeconds),
 		}
 		if stat.GPUName == "" {
 			stat.GPUName = latest.GPU.GPUID
 		}
-		if stat.IdleWasteKWh > 0 {
+		if hasDisplayableIdleWasteKWh(stat.IdleWasteKWh) {
 			summary.HighIdlePowerGPUCount++
 		}
 		summary.EnergyKWh += stat.EnergyKWh
@@ -235,7 +242,7 @@ func (a *App) energySummary(hours int, now time.Time) (energySummaryResponse, er
 	if hours > 0 {
 		summary.AveragePowerWatts = summary.EnergyKWh * 1000 / float64(hours)
 	}
-	series := finishEnergySeries(buckets)
+	series := finishEnergySeries(buckets, hours)
 	for _, point := range series {
 		if point.PowerWatts > summary.PeakPowerWatts {
 			summary.PeakPowerWatts = point.PowerWatts
@@ -429,7 +436,7 @@ func isHotSegment(previous, current SeriesPoint, settings EnergySettings) bool {
 }
 
 func addEnergySeriesBuckets(buckets map[int64]*energySeriesBucket, points []SeriesPoint, settings EnergySettings, hours int) {
-	for _, point := range points {
+	for _, point := range latestEnergyPointPerBucket(points, hours) {
 		bucketAt := energySeriesBucketTime(point.Timestamp, hours)
 		key := bucketAt.Unix()
 		bucket := buckets[key]
@@ -453,6 +460,26 @@ func addEnergySeriesBuckets(buckets map[int64]*energySeriesBucket, points []Seri
 	}
 }
 
+func latestEnergyPointPerBucket(points []SeriesPoint, hours int) []SeriesPoint {
+	if len(points) <= 1 {
+		return points
+	}
+	byBucket := map[int64]SeriesPoint{}
+	for _, point := range points {
+		key := energySeriesBucketTime(point.Timestamp, hours).Unix()
+		current, ok := byBucket[key]
+		if !ok || point.Timestamp.After(current.Timestamp) || point.Timestamp.Equal(current.Timestamp) {
+			byBucket[key] = point
+		}
+	}
+	out := make([]SeriesPoint, 0, len(byBucket))
+	for _, point := range byBucket {
+		out = append(out, point)
+	}
+	sortSeriesPoints(out)
+	return out
+}
+
 func energySeriesBucketTime(timestamp time.Time, hours int) time.Time {
 	if hours > energySeriesMinuteRangeHours {
 		return timestamp.UTC().Truncate(time.Hour)
@@ -460,7 +487,7 @@ func energySeriesBucketTime(timestamp time.Time, hours int) time.Time {
 	return timestamp.UTC().Truncate(time.Minute)
 }
 
-func finishEnergySeries(buckets map[int64]*energySeriesBucket) []energySeriesPoint {
+func finishEnergySeries(buckets map[int64]*energySeriesBucket, hours int) []energySeriesPoint {
 	out := make([]energySeriesPoint, 0, len(buckets))
 	for _, bucket := range buckets {
 		out = append(out, energySeriesPoint{
@@ -474,7 +501,41 @@ func finishEnergySeries(buckets map[int64]*energySeriesBucket) []energySeriesPoi
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].Timestamp.Before(out[j].Timestamp)
 	})
+	if hours > energySeriesMinuteRangeHours {
+		out = trimSparseEnergySeriesEdges(out)
+	}
 	return out
+}
+
+func trimSparseEnergySeriesEdges(points []energySeriesPoint) []energySeriesPoint {
+	if len(points) < 3 {
+		return points
+	}
+	maxSamples := 0
+	for _, point := range points {
+		if point.GPUSampleCount > maxSamples {
+			maxSamples = point.GPUSampleCount
+		}
+	}
+	if maxSamples < 2 {
+		return points
+	}
+	start := 0
+	end := len(points)
+	for start < end && points[start].GPUSampleCount*2 < maxSamples {
+		start++
+	}
+	for end > start && points[end-1].GPUSampleCount*2 < maxSamples {
+		end--
+	}
+	if start == 0 && end == len(points) {
+		return points
+	}
+	return append([]energySeriesPoint(nil), points[start:end]...)
+}
+
+func hasDisplayableIdleWasteKWh(value float64) bool {
+	return value >= minDisplayIdleWasteKWh
 }
 
 func diagnosticsForEnergyGPU(stat energyGPUStat, settings EnergySettings) []energyDiagnostic {
@@ -506,7 +567,7 @@ func diagnosticsForEnergyGPU(stat energyGPUStat, settings EnergySettings) []ener
 			Reason:      stat.ThrottleReason,
 		})
 	}
-	if stat.IdleWasteKWh > 0 {
+	if hasDisplayableIdleWasteKWh(stat.IdleWasteKWh) {
 		out = append(out, energyDiagnostic{
 			Kind:        "idle_waste",
 			Severity:    "info",

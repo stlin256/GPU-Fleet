@@ -56,6 +56,10 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed post-update recovery potentially staying in the restarting state forever; update responses now include the exact target commit, the frontend clears stale pending recovery after timeout, and server startup can recover a leftover `.next` executable replacement.
 - zh-CN: 修复 0.1.9 服务端升级后旧版 Agent 因 HMAC 签名串尚未包含 `device_id` 而全部掉线的问题；服务端仅对 metadata 中已知的 0.1.9 之前 Agent 临时接受旧签名并记录审计，新版 Agent 仍必须使用绑定 `device_id` 的签名。
 - en-US: Fixed older Agents going offline after a 0.1.9 server upgrade because their HMAC signing string did not yet include `device_id`; the server temporarily accepts legacy signatures only for known pre-0.1.9 Agents recorded in metadata and audits the compatibility path, while current Agents must still use device-bound signatures.
+- zh-CN: 能源页长范围曲线现在按展示桶去重最新快照与 rollup 点，并裁掉首尾明显稀疏的长范围边界点，避免曲线两端异常尖峰或塌陷。
+- en-US: Energy long-range charts now deduplicate latest snapshots against rollup points per display bucket and trim visibly sparse edge buckets, avoiding abnormal spikes or dips at both ends.
+- zh-CN: 空转高耗低于 `0.005 kWh` 时不再计入 GPU 告警、诊断项或排行行状态，前端也移除了能源排行标题中的“只读”标签。
+- en-US: High-idle-power waste below `0.005 kWh` no longer counts toward GPU warnings, diagnostics, or ranking row state, and the Energy ranking header no longer shows a read-only badge.
 
 ## [0.1.8] - 2026-06-09
 

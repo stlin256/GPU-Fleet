@@ -1052,6 +1052,65 @@ func TestEnergySeriesForGPUUsesThirtyDayRollup(t *testing.T) {
 	}
 }
 
+func TestEnergySeriesBucketUsesLatestPointOnce(t *testing.T) {
+	settings := ServiceConfig{}.EnergySettings()
+	base := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	firstPower := 100.0
+	latestPower := 220.0
+	otherPower := 180.0
+	buckets := map[int64]*energySeriesBucket{}
+
+	addEnergySeriesBuckets(buckets, []SeriesPoint{
+		{Timestamp: base.Add(2 * time.Minute), PowerDrawWatts: &firstPower},
+		{Timestamp: base.Add(52 * time.Minute), PowerDrawWatts: &latestPower},
+	}, settings, 168)
+	addEnergySeriesBuckets(buckets, []SeriesPoint{
+		{Timestamp: base.Add(20 * time.Minute), PowerDrawWatts: &otherPower},
+	}, settings, 168)
+
+	series := finishEnergySeries(buckets, 168)
+	if len(series) != 1 {
+		t.Fatalf("expected one hourly energy bucket, got %+v", series)
+	}
+	if series[0].PowerWatts != latestPower+otherPower || series[0].GPUSampleCount != 2 {
+		t.Fatalf("expected latest same-GPU point to replace earlier bucket value, got %+v", series[0])
+	}
+}
+
+func TestEnergySeriesTrimsSparseLongRangeEdges(t *testing.T) {
+	base := time.Date(2026, 6, 9, 8, 0, 0, 0, time.UTC)
+	buckets := map[int64]*energySeriesBucket{
+		base.Unix():                    &energySeriesBucket{timestamp: base, powerWatts: 100, sampleCount: 1},
+		base.Add(time.Hour).Unix():     &energySeriesBucket{timestamp: base.Add(time.Hour), powerWatts: 400, sampleCount: 4},
+		base.Add(2 * time.Hour).Unix(): &energySeriesBucket{timestamp: base.Add(2 * time.Hour), powerWatts: 410, sampleCount: 4},
+		base.Add(3 * time.Hour).Unix(): &energySeriesBucket{timestamp: base.Add(3 * time.Hour), powerWatts: 110, sampleCount: 1},
+	}
+
+	series := finishEnergySeries(buckets, 168)
+	if len(series) != 2 || !series[0].Timestamp.Equal(base.Add(time.Hour)) || !series[1].Timestamp.Equal(base.Add(2*time.Hour)) {
+		t.Fatalf("expected sparse long-range edge buckets to be trimmed, got %+v", series)
+	}
+}
+
+func TestTinyIdleWasteDoesNotCreateEnergyDiagnostic(t *testing.T) {
+	settings := ServiceConfig{}.EnergySettings()
+	lowWaste := minDisplayIdleWasteKWh - 0.0001
+	visibleWaste := minDisplayIdleWasteKWh
+
+	if hasDisplayableIdleWasteKWh(lowWaste) {
+		t.Fatalf("expected low idle waste %.4f kWh to be hidden", lowWaste)
+	}
+	if diagnostics := diagnosticsForEnergyGPU(energyGPUStat{IdleWasteKWh: lowWaste}, settings); len(diagnostics) != 0 {
+		t.Fatalf("expected low idle waste diagnostic to be filtered, got %+v", diagnostics)
+	}
+	if !hasDisplayableIdleWasteKWh(visibleWaste) {
+		t.Fatalf("expected %.4f kWh to be displayable", visibleWaste)
+	}
+	if diagnostics := diagnosticsForEnergyGPU(energyGPUStat{IdleWasteKWh: visibleWaste}, settings); len(diagnostics) != 1 || diagnostics[0].Kind != "idle_waste" {
+		t.Fatalf("expected displayable idle waste diagnostic, got %+v", diagnostics)
+	}
+}
+
 func TestLegacyAgentSignatureAcceptedOnlyForKnownOldAgent(t *testing.T) {
 	root := t.TempDir()
 	app := newTestApp(t, root, filepath.Join(root, "missing-web"))

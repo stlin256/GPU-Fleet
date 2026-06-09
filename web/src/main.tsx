@@ -128,6 +128,7 @@ const idleGPUThreshold = 10;
 const busyGPUThreshold = 80;
 const warmGPUThreshold = 80;
 const hotGPUThreshold = 85;
+const minDisplayIdleWasteKWh = 0.005;
 const updatePendingKey = 'gpufleet-update-pending';
 const updateNoticeKey = 'gpufleet-update-notice';
 const updateStatusCacheKey = 'gpufleet-update-status-cache';
@@ -192,6 +193,14 @@ function kwh(value?: number) {
   if (Math.abs(value) >= 1000) return `${(value / 1000).toFixed(2)} MWh`;
   if (Math.abs(value) >= 10) return `${value.toFixed(1)} kWh`;
   return `${value.toFixed(2)} kWh`;
+}
+
+function hasDisplayableIdleWaste(value?: number) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= minDisplayIdleWasteKWh;
+}
+
+function displayIdleWasteKWh(value?: number) {
+  return hasDisplayableIdleWaste(value) ? value : 0;
 }
 
 function money(value?: number, currency = 'CNY', configured = true) {
@@ -1101,7 +1110,7 @@ function EnergyPage({
         <Metric icon={<Database />} label={t('{range} 耗电', { range: statsRangeLabel(hours) })} value={kwh(summary?.energy_kwh)} tone={(summary?.energy_kwh ?? 0) > 0 ? 'accent' : 'ok'} />
         <Metric icon={<Gauge />} label={t('估算电费')} value={money(summary?.estimated_cost, summary?.currency || config?.energy_currency, priceConfigured)} />
         <Metric icon={<Activity />} label={t('高温 GPU')} value={sampleCount(summary?.hot_gpu_count)} tone={(summary?.hot_gpu_count ?? 0) > 0 ? 'critical' : 'ok'} spark={{ label: t('峰值温度'), samples: peakTempSpark, max: 100, formatValue: temp, tone: (summary?.hot_gpu_count ?? 0) > 0 ? 'bad' : 'good' }} />
-        <Metric icon={<MonitorUp />} label={t('空转高耗')} value={kwh(summary?.idle_waste_kwh)} tone={(summary?.high_idle_power_gpu_count ?? 0) > 0 ? 'warning' : 'ok'} />
+        <Metric icon={<MonitorUp />} label={t('空转高耗')} value={kwh(displayIdleWasteKWh(summary?.idle_waste_kwh))} tone={(summary?.high_idle_power_gpu_count ?? 0) > 0 && hasDisplayableIdleWaste(summary?.idle_waste_kwh) ? 'warning' : 'ok'} />
       </section>
 
       <section className="energy-toolbar panel">
@@ -1164,17 +1173,18 @@ function EnergyTrendPanel({ energy, hours }: { energy?: EnergySummaryResponse; h
 
 function EnergyDiagnosticsPanel({ diagnostics, language }: { diagnostics: EnergyDiagnostic[]; language: AppLanguage }) {
   const { t } = useI18n();
+  const visibleDiagnostics = diagnostics.filter(isDisplayableEnergyDiagnostic);
   return (
     <section className="panel energy-diagnostics-panel">
       <div className="panel-head">
         <div>
           <h2>{t('能源诊断')}</h2>
-          <p>{diagnostics.length ? `${diagnostics.length} items` : t('当前范围未发现异常')}</p>
+          <p>{visibleDiagnostics.length ? `${visibleDiagnostics.length} items` : t('当前范围未发现异常')}</p>
         </div>
-        <span>{diagnostics.length}</span>
+        <span>{visibleDiagnostics.length}</span>
       </div>
       <div className="energy-diagnostics-list">
-        {diagnostics.slice(0, 8).map((item, index) => {
+        {visibleDiagnostics.slice(0, 8).map((item, index) => {
           const copy = energyDiagnosticCopy(item, language, t);
           return (
             <div className={`energy-diagnostic ${item.severity}`} key={`${item.kind}-${item.device_id}-${item.gpu_id}-${index}`}>
@@ -1186,7 +1196,7 @@ function EnergyDiagnosticsPanel({ diagnostics, language }: { diagnostics: Energy
             </div>
           );
         })}
-        {diagnostics.length === 0 && <p className="empty">{t('当前范围未发现高温、限速或空转高耗')}</p>}
+        {visibleDiagnostics.length === 0 && <p className="empty">{t('当前范围未发现高温、限速或空转高耗')}</p>}
       </div>
     </section>
   );
@@ -1202,12 +1212,12 @@ function EnergyGPUTable({ rows, config, language }: { rows: EnergyGPUStat[]; con
           <h2>{t('GPU 能耗排行')}</h2>
           <p>{rows.length} GPUs</p>
         </div>
-        <span>{t('只读')}</span>
       </div>
       <div className="energy-gpu-table">
         {rows.map((row) => {
           const tone = energyRowTone(row, config);
           const deviceColor = deviceBorderColor(row.device_id);
+          const hasIdleWaste = hasDisplayableIdleWaste(row.idle_waste_kwh);
           return (
             <div className={`energy-gpu-row ${tone}`} key={`${row.device_id}-${row.gpu_id}`} style={{ '--device-color': deviceColor } as React.CSSProperties}>
               <div>
@@ -1218,7 +1228,7 @@ function EnergyGPUTable({ rows, config, language }: { rows: EnergyGPUStat[]; con
               <span><small>{t('电费')}</small>{money(row.estimated_cost, config?.energy_currency, priceConfigured)}</span>
               <span><small>{t('功率')}</small>{watts(row.average_power_watts)} / {watts(row.peak_power_watts)}</span>
               <span><small>{t('峰值温度')}</small>{temp(row.peak_temperature_celsius)}</span>
-              <span><small>{t('空转高耗')}</small>{row.idle_waste_kwh > 0 ? `${kwh(row.idle_waste_kwh)} · ${durationText(row.high_idle_power_seconds, language)}` : '-'}</span>
+              <span><small>{t('空转高耗')}</small>{hasIdleWaste ? `${kwh(row.idle_waste_kwh)} · ${durationText(row.high_idle_power_seconds, language)}` : '-'}</span>
               <span><small>{t('覆盖率')}</small>{coveragePct(row.coverage_percent)}</span>
               <span className={`pill ${tone}`}>{energyRowLabel(row, config, t)}</span>
             </div>
@@ -1228,6 +1238,10 @@ function EnergyGPUTable({ rows, config, language }: { rows: EnergyGPUStat[]; con
       </div>
     </section>
   );
+}
+
+function isDisplayableEnergyDiagnostic(item: EnergyDiagnostic) {
+  return item.kind !== 'idle_waste' || hasDisplayableIdleWaste(item.value);
 }
 
 function energyDiagnosticCopy(item: EnergyDiagnostic, language: AppLanguage, t: ReturnType<typeof makeTranslator>) {
@@ -1264,14 +1278,14 @@ function diagnosticTone(severity: string) {
 
 function energyRowTone(row: EnergyGPUStat, config?: EnergySummaryResponse['config']) {
   if ((row.peak_temperature_celsius ?? 0) >= (config?.thermal_hot_celsius ?? hotGPUThreshold)) return 'bad';
-  if (row.throttled || row.idle_waste_kwh > 0) return 'warn';
+  if (row.throttled || hasDisplayableIdleWaste(row.idle_waste_kwh)) return 'warn';
   return 'good';
 }
 
 function energyRowLabel(row: EnergyGPUStat, config: EnergySummaryResponse['config'] | undefined, t: ReturnType<typeof makeTranslator>) {
   if ((row.peak_temperature_celsius ?? 0) >= (config?.thermal_hot_celsius ?? hotGPUThreshold)) return t('高温');
   if (row.throttled) return t('限速');
-  if (row.idle_waste_kwh > 0) return t('空转');
+  if (hasDisplayableIdleWaste(row.idle_waste_kwh)) return t('空转');
   return t('正常');
 }
 
