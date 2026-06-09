@@ -230,9 +230,11 @@ func Changelog() []ChangelogEntry {
 			},
 			Security: []string{
 				"自动更新新增供应链来源校验，记录远端仓库、upstream、工作区、fast-forward 和精确构建目标状态，并阻止网络远端指向非官方仓库时继续更新。",
+				"Agent HMAC 签名串现在绑定 `device_id`，避免多个设备误用同一 secret 时签名可跨设备复用。",
 			},
 			SecurityEN: []string{
 				"Automatic updates now include supply-chain source checks for the remote repository, upstream, worktree, fast-forward path, and exact build target, blocking updates when a network remote points outside the official repository.",
+				"Agent HMAC signatures now bind `device_id`, preventing signatures from being reused across devices that accidentally share the same secret.",
 			},
 			Fixed: []string{
 				"30D 统计查询现在和长范围曲线一样使用 rollup 边界容错，避免在 30 天边界附近回退扫描原始 gzip 分段导致响应变慢。",

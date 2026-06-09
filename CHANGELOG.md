@@ -29,6 +29,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 
 - zh-CN: 自动更新新增供应链来源校验，记录远端仓库、upstream、工作区、fast-forward 和精确构建目标状态，并阻止网络远端指向非官方仓库时继续更新。
 - en-US: Automatic updates now include supply-chain source checks for the remote repository, upstream, worktree, fast-forward path, and exact build target, blocking updates when a network remote points outside the official repository.
+- zh-CN: Agent HMAC 签名串现在绑定 `device_id`，避免多个设备误用同一 secret 时签名可跨设备复用。
+- en-US: Agent HMAC signatures now bind `device_id`, preventing signatures from being reused across devices that accidentally share the same secret.
 
 ### Fixed / 修复
 

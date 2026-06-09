@@ -59,6 +59,7 @@ X-GF-Signature: base64(hmac_sha256(secret, signing_string))
 ```text
 METHOD + "\n" +
 PATH + "\n" +
+DEVICE_ID + "\n" +
 TIMESTAMP + "\n" +
 NONCE + "\n" +
 SHA256_HEX(BODY)

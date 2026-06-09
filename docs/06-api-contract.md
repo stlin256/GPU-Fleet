@@ -18,6 +18,8 @@ X-GF-Signature: base64-hmac-sha256
 Content-Encoding: gzip
 ```
 
+签名串包含请求方法、路径、`device_id`、时间戳、nonce 和请求体 SHA-256。`device_id` 是 HMAC 输入的一部分，避免同一 secret 被误复用时签名可跨设备重放。
+
 ## Agent 心跳
 
 ```text

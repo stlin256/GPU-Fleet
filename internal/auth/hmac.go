@@ -26,6 +26,7 @@ func Sign(method, path string, body []byte, deviceID, secret string, at time.Tim
 	signingString := strings.Join([]string{
 		strings.ToUpper(method),
 		path,
+		deviceID,
 		at.UTC().Format(time.RFC3339),
 		nonce,
 		hex.EncodeToString(sum[:]),
@@ -36,7 +37,10 @@ func Sign(method, path string, body []byte, deviceID, secret string, at time.Tim
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
 }
 
-func Verify(method, path string, body []byte, timestamp, nonce, signature, secret string, now time.Time, maxSkew time.Duration) error {
+func Verify(method, path string, body []byte, deviceID, timestamp, nonce, signature, secret string, now time.Time, maxSkew time.Duration) error {
+	if deviceID == "" {
+		return errors.New("missing device id")
+	}
 	if timestamp == "" || nonce == "" || signature == "" {
 		return errors.New("missing authentication headers")
 	}
@@ -48,7 +52,7 @@ func Verify(method, path string, body []byte, timestamp, nonce, signature, secre
 		return errors.New("timestamp outside allowed window")
 	}
 
-	expected := Sign(method, path, body, "", secret, at, nonce)
+	expected := Sign(method, path, body, deviceID, secret, at, nonce)
 	if !hmac.Equal([]byte(signature), []byte(expected)) {
 		return errors.New("signature mismatch")
 	}
