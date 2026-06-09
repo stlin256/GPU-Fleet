@@ -308,6 +308,7 @@ input:focus-visible {
 }
 
 .fleet-kpi {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -332,6 +333,7 @@ input:focus-visible {
 }
 
 .fleet-kpi:hover {
+  z-index: 30;
   transform: translateY(-2px);
   border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
   box-shadow: var(--shadow-soft);
@@ -414,6 +416,8 @@ input:focus-visible {
 
 .panel:hover,
 .metric:hover {
+  position: relative;
+  z-index: 30;
   border-color: color-mix(in srgb, var(--accent) 18%, var(--line));
 }
 
@@ -436,7 +440,7 @@ input:focus-visible {
 
 .fleet-board {
   padding: 16px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .fleet-board-head {
@@ -472,6 +476,7 @@ input:focus-visible {
 .fleet-card-grid > .fleet-gpu-card:nth-child(n + 6) { animation-delay: 220ms; }
 
 .fleet-gpu-card:hover {
+  z-index: 30;
   transform: translateY(-3px);
   box-shadow: 0 16px 34px color-mix(in srgb, var(--device-color, var(--accent)) 18%, transparent), var(--shadow-soft);
 }
@@ -636,6 +641,7 @@ input:focus-visible {
 }
 
 .trend-tile:hover {
+  z-index: 30;
   transform: translateY(-2px);
   box-shadow: var(--shadow-soft);
 }
@@ -699,6 +705,7 @@ input:focus-visible {
 
 .sparkline-wrap {
   position: relative;
+  z-index: 1;
   width: 100%;
   height: 74px;
   align-self: end;
@@ -748,7 +755,7 @@ input:focus-visible {
 
 .spark-tooltip {
   position: absolute;
-  z-index: 4;
+  z-index: 120;
   bottom: 100%;
   transform: translate(-50%, -6px);
   min-width: 86px;
@@ -777,24 +784,15 @@ input:focus-visible {
   line-height: 1.15;
 }
 
-.metric-spark .spark-tooltip,
-.fleet-kpi-spark .spark-tooltip {
-  min-width: 78px;
-  max-width: 112px;
-  padding: 5px 6px;
-}
-
-.metric-spark .spark-tooltip span,
-.metric-spark .spark-tooltip small,
-.fleet-kpi-spark .spark-tooltip span,
-.fleet-kpi-spark .spark-tooltip small {
-  font-size: 10px;
-}
-
-.metric-spark .spark-tooltip strong,
-.fleet-kpi-spark .spark-tooltip strong {
-  font-size: 12px;
-  line-height: 1.05;
+.fleet-kpi:has(.spark-tooltip),
+.metric:has(.spark-tooltip),
+.panel:has(.spark-tooltip),
+.fleet-gpu-card:has(.spark-tooltip),
+.gpu-card:has(.spark-tooltip),
+.trend-tile:has(.spark-tooltip) {
+  position: relative;
+  z-index: 80;
+  overflow: visible;
 }
 
 .trend-tile.good .spark-line { stroke: var(--good); }
@@ -864,6 +862,7 @@ input:focus-visible {
 }
 
 .metric {
+  position: relative;
   padding: 14px;
   animation: card-enter var(--motion-slow) var(--ease) both;
 }
@@ -942,7 +941,7 @@ input:focus-visible {
 
 .gpu-card {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border: 2px solid var(--device-color, var(--line));
   border-radius: 8px;
   padding: 12px;
@@ -952,6 +951,7 @@ input:focus-visible {
 }
 
 .gpu-card:hover {
+  z-index: 30;
   transform: translateY(-3px);
   box-shadow: 0 16px 34px color-mix(in srgb, var(--device-color, var(--accent)) 14%, transparent), var(--shadow-soft);
 }
@@ -1037,7 +1037,9 @@ input:focus-visible {
 }
 
 .gpu-detail-trend-grid .spark-tooltip,
-.stats-trend-grid .spark-tooltip {
+.stats-trend-grid .spark-tooltip,
+.metric-spark .spark-tooltip,
+.fleet-kpi-spark .spark-tooltip {
   min-width: 148px;
   max-width: 190px;
   padding: 8px 10px;
@@ -1045,12 +1047,16 @@ input:focus-visible {
 }
 
 .gpu-detail-trend-grid .spark-tooltip strong,
-.stats-trend-grid .spark-tooltip strong {
+.stats-trend-grid .spark-tooltip strong,
+.metric-spark .spark-tooltip strong,
+.fleet-kpi-spark .spark-tooltip strong {
   font-size: 15px;
 }
 
 .gpu-detail-trend-grid .spark-tooltip small,
-.stats-trend-grid .spark-tooltip small {
+.stats-trend-grid .spark-tooltip small,
+.metric-spark .spark-tooltip small,
+.fleet-kpi-spark .spark-tooltip small {
   white-space: nowrap;
 }
 

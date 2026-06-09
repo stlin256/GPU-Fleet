@@ -42,6 +42,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Fixed 6H+ stats charts potentially falling back to raw metric scans and failing during startup or near the 30D boundary; long-range charts now add rollup boundary tolerance and short frontend retries.
 - zh-CN: GPU 卡片限速 tag 现在同时显示当前 P-state；移动端曲线点位提示改为触摸后短暂停留，便于查看具体数值。
 - en-US: GPU card throttle tags now include the current P-state, and mobile chart point tooltips stay visible briefly after touch for easier value inspection.
+- zh-CN: 修复顶部汇总小曲线和趋势图 tooltip 可能被相邻卡片遮挡的问题，并统一顶部平均利用率、总显存用量和总功耗 tooltip 与下方图表的尺寸样式。
+- en-US: Fixed top summary and trend-chart tooltips potentially being covered by neighboring cards, and aligned the top average-utilization, memory, and power tooltip sizing with the lower charts.
 
 ## [0.1.7] - 2026-06-08
 
