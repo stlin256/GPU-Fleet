@@ -789,7 +789,8 @@ input:focus-visible {
   position: absolute;
   z-index: 120;
   bottom: 100%;
-  transform: translate(-50%, -6px);
+  --tooltip-x: -50%;
+  transform: translate(var(--tooltip-x), -6px);
   min-width: 86px;
   max-width: 132px;
   border: 1px solid var(--line-strong);
@@ -801,6 +802,14 @@ input:focus-visible {
   display: grid;
   gap: 2px;
   animation: tooltip-in var(--motion-fast) var(--ease) both;
+}
+
+.spark-tooltip.edge-left {
+  --tooltip-x: 0;
+}
+
+.spark-tooltip.edge-right {
+  --tooltip-x: calc(-100% + 1px);
 }
 
 .spark-tooltip span,
@@ -2987,8 +2996,8 @@ input[type="file"] {
 }
 
 @keyframes tooltip-in {
-  from { opacity: 0; transform: translate(-50%, 0); }
-  to { opacity: 1; transform: translate(-50%, -6px); }
+  from { opacity: 0; transform: translate(var(--tooltip-x), 0); }
+  to { opacity: 1; transform: translate(var(--tooltip-x), -6px); }
 }
 
 @keyframes status-pulse {

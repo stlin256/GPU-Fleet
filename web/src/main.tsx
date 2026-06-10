@@ -244,6 +244,18 @@ function sampleCount(value?: number) {
   return String(Math.round(value));
 }
 
+function gpuCountText(count: number, t: ReturnType<typeof makeTranslator>) {
+  return t('{count} 块 GPU', { count });
+}
+
+function sampleCountText(count: number | string, t: ReturnType<typeof makeTranslator>) {
+  return t('{count} 个样本', { count });
+}
+
+function itemCountText(count: number, t: ReturnType<typeof makeTranslator>) {
+  return t('{count} 项', { count });
+}
+
 function coveragePct(value?: number) {
   if (typeof value !== 'number' || Number.isNaN(value)) return '-';
   return `${Math.max(0, Math.min(100, value)).toFixed(0)}%`;
@@ -1137,7 +1149,7 @@ function EnergyPage({
       <section className="energy-toolbar panel">
         <div>
           <h2>{t('热能与能源')}</h2>
-          <p>{loading && !energy ? t('加载中') : `${energy?.gpus.length ?? data?.gpu_count ?? 0} GPUs · ${coveragePct(summary?.coverage_percent)} ${t('覆盖率')}`}</p>
+          <p>{loading && !energy ? t('加载中') : `${gpuCountText(energy?.gpus.length ?? data?.gpu_count ?? 0, t)} · ${coveragePct(summary?.coverage_percent)} ${t('覆盖率')}`}</p>
         </div>
         <div className="segmented-control" aria-label={t('统计范围')}>
           {energyHourOptions.map((option) => (
@@ -1181,7 +1193,7 @@ function EnergyTrendPanel({ energy, hours }: { energy?: EnergySummaryResponse; h
           <h2>{t('功率与热状态')}</h2>
           <p>{t('过去 {range} 曲线', { range: statsRangeLabel(hours) })}</p>
         </div>
-        <span>{series.length} samples</span>
+        <span>{sampleCountText(series.length, t)}</span>
       </div>
       <div className="gpu-detail-trend-grid energy-trend-grid">
         <TrendTile label={t('总功耗')} value={watts(summary?.peak_power_watts)} caption={t('峰值')} values={powerValues} timestamps={timestamps} max={maxSeries(powerValues, Math.max(summary?.peak_power_watts ?? 1, 1))} tone="accent" formatValue={watts} />
@@ -1200,7 +1212,7 @@ function EnergyDiagnosticsPanel({ diagnostics, language }: { diagnostics: Energy
       <div className="panel-head">
         <div>
           <h2>{t('能源诊断')}</h2>
-          <p>{visibleDiagnostics.length ? `${visibleDiagnostics.length} items` : t('当前范围未发现异常')}</p>
+          <p>{visibleDiagnostics.length ? itemCountText(visibleDiagnostics.length, t) : t('当前范围未发现异常')}</p>
         </div>
         <span>{visibleDiagnostics.length}</span>
       </div>
@@ -1231,7 +1243,7 @@ function EnergyGPUTable({ rows, config, language }: { rows: EnergyGPUStat[]; con
       <div className="panel-head">
         <div>
           <h2>{t('GPU 能耗排行')}</h2>
-          <p>{rows.length} GPUs</p>
+          <p>{gpuCountText(rows.length, t)}</p>
         </div>
       </div>
       <div className="energy-gpu-table">
@@ -1243,7 +1255,7 @@ function EnergyGPUTable({ rows, config, language }: { rows: EnergyGPUStat[]; con
             <div className={`energy-gpu-row ${tone}`} key={`${row.device_id}-${row.gpu_id}`} style={{ '--device-color': deviceColor } as React.CSSProperties}>
               <div>
                 <strong>{row.gpu_name || row.gpu_id}</strong>
-                <p>{row.device_alias || row.device_id} · {row.gpu_id} · {sampleCount(row.sample_count)} samples</p>
+                <p>{row.device_alias || row.device_id} · {row.gpu_id} · {sampleCountText(sampleCount(row.sample_count), t)}</p>
               </div>
               <span><small>{t('耗电')}</small>{kwh(row.energy_kwh)}</span>
               <span><small>{t('电费')}</small>{money(row.estimated_cost, config?.energy_currency, priceConfigured)}</span>
@@ -1765,6 +1777,9 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
   const line = sparklineLinePath(pointData);
   const area = sparklineAreaPath(pointData, height - pad);
   const active = hoverIndex !== null ? pointData[hoverIndex] : undefined;
+  const tooltipPlacement = active
+    ? active.x < 64 ? 'edge-left' : active.x > width - 64 ? 'edge-right' : 'edge-center'
+    : 'edge-center';
 
   useEffect(() => () => window.clearTimeout(touchHoldTimer.current), []);
 
@@ -1822,7 +1837,7 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
         )}
       </svg>
       {active && (
-        <div className="spark-tooltip" data-testid="spark-tooltip" style={{ left: `${(active.x / width) * 100}%` }}>
+        <div className={`spark-tooltip ${tooltipPlacement}`} data-testid="spark-tooltip" style={{ left: `${(active.x / width) * 100}%` }}>
           <span>{label}</span>
           <strong>{formatValue(active.value)}</strong>
           <small>{active.timestamp ? fmtDateTime(active.timestamp) : '-'}</small>
@@ -2706,24 +2721,24 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
     }
   }
   const certCaption = service?.https_enabled
-    ? service.current_scheme === 'https' ? 'HTTPS 已启用' : 'HTTPS 下次启动生效'
-    : 'HTTP 模式';
+    ? service.current_scheme === 'https' ? t('HTTPS 已启用') : t('HTTPS 下次启动生效')
+    : t('HTTP 模式');
 
   return (
     <div className="settings-page" data-testid="settings-page">
       <section className="settings-status panel">
         <div className="panel-head settings-head">
           <div>
-            <h2>服务状态</h2>
-            <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : '等待服务端配置'}</p>
+            <h2>{t('服务状态')}</h2>
+            <p>{service ? `${service.current_addr} · ${service.current_scheme.toUpperCase()}` : t('等待服务端配置')}</p>
           </div>
-          {service?.restart_required && <span className="pill warn">需要重启</span>}
+          {service?.restart_required && <span className="pill warn">{t('需要重启')}</span>}
         </div>
         <div className="settings-kpi-grid">
-          <SettingStat label="当前协议" value={(service?.current_scheme ?? 'http').toUpperCase()} caption={service?.https_enabled ? '证书已配置' : '未启用证书'} />
-          <SettingStat label="访问端口" value={String(service?.configured_port ?? portFromLocation())} caption={service?.current_addr ?? '-'} />
-          <SettingStat label="证书到期" value={service?.cert_not_after ? fmtDateTime(service.cert_not_after) : '未配置'} caption={certCaption} />
-          <SettingStat label="磁盘预留" value={fmtBytes(service?.min_free_bytes ?? min)} caption={t('空闲 {value}', { value: fmtBytes(data?.disk.free_bytes) })} />
+          <SettingStat label={t('当前协议')} value={(service?.current_scheme ?? 'http').toUpperCase()} caption={service?.https_enabled ? t('证书已配置') : t('未启用证书')} />
+          <SettingStat label={t('访问端口')} value={String(service?.configured_port ?? portFromLocation())} caption={service?.current_addr ?? '-'} />
+          <SettingStat label={t('证书到期')} value={service?.cert_not_after ? fmtDateTime(service.cert_not_after) : t('未配置')} caption={certCaption} />
+          <SettingStat label={t('磁盘预留')} value={fmtBytes(service?.min_free_bytes ?? min)} caption={t('空闲 {value}', { value: fmtBytes(data?.disk.free_bytes) })} />
         </div>
       </section>
 
@@ -2731,8 +2746,8 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
         <div className="settings-column">
           <div className="settings-section-head">
             <div>
-              <h2>访问与安全</h2>
-              <p>凭据、端口、语言和 HTTPS 证书</p>
+              <h2>{t('访问与安全')}</h2>
+              <p>{t('凭据、端口、语言和 HTTPS 证书')}</p>
             </div>
           </div>
           <PasswordSettings onDone={refreshOverview} />
@@ -2745,13 +2760,13 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
             <div className="operation-head">
               <div className="operation-icon"><Settings size={18} /></div>
               <div>
-                <h2>配置引导</h2>
-                <p>重新打开端口、密码、语言和证书配置流程</p>
+                <h2>{t('配置引导')}</h2>
+                <p>{t('重新打开端口、密码、语言和证书配置流程')}</p>
               </div>
             </div>
             <button className="secondary action-button" type="button" onClick={openWizard}>
               <Settings size={16} />
-              打开引导
+              {t('打开引导')}
             </button>
             {message && <p className="error">{message}</p>}
           </article>
@@ -2762,8 +2777,8 @@ function SettingsPanel({ data, theme, onToggleTheme }: { data?: Overview; theme:
         <div className="settings-column settings-column-operations">
           <div className="settings-section-head">
             <div>
-              <h2>维护与发布</h2>
-              <p>数据库、在线更新和版本信息</p>
+              <h2>{t('维护与发布')}</h2>
+              <p>{t('数据库、在线更新和版本信息')}</p>
             </div>
           </div>
           <DatabaseSettings data={data} />
@@ -2860,7 +2875,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
       setUpdateDetail(next.detail || '');
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'update check failed';
-      setMessage(friendlyUpdateFailure(detail, Boolean(proxyURL.trim())));
+      setMessage(friendlyUpdateFailure(detail, Boolean(proxyURL.trim()), t));
       setUpdateDetail(detail);
     } finally {
       setChecking(false);
@@ -2873,12 +2888,12 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
     setSavingProxy(true);
     try {
       await updateProxy(proxyURL.trim());
-      setProxyMessage(proxyURL.trim() ? '更新代理已保存' : '更新代理已清空');
+      setProxyMessage(proxyURL.trim() ? t('更新代理已保存') : t('更新代理已清空'));
       await onDone();
       await update.refetch();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'proxy update failed';
-      setProxyMessage(message.toLowerCase().includes('not found') ? '当前服务端未包含更新代理接口，请先完成服务端更新并重启' : message);
+      setProxyMessage(message.toLowerCase().includes('not found') ? t('当前服务端未包含更新代理接口，请先完成服务端更新并重启') : message);
     } finally {
       setSavingProxy(false);
     }
@@ -2890,7 +2905,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
     setSavingAutoUpdate(true);
     try {
       await updateServerConfig({ auto_update_enabled: enabled });
-      setProxyMessage(enabled ? '自动更新已开启' : '自动更新已关闭');
+      setProxyMessage(enabled ? t('自动更新已开启') : t('自动更新已关闭'));
       await onDone();
       await query.invalidateQueries({ queryKey: ['update-status'] });
     } catch (err) {
@@ -2929,7 +2944,9 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
         };
         storePendingUpdate(pending);
         setWaitingForRestart(true);
-        setMessage(`更新已构建完成，服务端正在自动重启${result.restart_at ? `，预计 ${fmtDateTime(result.restart_at)} 前后恢复` : ''}。恢复后页面会自动刷新。`);
+        setMessage(result.restart_at
+          ? t('更新已构建完成，服务端正在自动重启，预计 {date} 前后恢复。恢复后页面会自动刷新。', { date: fmtDateTime(result.restart_at) })
+          : t('更新已构建完成，服务端正在自动重启。恢复后页面会自动刷新。'));
         setProgressStep(5);
         void waitForServerAfterUpdate(pending);
       } else {
@@ -2949,7 +2966,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           return;
         }
         setProgressStep(6);
-        setMessage('当前已经是最新版本');
+        setMessage(t('当前已经是最新版本'));
       }
       if (!result.restarting) await query.invalidateQueries({ queryKey: ['update-status'] });
       await query.invalidateQueries({ queryKey: ['version'] });
@@ -2957,7 +2974,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
       window.clearTimeout(timer);
       setProgressStep(0);
       const detail = err instanceof Error ? err.message : 'update failed';
-      setMessage(friendlyUpdateFailure(detail, Boolean(proxyURL.trim())));
+      setMessage(friendlyUpdateFailure(detail, Boolean(proxyURL.trim()), t));
       setUpdateDetail(detail);
     } finally {
       setBusy(false);
@@ -2965,46 +2982,47 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
   }
   const visibleMessage = message || state.message;
   const visibleDetail = updateDetail || status?.detail || '';
-  const messageIsSuccess = message ? (message.includes('已') || message.includes('正在自动重启') || message.includes('当前已经是最新版本')) : state.tone === 'good';
+  const messageIsSuccess = message ? (message.includes('已') || message.includes('saved') || message.includes('enabled') || message.includes('disabled') || message.includes('正在自动重启') || message.includes('restarting') || message === t('当前已经是最新版本')) : state.tone === 'good';
   const messageClass = messageIsSuccess ? 'notice update-note' : 'error update-note';
+  const proxyMessageIsSuccess = proxyMessage === t('更新代理已保存') || proxyMessage === t('更新代理已清空') || proxyMessage === t('自动更新已开启') || proxyMessage === t('自动更新已关闭');
 
   return (
     <article className={`panel setting-operation update-card ${state.tone}`} data-testid="settings-update">
       <div className="operation-head">
         <div className="operation-icon"><Download size={18} /></div>
         <div>
-          <h2>在线更新</h2>
-          <p>{status?.branch ? `${status.branch} · ${status.upstream || '未绑定上游'}` : '检查 Git 上游版本'}</p>
+          <h2>{t('在线更新')}</h2>
+          <p>{status?.branch ? `${status.branch} · ${status.upstream || t('未绑定上游')}` : t('检查 Git 上游版本')}</p>
         </div>
         <span className={`pill ${state.tone}`}>{state.label}</span>
       </div>
 
       <div className="update-compare">
         <div>
-          <span>当前提交</span>
+          <span>{t('当前提交')}</span>
           <strong title={status?.local_commit}>{shortHash(status?.local_commit)}</strong>
         </div>
         <div>
-          <span>远端提交</span>
+          <span>{t('远端提交')}</span>
           <strong title={status?.remote_commit}>{shortHash(status?.remote_commit)}</strong>
         </div>
         <div>
-          <span>落后</span>
+          <span>{t('落后')}</span>
           <strong>{status?.behind ?? 0}</strong>
         </div>
       </div>
 
       <div className="update-meta">
         <div>
-          <span>运行版本</span>
+          <span>{t('运行版本')}</span>
           <strong>{status?.running_version ? `v${status.running_version}` : '-'}</strong>
         </div>
         <div>
-          <span>仓库版本</span>
+          <span>{t('仓库版本')}</span>
           <strong>{status?.repo_version ? `v${status.repo_version}` : '-'}</strong>
         </div>
         <div>
-          <span>检查时间</span>
+          <span>{t('检查时间')}</span>
           <strong>{fmtDateTime(status?.checked_at)}</strong>
         </div>
       </div>
@@ -3016,30 +3034,30 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           disabled={savingAutoUpdate || busy}
           onChange={(event) => void toggleAutoUpdate(event.target.checked)}
         />
-        <span>{autoUpdateEnabled ? '自动更新已开启' : '自动更新已关闭'}</span>
-        <small>{autoUpdateEnabled ? '每 30 分钟检查一次，有更新时自动拉取、构建并重启' : '每 1 小时检查一次，有更新时在设置入口提示'}</small>
+        <span>{autoUpdateEnabled ? t('自动更新已开启') : t('自动更新已关闭')}</span>
+        <small>{autoUpdateEnabled ? t('每 30 分钟检查一次，有更新时自动拉取、构建并重启') : t('每 1 小时检查一次，有更新时在设置入口提示')}</small>
       </label>
 
       <form className="settings-form inline update-proxy-form" onSubmit={saveProxy}>
         <label>
-          更新代理
+          {t('更新代理')}
           <input value={proxyURL} onChange={(event) => setProxyURL(event.target.value)} placeholder="http://127.0.0.1:7890" />
         </label>
         <button className="secondary" type="submit" disabled={savingProxy || busy}>
           <Network size={16} />
-          {savingProxy ? '保存中' : '保存代理'}
+          {savingProxy ? t('保存中') : t('保存代理')}
         </button>
       </form>
-      {proxyMessage && <p className={proxyMessage.includes('已') ? 'notice update-note' : 'error update-note'}>{proxyMessage}</p>}
+      {proxyMessage && <p className={proxyMessageIsSuccess ? 'notice update-note' : 'error update-note'}>{proxyMessage}</p>}
 
       <div className="settings-button-row">
         <button className="secondary" type="button" onClick={check} disabled={update.isFetching || checking || busy}>
           <RefreshCw size={16} />
-          {update.isFetching || checking ? '检查中' : '检查更新'}
+          {update.isFetching || checking ? t('检查中') : t('检查更新')}
         </button>
         <button className="primary compact" type="button" onClick={() => setConfirmOpen(true)} disabled={!canApply}>
           <Download size={16} />
-          {busy ? '更新中' : '更新'}
+          {busy ? t('更新中') : t('更新')}
         </button>
       </div>
       {confirmOpen && (
@@ -3056,7 +3074,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
           <p>
             <span>{visibleMessage}</span>
             {visibleDetail && (
-              <button className="icon-button inline-help" type="button" onClick={() => setDetailOpen(true)} title="查看 Git 原始错误">
+              <button className="icon-button inline-help" type="button" onClick={() => setDetailOpen(true)} title={t('查看 Git 原始错误')}>
                 <CircleHelp size={14} />
               </button>
             )}
@@ -3069,6 +3087,7 @@ function UpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: 
 }
 
 function UpdateDetailDialog({ detail, onClose }: { detail: string; onClose: () => void }) {
+  const { t } = useI18n();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -3084,13 +3103,13 @@ function UpdateDetailDialog({ detail, onClose }: { detail: string; onClose: () =
         <div className="confirm-copy">
           <span className="confirm-icon"><CircleHelp size={22} /></span>
           <div>
-            <h2 id="update-detail-title">Git 原始错误</h2>
-            <p>用于诊断服务器网络、代理或 Git 上游问题。</p>
+            <h2 id="update-detail-title">{t('Git 原始错误')}</h2>
+            <p>{t('用于诊断服务器网络、代理或 Git 上游问题。')}</p>
           </div>
         </div>
         <pre>{detail || '-'}</pre>
         <div className="dialog-actions">
-          <button className="primary narrow" type="button" onClick={onClose}>关闭</button>
+          <button className="primary narrow" type="button" onClick={onClose}>{t('关闭')}</button>
         </div>
       </section>
     </div>,
@@ -3099,6 +3118,7 @@ function UpdateDetailDialog({ detail, onClose }: { detail: string; onClose: () =
 }
 
 function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const { t } = useI18n();
   const emptyPolicy: AgentUpdatePolicy = {
     enabled: false,
     mode: 'patch',
@@ -3136,28 +3156,28 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
         check_interval_seconds: Number(policy.check_interval_seconds || 1800),
         max_parallel: Number(policy.max_parallel || 1)
       } });
-      setMessage(policy.enabled ? 'Agent 自动更新已保存' : 'Agent 自动更新已关闭');
+      setMessage(policy.enabled ? t('Agent 自动更新已保存') : t('Agent 自动更新已关闭'));
       await onDone();
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'agent update policy save failed';
-      setMessage(/manifest URL|public key/i.test(detail) ? '需要先配置签名更新源：请在高级设置填写 Manifest URL 和 Ed25519 公钥，或由部署环境预置默认更新源。' : detail);
+      setMessage(/manifest URL|public key/i.test(detail) ? t('需要先配置签名更新源：请在高级设置填写 Manifest URL 和 Ed25519 公钥，或由部署环境预置默认更新源。') : detail);
     } finally {
       setSaving(false);
     }
   }
 
   const scopeText = (policy.rollout || 'canary') === 'canary'
-    ? (policy.max_parallel && policy.max_parallel > 1 ? `先更新 ${policy.max_parallel} 台，成功后继续` : '先更新 1 台，成功后继续')
-    : '所有 Agent 按检查周期拉取';
-  const help = '启用后，Agent 会定期用 HMAC 拉取更新策略，自行下载签名 manifest、校验 Ed25519 签名和 artifact sha256，再只替换自己的二进制。服务端不会下发 shell 命令。';
+    ? (policy.max_parallel && policy.max_parallel > 1 ? t('先更新 {count} 台，成功后继续', { count: policy.max_parallel }) : t('先更新 1 台，成功后继续'))
+    : t('所有 Agent 按检查周期拉取');
+  const help = t('启用后，Agent 会定期用 HMAC 拉取更新策略，自行下载签名 manifest、校验 Ed25519 签名和 artifact sha256，再只替换自己的二进制。服务端不会下发 shell 命令。');
 
   return (
     <article className="panel setting-operation agent-update-card" data-testid="settings-agent-update">
       <div className="operation-head">
         <div className="operation-icon"><MonitorUp size={18} /></div>
         <div>
-          <h2>Agent 自动更新</h2>
-          <p>Agent 拉取签名更新并替换自身</p>
+          <h2>{t('Agent 自动更新')}</h2>
+          <p>{t('Agent 拉取签名更新并替换自身')}</p>
         </div>
       </div>
       <form className="settings-form agent-update-form" onSubmit={save}>
@@ -3167,47 +3187,47 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
             checked={Boolean(policy.enabled)}
             onChange={(event) => patchPolicy({ enabled: event.target.checked })}
           />
-          <span>{policy.enabled ? 'Agent 自更新已开启' : 'Agent 自更新已关闭'}</span>
-          <button className="icon-button inline-help" type="button" onClick={() => setHelpOpen(true)} title={help} aria-label="Agent 更新策略说明">
+          <span>{policy.enabled ? t('Agent 自更新已开启') : t('Agent 自更新已关闭')}</span>
+          <button className="icon-button inline-help" type="button" onClick={() => setHelpOpen(true)} title={help} aria-label={t('Agent 更新策略说明')}>
             <CircleHelp size={14} />
           </button>
         </label>
         <div className="agent-update-summary">
-          <span>更新范围</span>
+          <span>{t('更新范围')}</span>
           <strong>{scopeText}</strong>
         </div>
         <button className="secondary action-button" type="submit" disabled={saving}>
           <Save size={16} />
-          {saving ? '保存中' : '保存策略'}
+          {saving ? t('保存中') : t('保存策略')}
         </button>
         <details className="advanced-settings agent-update-advanced">
-          <summary>高级设置</summary>
+          <summary>{t('高级设置')}</summary>
           <div className="settings-form-grid">
             <label>
-              指定目标版本
-              <input value={policy.desired_version || ''} onChange={(event) => patchPolicy({ desired_version: event.target.value })} placeholder="留空表示最新补丁" />
+              {t('指定目标版本')}
+              <input value={policy.desired_version || ''} onChange={(event) => patchPolicy({ desired_version: event.target.value })} placeholder={t('留空表示最新补丁')} />
             </label>
             <label>
-              更新模式
+              {t('更新模式')}
               <select value={policy.mode || 'patch'} onChange={(event) => patchPolicy({ mode: event.target.value })}>
-                <option value="notify">仅通知</option>
-                <option value="patch">补丁版本</option>
-                <option value="minor">小版本</option>
+                <option value="notify">{t('仅通知')}</option>
+                <option value="patch">{t('补丁版本')}</option>
+                <option value="minor">{t('小版本')}</option>
               </select>
             </label>
             <label>
-              检查间隔秒
+              {t('检查间隔秒')}
               <input type="number" min={300} step={60} value={policy.check_interval_seconds || 1800} onChange={(event) => patchPolicy({ check_interval_seconds: Number(event.target.value) })} />
             </label>
             <label>
-              并发上限
+              {t('并发上限')}
               <input type="number" min={1} max={64} value={policy.max_parallel || 1} onChange={(event) => patchPolicy({ max_parallel: Number(event.target.value) })} />
             </label>
             <label>
-              更新范围
+              {t('更新范围')}
               <select value={policy.rollout || 'canary'} onChange={(event) => patchPolicy({ rollout: event.target.value })}>
-                <option value="canary">先更新一批，成功后继续</option>
-                <option value="all">全部 Agent 自行拉取</option>
+                <option value="canary">{t('先更新一批，成功后继续')}</option>
+                <option value="all">{t('全部 Agent 自行拉取')}</option>
               </select>
             </label>
           </div>
@@ -3216,18 +3236,19 @@ function AgentUpdateSettings({ service, onDone }: { service?: ServiceStatus; onD
             <input value={policy.manifest_url || ''} onChange={(event) => patchPolicy({ manifest_url: event.target.value })} placeholder="https://example.com/gpufleet-agent-manifest.json" />
           </label>
           <label>
-            Ed25519 公钥
-            <textarea value={policy.public_key || ''} onChange={(event) => patchPolicy({ public_key: event.target.value })} placeholder="base64-encoded public key" rows={3} />
+            {t('Ed25519 公钥')}
+            <textarea value={policy.public_key || ''} onChange={(event) => patchPolicy({ public_key: event.target.value })} placeholder={t('base64 编码公钥')} rows={3} />
           </label>
         </details>
       </form>
-      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
-      {helpOpen && <InfoDialog title="Agent 自动更新" body={help} onClose={() => setHelpOpen(false)} />}
+      {message && <p className={message === t('Agent 自动更新已保存') || message === t('Agent 自动更新已关闭') ? 'notice' : 'error'}>{message}</p>}
+      {helpOpen && <InfoDialog title={t('Agent 自动更新')} body={help} onClose={() => setHelpOpen(false)} />}
     </article>
   );
 }
 
 function UpdateConfirmDialog({ status, busy, onCancel, onConfirm }: { status?: UpdateStatus; busy: boolean; onCancel: () => void; onConfirm: () => void }) {
+  const { t } = useI18n();
   const dirty = Boolean(status?.dirty);
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -3244,21 +3265,21 @@ function UpdateConfirmDialog({ status, busy, onCancel, onConfirm }: { status?: U
       <section className="confirm-dialog warning" role="dialog" aria-modal="true" aria-labelledby="update-confirm-title" data-testid="update-confirm-dialog">
         <div className="confirm-icon"><Download size={22} /></div>
         <div className="confirm-copy">
-          <span>在线更新</span>
-          <h2 id="update-confirm-title">{dirty ? '工作区不干净，是否强制更新？' : '确认更新服务端？'}</h2>
-          <p>{dirty ? '服务端会先用 git stash push -u 保存当前工作区改动，再检查依赖、构建远端提交、执行 fast-forward 拉取并自动重启。' : '服务端会检查依赖、构建远端提交、执行 fast-forward 拉取，并在成功后自动重启。重启期间页面会显示进度并等待服务恢复。'}</p>
+          <span>{t('在线更新')}</span>
+          <h2 id="update-confirm-title">{dirty ? t('工作区不干净，是否强制更新？') : t('确认更新服务端？')}</h2>
+          <p>{dirty ? t('服务端会先用 git stash push -u 保存当前工作区改动，再检查依赖、构建远端提交、执行 fast-forward 拉取并自动重启。') : t('服务端会检查依赖、构建远端提交、执行 fast-forward 拉取，并在成功后自动重启。重启期间页面会显示进度并等待服务恢复。')}</p>
         </div>
         <div className="confirm-target update-notice-grid">
-          <div><span>当前提交</span><strong>{shortHash(status?.local_commit)}</strong></div>
-          <div><span>远端提交</span><strong>{shortHash(status?.remote_commit)}</strong></div>
-          <div><span>落后</span><strong>{status?.behind ?? 0}</strong></div>
-          <div><span>仓库版本</span><strong>{status?.repo_version ? `v${status.repo_version}` : '-'}</strong></div>
+          <div><span>{t('当前提交')}</span><strong>{shortHash(status?.local_commit)}</strong></div>
+          <div><span>{t('远端提交')}</span><strong>{shortHash(status?.remote_commit)}</strong></div>
+          <div><span>{t('落后')}</span><strong>{status?.behind ?? 0}</strong></div>
+          <div><span>{t('仓库版本')}</span><strong>{status?.repo_version ? `v${status.repo_version}` : '-'}</strong></div>
         </div>
         <div className="confirm-actions">
-          <button className="secondary" type="button" onClick={onCancel} disabled={busy}>取消</button>
+          <button className="secondary" type="button" onClick={onCancel} disabled={busy}>{t('取消')}</button>
           <button className="primary compact" type="button" onClick={onConfirm} disabled={busy}>
             <Download size={16} />
-            {busy ? '更新中' : dirty ? '暂存并更新' : '确认更新'}
+            {busy ? t('更新中') : dirty ? t('暂存并更新') : t('确认更新')}
           </button>
         </div>
       </section>
@@ -3268,12 +3289,13 @@ function UpdateConfirmDialog({ status, busy, onCancel, onConfirm }: { status?: U
 }
 
 function UpdateProgress({ step }: { step: number }) {
+  const { t } = useI18n();
   const stages = [
-    '已发送更新请求',
-    '依赖预检、构建远端提交并执行 fast-forward 拉取',
-    '更新已应用，准备自动重启',
-    '服务端正在自动重启',
-    '等待服务端恢复，恢复后自动刷新'
+    t('已发送更新请求'),
+    t('依赖预检、构建远端提交并执行 fast-forward 拉取'),
+    t('更新已应用，准备自动重启'),
+    t('服务端正在自动重启'),
+    t('等待服务端恢复，恢复后自动刷新')
   ];
   const activeLabel = stages[Math.max(0, Math.min(stages.length - 1, step - 1))];
   const rawPercent = Math.round((Math.max(1, Math.min(step, stages.length)) / stages.length) * 100);
@@ -3284,8 +3306,8 @@ function UpdateProgress({ step }: { step: number }) {
         <div className="update-progress-head">
           <div className="confirm-icon"><Download size={18} /></div>
           <div className="confirm-copy">
-            <span>在线更新</span>
-            <h2>正在拉取并重启</h2>
+            <span>{t('在线更新')}</span>
+            <h2>{t('正在拉取并重启')}</h2>
             <p>{activeLabel}</p>
           </div>
           <strong>{percent}%</strong>
@@ -3321,32 +3343,32 @@ function updateState(status?: UpdateStatus, loading = false, error = '') {
   return { label: '最新', tone: 'good', message: status.message || '已经是最新版本' };
 }
 
-function friendlyUpdateFailure(detail: string, hasProxy: boolean) {
+function friendlyUpdateFailure(detail: string, hasProxy: boolean, t: ReturnType<typeof makeTranslator>) {
   const lower = detail.toLowerCase();
-  const proxyHint = hasProxy ? '请确认当前更新代理可由服务端访问。' : '请在设置页配置服务端可访问的更新代理，或检查服务器直连 GitHub 的网络。';
+  const proxyHint = hasProxy ? t('请确认当前更新代理可由服务端访问。') : t('请在设置页配置服务端可访问的更新代理，或检查服务器直连 GitHub 的网络。');
   if (lower.includes('gnutls') || lower.includes('handshake') || lower.includes('tls')) {
-    return `在线更新失败：GitHub TLS 连接被中断。${proxyHint}`;
+    return t('在线更新失败：GitHub TLS 连接被中断。{hint}', { hint: proxyHint });
   }
   if (lower.includes('could not resolve host') || lower.includes('name resolution')) {
-    return '在线更新失败：服务器无法解析 GitHub 域名。请检查 DNS、网络或更新代理。';
+    return t('在线更新失败：服务器无法解析 GitHub 域名。请检查 DNS、网络或更新代理。');
   }
   if (lower.includes('connection timed out') || lower.includes('failed to connect') || lower.includes('connection refused')) {
-    return `在线更新失败：服务器连接 GitHub 超时或被拒绝。${proxyHint}`;
+    return t('在线更新失败：服务器连接 GitHub 超时或被拒绝。{hint}', { hint: proxyHint });
   }
   if (lower.includes('authentication failed') || lower.includes('could not read username')) {
-    return '在线更新失败：远端仓库认证失败。请检查仓库地址、访问权限或凭据配置。';
+    return t('在线更新失败：远端仓库认证失败。请检查仓库地址、访问权限或凭据配置。');
   }
-  return '在线更新失败，请查看详情并检查服务器网络、Git 上游或更新代理配置。';
+  return t('在线更新失败，请查看详情并检查服务器网络、Git 上游或更新代理配置。');
 }
 
 function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInfo; loading: boolean; error: string }) {
-  const { language } = useI18n();
+  const { language, t } = useI18n();
   const [changelogOpen, setChangelogOpen] = useState(false);
   const allEntries = release?.changelog ?? [];
   const entries = allEntries.slice(0, 1);
-  const versionText = release?.version ? `v${release.version}` : loading ? '加载中' : '-';
+  const versionText = release?.version ? `v${release.version}` : loading ? t('加载中') : '-';
   const commitText = release?.commit && release.commit !== 'dev' ? release.commit : 'dev';
-  const moreLabel = language === 'en-US' ? 'More changelog' : '更多更新记录';
+  const moreLabel = t('更多更新记录');
 
   return (
     <article className="panel setting-operation project-card release-card" data-testid="settings-project">
@@ -3355,36 +3377,36 @@ function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInf
           <img src="/brand/gpufleet-logo.svg" alt="" />
         </div>
         <div>
-          <h2>版本与变更</h2>
-          <p>{release ? `${release.product} ${versionText}` : 'GPUFleet 发布信息'}</p>
+          <h2>{t('版本与变更')}</h2>
+          <p>{release ? `${release.product} ${versionText}` : t('GPUFleet 发布信息')}</p>
         </div>
       </div>
       <div className="project-meta">
         <div>
-          <span>作者</span>
+          <span>{t('作者')}</span>
           <strong>{release?.author ?? repositoryOwner}</strong>
         </div>
         <div>
-          <span>版本</span>
+          <span>{t('版本')}</span>
           <strong>{versionText}</strong>
         </div>
         <div>
-          <span>提交</span>
+          <span>{t('提交')}</span>
           <strong>{commitText}</strong>
         </div>
         <div>
-          <span>构建时间</span>
+          <span>{t('构建时间')}</span>
           <strong>{release?.build_time ? fmtDateTime(release.build_time) : '-'}</strong>
         </div>
         <div className="project-url">
-          <span>仓库地址</span>
+          <span>{t('仓库地址')}</span>
           <a href={release?.repository ?? repositoryURL} target="_blank" rel="noreferrer">{release?.repository ?? repositoryURL}</a>
         </div>
       </div>
       <div className="changelog-panel" data-testid="settings-changelog">
         <div className="changelog-head">
           <BookOpenText size={16} />
-          <span>最近变更</span>
+          <span>{t('最近变更')}</span>
         </div>
         {entries.length > 0 ? (
           <div className="changelog-entry-list">
@@ -3396,12 +3418,12 @@ function ProjectInfoSettings({ release, loading, error }: { release?: ReleaseInf
               </button>
             )}
           </div>
-        ) : <p>{error || '正在读取版本信息'}</p>}
+        ) : <p>{error || t('正在读取版本信息')}</p>}
       </div>
       {changelogOpen && <ChangelogDialog entries={allEntries} language={language} onClose={() => setChangelogOpen(false)} />}
       <a className="secondary action-button" href={release?.repository ?? repositoryURL} target="_blank" rel="noreferrer">
         <Github size={16} />
-        打开 GitHub
+        {t('打开 GitHub')}
       </a>
     </article>
   );
@@ -3488,6 +3510,7 @@ function SettingStat({ label, value, caption }: { label: string; value: string; 
 }
 
 function PasswordSettings({ onDone }: { onDone: () => Promise<void> }) {
+  const { t } = useI18n();
   const [currentPassword, setCurrentPassword] = useState('');
   const [nextPassword, setNextPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -3498,11 +3521,11 @@ function PasswordSettings({ onDone }: { onDone: () => Promise<void> }) {
     event.preventDefault();
     setMessage('');
     if (nextPassword.length < 8) {
-      setMessage('新密码至少 8 位');
+      setMessage(t('新密码至少 8 位'));
       return;
     }
     if (nextPassword !== confirmPassword) {
-      setMessage('两次密码不一致');
+      setMessage(t('两次密码不一致'));
       return;
     }
     setBusy(true);
@@ -3511,7 +3534,7 @@ function PasswordSettings({ onDone }: { onDone: () => Promise<void> }) {
       setCurrentPassword('');
       setNextPassword('');
       setConfirmPassword('');
-      setMessage('密码已更新');
+      setMessage(t('密码已更新'));
       await onDone();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'password update failed');
@@ -3525,22 +3548,23 @@ function PasswordSettings({ onDone }: { onDone: () => Promise<void> }) {
       <div className="operation-head">
         <div className="operation-icon"><LockKeyhole size={18} /></div>
         <div>
-          <h2>密码更改</h2>
-          <p>仅使用密码作为 Web 凭据</p>
+          <h2>{t('密码更改')}</h2>
+          <p>{t('仅使用密码作为 Web 凭据')}</p>
         </div>
       </div>
       <form className="settings-form" onSubmit={submit}>
-        <label>当前密码<input value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} type="password" autoComplete="current-password" /></label>
-        <label>新密码<input value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} type="password" autoComplete="new-password" /></label>
-        <label>确认新密码<input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" /></label>
-        <button className="primary compact" disabled={busy}><KeyRound size={16} />{busy ? '保存中' : '更新密码'}</button>
+        <label>{t('当前密码')}<input value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} type="password" autoComplete="current-password" /></label>
+        <label>{t('新密码')}<input value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} type="password" autoComplete="new-password" /></label>
+        <label>{t('确认密码')}<input value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} type="password" autoComplete="new-password" /></label>
+        <button className="primary compact" disabled={busy}><KeyRound size={16} />{busy ? t('保存中') : t('更新密码')}</button>
       </form>
-      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+      {message && <p className={message === t('密码已更新') ? 'notice' : 'error'}>{message}</p>}
     </article>
   );
 }
 
 function PortSettings({ service, onDone }: { service?: ServiceStatus; onDone: () => Promise<void> }) {
+  const { t } = useI18n();
   const [port, setPort] = useState(String(service?.configured_port || portFromLocation()));
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -3554,13 +3578,13 @@ function PortSettings({ service, onDone }: { service?: ServiceStatus; onDone: ()
     setMessage('');
     const parsed = Number(port);
     if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) {
-      setMessage('端口范围应为 1-65535');
+      setMessage(t('端口范围应为 1-65535'));
       return;
     }
     setBusy(true);
     try {
       const result = await updateServerConfig({ port: parsed });
-      setMessage(result.restart_required ? '端口已保存，重启后生效' : '端口已保存');
+      setMessage(result.restart_required ? t('端口已保存，重启后生效') : t('端口已保存'));
       await onDone();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'port update failed');
@@ -3574,15 +3598,15 @@ function PortSettings({ service, onDone }: { service?: ServiceStatus; onDone: ()
       <div className="operation-head">
         <div className="operation-icon"><Network size={18} /></div>
         <div>
-          <h2>端口配置</h2>
-          <p>{service?.current_addr ?? '当前监听端口'}</p>
+          <h2>{t('端口配置')}</h2>
+          <p>{service?.current_addr ?? t('当前监听端口')}</p>
         </div>
       </div>
       <form className="settings-form inline" onSubmit={submit}>
-        <label>访问端口<input value={port} onChange={(event) => setPort(event.target.value)} type="number" min={1} max={65535} inputMode="numeric" /></label>
-        <button className="primary compact" disabled={busy}><Save size={16} />{busy ? '保存中' : '保存端口'}</button>
+        <label>{t('访问端口')}<input value={port} onChange={(event) => setPort(event.target.value)} type="number" min={1} max={65535} inputMode="numeric" /></label>
+        <button className="primary compact" disabled={busy}><Save size={16} />{busy ? t('保存中') : t('保存端口')}</button>
       </form>
-      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+      {message && <p className={message === t('端口已保存') || message === t('端口已保存，重启后生效') ? 'notice' : 'error'}>{message}</p>}
     </article>
   );
 }
@@ -3813,7 +3837,7 @@ function LegacyAgentAuthSettings({ service, onDone }: { service?: ServiceStatus;
       const result = await updateServerConfig({ legacy_agent_auth_enabled: next });
       const confirmed = result.service?.legacy_agent_auth_enabled ?? next;
       setEnabled(confirmed);
-      setMessage(confirmed ? '旧版 Agent 兼容已开启' : '旧版 Agent 兼容已关闭');
+      setMessage(confirmed ? t('旧版 Agent 兼容已开启') : t('旧版 Agent 兼容已关闭'));
       await onDone();
       if (confirmed) scheduleFleetReconnectRefresh(query);
     } catch (err) {
@@ -3824,15 +3848,15 @@ function LegacyAgentAuthSettings({ service, onDone }: { service?: ServiceStatus;
     }
   }
 
-  const help = '开启后，服务端会临时接受已登记且版本低于 0.1.9 的 Agent 旧 HMAC 签名；关闭后只接受绑定 device_id 的新签名。建议只在升级旧 Agent 的过渡期短时间开启。';
+  const help = t('开启后，服务端会临时接受已登记且版本低于 0.1.9 的 Agent 旧 HMAC 签名；关闭后只接受绑定 device_id 的新签名。建议只在升级旧 Agent 的过渡期短时间开启。');
 
   return (
     <article className="panel setting-operation" data-testid="settings-legacy-agent-auth">
       <div className="operation-head">
         <div className="operation-icon"><ShieldAlert size={18} /></div>
         <div>
-          <h2>旧版 Agent 兼容</h2>
-          <p>控制是否接受 0.1.9 前的 HMAC 签名</p>
+          <h2>{t('旧版 Agent 兼容')}</h2>
+          <p>{t('控制是否接受 0.1.9 前的 HMAC 签名')}</p>
         </div>
       </div>
       <label className="switch-row security-switch-row">
@@ -3842,19 +3866,20 @@ function LegacyAgentAuthSettings({ service, onDone }: { service?: ServiceStatus;
           disabled={saving}
           onChange={(event) => void toggle(event.target.checked)}
         />
-        <span>{enabled ? '旧版兼容已开启' : '旧版兼容已关闭'}</span>
-        <button className="icon-button inline-help" type="button" onClick={() => setHelpOpen(true)} title={help} aria-label="旧版 Agent 兼容说明">
+        <span>{enabled ? t('旧版兼容已开启') : t('旧版兼容已关闭')}</span>
+        <button className="icon-button inline-help" type="button" onClick={() => setHelpOpen(true)} title={help} aria-label={t('旧版 Agent 兼容说明')}>
           <CircleHelp size={14} />
         </button>
       </label>
-      <p>{enabled ? '仅建议在迁移旧 Agent 时临时开启。' : '默认关闭，要求 Agent 使用绑定 device_id 的新签名。'}</p>
-      {message && <p className={message.includes('已') ? 'notice' : 'error'}>{message}</p>}
+      <p>{enabled ? t('仅建议在迁移旧 Agent 时临时开启。') : t('默认关闭，要求 Agent 使用绑定 device_id 的新签名。')}</p>
+      {message && <p className={message === t('旧版 Agent 兼容已开启') || message === t('旧版 Agent 兼容已关闭') ? 'notice' : 'error'}>{message}</p>}
       {helpOpen && <InfoDialog title={t('旧版 Agent 兼容')} body={help} onClose={() => setHelpOpen(false)} />}
     </article>
   );
 }
 
 function InfoDialog({ title, body, onClose }: { title: string; body: string; onClose: () => void }) {
+  const { t } = useI18n();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -3873,7 +3898,7 @@ function InfoDialog({ title, body, onClose }: { title: string; body: string; onC
           <p>{body}</p>
         </div>
         <div className="confirm-actions">
-          <button className="primary narrow" type="button" onClick={onClose}>知道了</button>
+          <button className="primary narrow" type="button" onClick={onClose}>{t('知道了')}</button>
         </div>
       </section>
     </div>,

@@ -25,6 +25,13 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - zh-CN: 匿名遥测不上传主机名、真实设备 ID、GPU UUID、进程、用户名、密钥、访问地址或远端 IP；可用 `-disable-telemetry` 或 `GPUFLEET_DISABLE_TELEMETRY=true` 关闭，也可通过 `-telemetry-url` 指向自托管统计端点。
 - en-US: Anonymous telemetry does not upload hostnames, real device IDs, GPU UUIDs, processes, usernames, secrets, server URLs, or remote IPs. It can be disabled with `-disable-telemetry` or `GPUFLEET_DISABLE_TELEMETRY=true`, or pointed at a self-hosted collector with `-telemetry-url`.
 
+### Fixed / 修复
+
+- zh-CN: 总览顶部总功耗等迷你趋势图的悬浮提示在靠近左右边缘时会贴边定位，避免移动端点选右侧采样点时撑宽页面并影响底部导航显示。
+- en-US: Overview top metric sparklines now edge-align hover tooltips near the left and right sides, preventing mobile taps on right-side samples from widening the page and affecting the bottom navigation.
+- zh-CN: 能源页的 GPU、样本和诊断数量，以及设置页服务状态、操作说明、Agent 更新说明、更新确认和版本信息等文案补齐显式 i18n。
+- en-US: Energy-page GPU, sample, and diagnostic counts, plus Settings service status, operation descriptions, Agent update help, update confirmations, and release metadata now use explicit i18n strings.
+
 ## [0.1.9] - 2026-06-09
 
 ### Title / 标题

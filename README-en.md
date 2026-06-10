@@ -14,10 +14,6 @@ Chinese documentation: [README.md](README.md)
 
 Installation guide: [docs/14-installation.md](docs/14-installation.md)
 
-Current version: `0.1.10`<br>
-Author: `stlin256`<br>
-Repository: `https://github.com/stlin256/GPU-Fleet`
-
 ## What It Does
 
 - Fleet overview: multi-host, multi-GPU cards with online state, utilization, memory, temperature, power, PCIe state, clock throttle reasons, and process summaries.
