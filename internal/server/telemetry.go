@@ -53,7 +53,7 @@ func (a *App) startTelemetryLoop() {
 
 func (a *App) runTelemetryIfDue(now time.Time) bool {
 	state := a.meta.TelemetryState()
-	if !state.NextReportAfter.IsZero() && now.Before(state.NextReportAfter) {
+	if !state.NextReportAfter.IsZero() && now.Before(state.NextReportAfter) && !a.shouldRetryTelemetryAfterRestart(state) {
 		return false
 	}
 	report, err := a.buildTelemetryReport(now)
@@ -70,6 +70,16 @@ func (a *App) runTelemetryIfDue(now time.Time) bool {
 		a.logger.Printf("anonymous telemetry state update failed: %v", err)
 	}
 	return true
+}
+
+func (a *App) shouldRetryTelemetryAfterRestart(state TelemetryState) bool {
+	if state.LastReportAt.IsZero() || !state.LastSuccessAt.IsZero() || strings.TrimSpace(state.LastError) == "" {
+		return false
+	}
+	if a.startedAt.IsZero() {
+		return false
+	}
+	return state.LastReportAt.Before(a.startedAt)
 }
 
 func (a *App) recordTelemetryError(now time.Time, err error, retryAfter time.Duration) {

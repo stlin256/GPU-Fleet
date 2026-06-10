@@ -33,6 +33,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Energy-page GPU, sample, and diagnostic counts, plus Settings service status, operation descriptions, Agent update help, update confirmations, and release metadata now use explicit i18n strings.
 - zh-CN: 匿名遥测上报现在复用设置页配置的服务端代理，并在诊断包中暴露脱敏后的遥测状态，避免无法直连 `workers.dev` 的服务器让 README GPU 徽章长期停留为 0。
 - en-US: Anonymous telemetry reporting now reuses the server proxy configured in Settings and includes redacted telemetry state in diagnostics, preventing servers that cannot directly reach `workers.dev` from leaving the README GPU badge stuck at 0.
+- zh-CN: 如果旧进程的匿名遥测失败留下了长时间重试退避，服务端重启后会在首次检查时重试一次，避免修复网络或代理后仍要等待数小时才更新徽章。
+- en-US: When a previous process left a long anonymous-telemetry retry backoff, the server now retries once on the first check after restart so badge updates do not wait hours after network or proxy fixes.
 
 ## [0.1.9] - 2026-06-09
 

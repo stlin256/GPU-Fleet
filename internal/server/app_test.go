@@ -383,6 +383,48 @@ func TestTelemetryReportUsesConfiguredProxy(t *testing.T) {
 	}
 }
 
+func TestTelemetryRetriesPreviousProcessFailureAfterRestart(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+	app.config.TelemetryInterval = time.Hour
+	now := time.Now().UTC()
+	app.startedAt = now.Add(-5 * time.Minute)
+	if err := app.meta.RecordTelemetryError(now.Add(-30*time.Minute), now.Add(6*time.Hour), "previous process failed"); err != nil {
+		t.Fatal(err)
+	}
+
+	var received telemetryReport
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatal(err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer endpoint.Close()
+	app.config.TelemetryEndpoint = endpoint.URL
+
+	if !app.runTelemetryIfDue(now) {
+		t.Fatal("expected startup telemetry to retry a previous process failure")
+	}
+	if received.SchemaVersion != 1 || received.InstallIDHash == "" {
+		t.Fatalf("unexpected startup retry report: %+v", received)
+	}
+	state := app.meta.TelemetryState()
+	if state.LastSuccessAt.IsZero() || state.LastError != "" {
+		t.Fatalf("expected telemetry retry to record success, got %+v", state)
+	}
+
+	secondRoot := t.TempDir()
+	second := newTestApp(t, secondRoot, filepath.Join(secondRoot, "missing-web"))
+	second.startedAt = now.Add(-30 * time.Minute)
+	if err := second.meta.RecordTelemetryError(now.Add(-time.Minute), now.Add(6*time.Hour), "same process failed"); err != nil {
+		t.Fatal(err)
+	}
+	if second.runTelemetryIfDue(now) {
+		t.Fatal("expected same-process telemetry failure to keep its retry backoff")
+	}
+}
+
 func TestSameVersionChangelogSummaryKeepsOnlyNewLines(t *testing.T) {
 	beforeRaw := `## [0.1.7] - 2026-06-08
 
