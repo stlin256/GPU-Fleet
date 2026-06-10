@@ -424,7 +424,7 @@ const en: Record<string, string> = {
   '下载诊断包': 'Download diagnostics',
   '预留空间 MiB': 'Reserved space MiB',
   '保存预留': 'Save reserve',
-  '磁盘预留至少 64 MiB': 'Disk reserve must be at least 64 MiB',
+  '磁盘预留必须是至少 100 MiB 的整数': 'Disk reserve must be an integer of at least 100 MiB',
   '磁盘预留已保存': 'Disk reserve saved',
   '查看 Git 原始错误': 'View raw Git error',
   'Git 原始错误': 'Raw Git error',

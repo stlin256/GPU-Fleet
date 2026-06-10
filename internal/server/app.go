@@ -507,7 +507,7 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Port                   int                      `json:"port"`
-		MinFreeMB              int                      `json:"min_free_mb"`
+		MinFreeMB              *int                     `json:"min_free_mb"`
 		AutoUpdateEnabled      *bool                    `json:"auto_update_enabled"`
 		LegacyAgentAuthEnabled *bool                    `json:"legacy_agent_auth_enabled"`
 		AgentUpdate            *model.AgentUpdatePolicy `json:"agent_update"`
@@ -530,12 +530,12 @@ func (a *App) handleAdminServerConfig(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if body.MinFreeMB > 0 {
-		if body.MinFreeMB < 64 {
-			writeError(w, http.StatusBadRequest, "minimum disk reserve must be at least 64 MiB")
+	if body.MinFreeMB != nil {
+		if *body.MinFreeMB < 100 {
+			writeError(w, http.StatusBadRequest, "minimum disk reserve must be at least 100 MiB")
 			return
 		}
-		minFreeBytes := uint64(body.MinFreeMB) * 1024 * 1024
+		minFreeBytes := uint64(*body.MinFreeMB) * 1024 * 1024
 		config, err = a.meta.UpdateMinFreeBytes(minFreeBytes)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())

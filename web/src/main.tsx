@@ -4192,8 +4192,8 @@ function DiskReserveSettings({ data, onDone }: { data?: Overview; onDone: () => 
     event.preventDefault();
     setMessage('');
     const parsed = Number(minFreeMB);
-    if (!Number.isInteger(parsed) || parsed < 64) {
-      setMessage(t('磁盘预留至少 64 MiB'));
+    if (!Number.isInteger(parsed) || parsed < 100) {
+      setMessage(t('磁盘预留必须是至少 100 MiB 的整数'));
       return;
     }
     setBusy(true);
@@ -4202,7 +4202,10 @@ function DiskReserveSettings({ data, onDone }: { data?: Overview; onDone: () => 
       setMessage(t('磁盘预留已保存'));
       await onDone();
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'disk reserve update failed');
+      const message = err instanceof Error && err.message.includes('minimum disk reserve')
+        ? t('磁盘预留必须是至少 100 MiB 的整数')
+        : err instanceof Error ? err.message : 'disk reserve update failed';
+      setMessage(message);
     } finally {
       setBusy(false);
     }
@@ -4218,7 +4221,7 @@ function DiskReserveSettings({ data, onDone }: { data?: Overview; onDone: () => 
         </div>
       </div>
       <form className="settings-form inline" onSubmit={submit}>
-        <label>{t('预留空间 MiB')}<input value={minFreeMB} onChange={(event) => setMinFreeMB(event.target.value)} type="number" min={64} step={64} inputMode="numeric" /></label>
+        <label>{t('预留空间 MiB')}<input value={minFreeMB} onChange={(event) => setMinFreeMB(event.target.value)} type="number" min={100} step={1} inputMode="numeric" /></label>
         <button className="primary compact" disabled={busy}><Save size={16} />{busy ? t('保存中') : t('保存预留')}</button>
       </form>
       {message && <p className={message.includes('已') || message.includes('saved') ? 'notice' : 'error'}>{message}</p>}

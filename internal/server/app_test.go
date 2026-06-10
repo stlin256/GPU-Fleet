@@ -2020,16 +2020,16 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 		Service         serviceStatus `json:"service"`
 		RestartRequired bool          `json:"restart_required"`
 	}
-	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]int{"min_free_mb": 128}, cookie, http.StatusOK, &reserveUpdate)
-	if !reserveUpdate.OK || reserveUpdate.Service.MinFreeBytes != 128*1024*1024 || reserveUpdate.RestartRequired {
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]int{"min_free_mb": 101}, cookie, http.StatusOK, &reserveUpdate)
+	if !reserveUpdate.OK || reserveUpdate.Service.MinFreeBytes != 101*1024*1024 || reserveUpdate.RestartRequired {
 		t.Fatalf("unexpected disk reserve update response: %+v", reserveUpdate)
 	}
 	var reserveOverview overviewResponse
 	doJSON(t, handler, http.MethodGet, "/api/v1/overview", nil, cookie, http.StatusOK, &reserveOverview)
-	if reserveOverview.MinFreeSpaceBytes != 128*1024*1024 || reserveOverview.Disk.MinFreeBytes != 128*1024*1024 {
+	if reserveOverview.MinFreeSpaceBytes != 101*1024*1024 || reserveOverview.Disk.MinFreeBytes != 101*1024*1024 {
 		t.Fatalf("disk reserve should update immediately, got overview=%d disk=%d", reserveOverview.MinFreeSpaceBytes, reserveOverview.Disk.MinFreeBytes)
 	}
-	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]int{"min_free_mb": 32}, cookie, http.StatusBadRequest, nil)
+	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]int{"min_free_mb": 99}, cookie, http.StatusBadRequest, nil)
 	doJSON(t, handler, http.MethodPost, "/api/v1/admin/server-config", map[string]int{"port": 9443}, cookie, http.StatusOK, &portUpdate)
 	if !portUpdate.OK || portUpdate.Service.ConfiguredPort != 9443 || !portUpdate.RestartRequired {
 		t.Fatalf("unexpected port update response: %+v", portUpdate)

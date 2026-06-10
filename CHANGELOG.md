@@ -37,6 +37,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: When a previous process left a long anonymous-telemetry retry backoff, the server now retries once on the first check after restart so badge updates do not wait hours after network or proxy fixes.
 - zh-CN: 总览 GPU 卡片不再因为 PCIe 当前链路低于最大能力而整体显示黄色“关注”，PCIe 降级仍会保留在独立标签和统计中。
 - en-US: Overview GPU cards no longer turn yellow for PCIe links below maximum capability; PCIe degradation remains visible in the dedicated pill and summary count.
+- zh-CN: 设置页磁盘预留空间现在支持任意整数 MiB，最小值调整为 100 MiB，并同步中英文校验提示。
+- en-US: The Settings disk reserve now accepts any integer MiB value with a 100 MiB minimum, with matching Chinese and English validation messages.
 
 ## [0.1.9] - 2026-06-09
 
