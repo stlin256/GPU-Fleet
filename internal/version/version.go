@@ -224,6 +224,12 @@ func Changelog() []ChangelogEntry {
 			ChangedEN: []string{
 				"Frontend builds now split React, ECharts, TanStack Query, and icon libraries into manual chunks, reducing the main entry bundle and improving cache reuse.",
 			},
+			Security: []string{
+				"telemetry Worker 新增 lockfile、Node 测试和基础滥用防护，限制过大请求、非 GPUFleet User-Agent、异常上报时间和同一安装 ID 的过频写入。",
+			},
+			SecurityEN: []string{
+				"Telemetry Worker now has a lockfile, Node tests, and basic abuse checks for oversized reports, non-GPUFleet user agents, abnormal report timestamps, and repeated writes from the same install ID.",
+			},
 			Fixed: []string{
 				"指标冷分段压缩改为备份、替换、失败回滚流程，避免替换失败或进程异常时丢失原始冷数据段。",
 			},

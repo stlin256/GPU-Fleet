@@ -52,6 +52,32 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+  telemetry-worker:
+    name: Telemetry worker audit and test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: telemetry-worker
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: telemetry-worker/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      - name: Test worker
+        run: npm test
+
   scripts:
     name: Script static checks
     runs-on: ubuntu-latest

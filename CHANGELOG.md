@@ -26,6 +26,11 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - zh-CN: 前端构建增加手动分包，将 React、ECharts、TanStack Query、图标库等拆为独立 chunks，降低主入口包体并改善缓存命中。
 - en-US: Frontend builds now split React, ECharts, TanStack Query, and icon libraries into manual chunks, reducing the main entry bundle and improving cache reuse.
 
+### Security / 安全
+
+- zh-CN: telemetry Worker 新增 lockfile、Node 测试和基础滥用防护，限制过大请求、非 GPUFleet User-Agent、异常上报时间和同一安装 ID 的过频写入。
+- en-US: Telemetry Worker now has a lockfile, Node tests, and basic abuse checks for oversized reports, non-GPUFleet user agents, abnormal report timestamps, and repeated writes from the same install ID.
+
 ## [0.1.10] - 2026-06-10
 
 ### Title / 标题

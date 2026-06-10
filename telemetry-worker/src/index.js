@@ -1,5 +1,8 @@
 const activeWindowSeconds = 30 * 24 * 60 * 60;
 const badgeCacheSeconds = 60 * 60;
+const maxReportBytes = 8192;
+const maxReportClockSkewSeconds = 48 * 60 * 60;
+const minReportIntervalSeconds = 5 * 60;
 
 export default {
   async fetch(request, env) {
@@ -7,10 +10,10 @@ export default {
       const url = new URL(request.url);
       if (request.method === 'OPTIONS') return noContent();
       if (request.method === 'POST' && url.pathname === '/v1/report') {
-        return handleReport(request, env);
+        return await handleReport(request, env);
       }
       if (request.method === 'GET' && url.pathname === '/badge') {
-        return handleBadge(env);
+        return await handleBadge(env);
       }
       if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '/summary')) {
         return jsonResponse(await loadSummary(env));
@@ -26,9 +29,25 @@ export default {
 };
 
 async function handleReport(request, env) {
-  const report = validateReport(await request.json().catch(() => undefined));
+  enforceReportRequest(request);
+  const report = validateReport(await parseJsonBody(request));
   const nowEpoch = Math.floor(Date.now() / 1000);
   const reportedAtEpoch = Math.floor(Date.parse(report.reported_at) / 1000) || nowEpoch;
+  const ageSeconds = Math.abs(nowEpoch - reportedAtEpoch);
+  if (ageSeconds > maxReportClockSkewSeconds) {
+    throw badRequest('reported_at outside accepted clock skew');
+  }
+  const existing = await env.DB.prepare(`
+    SELECT last_seen_epoch
+    FROM installs
+    WHERE install_id_hash = ?
+  `).bind(report.install_id_hash).first();
+  const lastSeenEpoch = Number(existing?.last_seen_epoch ?? 0);
+  if (lastSeenEpoch > 0 && nowEpoch - lastSeenEpoch < minReportIntervalSeconds) {
+    return jsonResponse({ accepted: true, throttled: true }, 202, {
+      'Retry-After': String(minReportIntervalSeconds)
+    });
+  }
   await env.DB.prepare(`
     INSERT INTO installs (
       install_id_hash,
@@ -73,6 +92,33 @@ async function handleReport(request, env) {
     reportedAtEpoch
   ).run();
   return jsonResponse({ accepted: true }, 202);
+}
+
+async function parseJsonBody(request) {
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > maxReportBytes) {
+    throw new ResponseError('report body too large', 413);
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function enforceReportRequest(request) {
+  const length = Number(request.headers.get('content-length') ?? '0');
+  if (Number.isFinite(length) && length > maxReportBytes) {
+    throw new ResponseError('report body too large', 413);
+  }
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw badRequest('invalid content type');
+  }
+  const userAgent = cleanText(request.headers.get('user-agent') ?? '', 120);
+  if (!/^GPUFleet\/[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(userAgent)) {
+    throw new ResponseError('invalid telemetry client', 403);
+  }
 }
 
 async function handleBadge(env) {
