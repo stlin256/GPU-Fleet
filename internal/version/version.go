@@ -212,6 +212,12 @@ func Changelog() []ChangelogEntry {
 			Date:    "2026-06-10",
 			Title:   "可靠性、CI 与发布工程强化",
 			TitleEN: "Reliability, CI, and release engineering hardening",
+			Added: []string{
+				"新增 GitHub Actions CI，覆盖 Go vet/test、前端 npm audit/build、Linux 安装脚本 shellcheck 和 PowerShell 脚本静态检查。",
+			},
+			AddedEN: []string{
+				"Added GitHub Actions CI covering Go vet/test, frontend npm audit/build, Linux installer shellcheck, and PowerShell script analysis.",
+			},
 			Fixed: []string{
 				"指标冷分段压缩改为备份、替换、失败回滚流程，避免替换失败或进程异常时丢失原始冷数据段。",
 			},

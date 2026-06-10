@@ -16,6 +16,11 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - zh-CN: 指标冷分段压缩改为备份、替换、失败回滚流程，避免替换失败或进程异常时丢失原始冷数据段。
 - en-US: Metric cold-segment compaction now uses backup, replace, and rollback steps so failed replacement or crashes do not discard the original segment.
 
+### Added / 新增
+
+- zh-CN: 新增 GitHub Actions CI，覆盖 Go vet/test、前端 npm audit/build、Linux 安装脚本 shellcheck 和 PowerShell 脚本静态检查。
+- en-US: Added GitHub Actions CI covering Go vet/test, frontend npm audit/build, Linux installer shellcheck, and PowerShell script analysis.
+
 ## [0.1.10] - 2026-06-10
 
 ### Title / 标题
