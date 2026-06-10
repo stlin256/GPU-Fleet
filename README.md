@@ -230,7 +230,7 @@ http://127.0.0.1:8088
   -repo-dir .
 ```
 
-匿名聚合遥测默认开启。服务端每天带随机抖动向 `https://gpufleet-telemetry.stlin256.workers.dev/v1/report` 上报一次，只包含版本、服务端 OS/架构、Agent 总数/活跃数和 GPU 总数/活跃数；可用 `-disable-telemetry` 或 `GPUFLEET_DISABLE_TELEMETRY=true` 关闭，也可用 `-telemetry-url` 或 `GPUFLEET_TELEMETRY_URL` 指向自托管统计端点。
+匿名聚合遥测默认开启。服务端每天带随机抖动向 `https://gpufleet-telemetry.stlin256.workers.dev/v1/report` 上报一次，只包含版本、服务端 OS/架构、Agent 总数/活跃数和 GPU 总数/活跃数；上报会复用设置页配置的服务端代理。可用 `-disable-telemetry` 或 `GPUFLEET_DISABLE_TELEMETRY=true` 关闭，也可用 `-telemetry-url` 或 `GPUFLEET_TELEMETRY_URL` 指向自托管统计端点。
 
 ### 启动 Agent
 

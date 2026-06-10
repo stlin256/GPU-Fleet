@@ -339,6 +339,50 @@ func TestTelemetryRunSubmitsAndRecordsState(t *testing.T) {
 	}
 }
 
+func TestTelemetryReportUsesConfiguredProxy(t *testing.T) {
+	root := t.TempDir()
+	app := newTestApp(t, root, filepath.Join(root, "missing-web"))
+
+	proxyHit := false
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyHit = true
+		if r.Method != http.MethodPost {
+			t.Fatalf("expected proxied POST, got %s", r.Method)
+		}
+		if got := r.URL.String(); got != "http://telemetry.invalid/v1/report" {
+			t.Fatalf("unexpected proxied telemetry URL %q", got)
+		}
+		if !strings.HasPrefix(r.UserAgent(), "GPUFleet/") {
+			t.Fatalf("unexpected user agent %q", r.UserAgent())
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer proxy.Close()
+
+	if _, err := app.meta.UpdateProxy(proxy.URL); err != nil {
+		t.Fatal(err)
+	}
+	app.config.TelemetryEndpoint = "http://telemetry.invalid/v1/report"
+	err := app.submitTelemetryReport(telemetryReport{
+		SchemaVersion:  1,
+		InstallIDHash:  "sha256:" + strings.Repeat("a", 64),
+		Version:        version.Version,
+		ServerOS:       "linux",
+		ServerArch:     "amd64",
+		ClientsTotal:   1,
+		ClientsActive7: 1,
+		GPUsTotal:      4,
+		GPUsActive7:    4,
+		ReportedAt:     time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proxyHit {
+		t.Fatal("expected telemetry report to use the configured proxy")
+	}
+}
+
 func TestSameVersionChangelogSummaryKeepsOnlyNewLines(t *testing.T) {
 	beforeRaw := `## [0.1.7] - 2026-06-08
 
@@ -2047,6 +2091,13 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 	}
 	app.updateStatusCacheOK = true
 	app.updateMu.Unlock()
+	if err := app.meta.RecordTelemetryError(
+		time.Now().UTC(),
+		time.Now().UTC().Add(time.Hour),
+		`Post "https://gpufleet-telemetry.example/v1/report": proxy http://proxy-user:local-dev-secret@127.0.0.1:7890 refused connection`,
+	); err != nil {
+		t.Fatal(err)
+	}
 	diagnostics := downloadZipFileContents(t, handler, cookie, "/api/v1/admin/diagnostics/download")
 	raw, ok := diagnostics["diagnostics.json"]
 	if !ok {
@@ -2067,6 +2118,9 @@ func TestAdminRuntimeConfigCertificateAndDownload(t *testing.T) {
 	}
 	if report.Service.UpdateProxy != "http://redacted:redacted@127.0.0.1:7890" {
 		t.Fatalf("expected redacted update proxy, got %q", report.Service.UpdateProxy)
+	}
+	if !report.Telemetry.ProxyConfigured || !strings.Contains(report.Telemetry.LastError, "redacted:redacted") {
+		t.Fatalf("expected diagnostics telemetry state with redacted proxy error, got %+v", report.Telemetry)
 	}
 	if report.Update == nil || report.Update.Remote != "https://redacted:redacted@example.com/stlin256/GPU-Fleet.git" {
 		t.Fatalf("expected cached update status with redacted remote, got %+v", report.Update)

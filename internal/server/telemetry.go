@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"runtime"
 	"strings"
 	"time"
@@ -73,10 +74,11 @@ func (a *App) runTelemetryIfDue(now time.Time) bool {
 
 func (a *App) recordTelemetryError(now time.Time, err error, retryAfter time.Duration) {
 	next := now.Add(retryAfter).Add(telemetryJitter(30 * time.Minute))
-	if saveErr := a.meta.RecordTelemetryError(now, next, err.Error()); saveErr != nil {
+	message := redactTelemetryError(err.Error(), a.meta.ServiceConfig().UpdateProxy)
+	if saveErr := a.meta.RecordTelemetryError(now, next, message); saveErr != nil {
 		a.logger.Printf("anonymous telemetry state update failed: %v", saveErr)
 	}
-	a.logger.Printf("anonymous telemetry report failed: %v", err)
+	a.logger.Printf("anonymous telemetry report failed: %s", message)
 }
 
 func (a *App) buildTelemetryReport(now time.Time) (telemetryReport, error) {
@@ -138,7 +140,10 @@ func (a *App) submitTelemetryReport(report telemetryReport) error {
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("User-Agent", "GPUFleet/"+version.Version)
-	client := &http.Client{Timeout: 8 * time.Second}
+	client, err := telemetryClient(a.meta.ServiceConfig().UpdateProxy)
+	if err != nil {
+		return err
+	}
 	response, err := client.Do(request)
 	if err != nil {
 		return err
@@ -148,6 +153,36 @@ func (a *App) submitTelemetryReport(report telemetryReport) error {
 		return fmt.Errorf("telemetry endpoint returned HTTP %d", response.StatusCode)
 	}
 	return nil
+}
+
+func telemetryClient(proxyURL string) (*http.Client, error) {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Client{Timeout: 8 * time.Second}, nil
+	}
+	cloned := transport.Clone()
+	proxyURL = strings.TrimSpace(proxyURL)
+	if proxyURL != "" {
+		normalized, err := normalizeProxyURL(proxyURL)
+		if err != nil {
+			return nil, fmt.Errorf("telemetry proxy URL invalid: %w", err)
+		}
+		parsed, err := url.Parse(normalized)
+		if err != nil {
+			return nil, fmt.Errorf("telemetry proxy URL invalid: %w", err)
+		}
+		cloned.Proxy = http.ProxyURL(parsed)
+	}
+	return &http.Client{Timeout: 8 * time.Second, Transport: cloned}, nil
+}
+
+func redactTelemetryError(message, proxyURL string) string {
+	message = strings.TrimSpace(message)
+	proxyURL = strings.TrimSpace(proxyURL)
+	if message == "" || proxyURL == "" {
+		return message
+	}
+	return strings.ReplaceAll(message, proxyURL, redactURLCredentials(proxyURL))
 }
 
 func telemetryInstallHash(installID string) string {

@@ -31,6 +31,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 - en-US: Overview top metric sparklines now edge-align hover tooltips near the left and right sides, preventing mobile taps on right-side samples from widening the page and affecting the bottom navigation.
 - zh-CN: 能源页的 GPU、样本和诊断数量，以及设置页服务状态、操作说明、Agent 更新说明、更新确认和版本信息等文案补齐显式 i18n。
 - en-US: Energy-page GPU, sample, and diagnostic counts, plus Settings service status, operation descriptions, Agent update help, update confirmations, and release metadata now use explicit i18n strings.
+- zh-CN: 匿名遥测上报现在复用设置页配置的服务端代理，并在诊断包中暴露脱敏后的遥测状态，避免无法直连 `workers.dev` 的服务器让 README GPU 徽章长期停留为 0。
+- en-US: Anonymous telemetry reporting now reuses the server proxy configured in Settings and includes redacted telemetry state in diagnostics, preventing servers that cannot directly reach `workers.dev` from leaving the README GPU badge stuck at 0.
 
 ## [0.1.9] - 2026-06-09
 

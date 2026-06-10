@@ -91,7 +91,7 @@ After an automatic update completes, the next admin visit shows a completion dia
 
 Settings also provides diagnostics package download and a manual service restart button. HTTPS certificate upload schedules an automatic restart; after recovery the page refreshes and shows a completion dialog that must be acknowledged.
 
-Anonymous aggregate telemetry is enabled by default. The server reports once per day with jitter to `https://gpufleet-telemetry.stlin256.workers.dev/v1/report`, sending only the version, server OS/architecture, total and active Agent counts, and total and active GPU counts. Disable it with `-disable-telemetry` or `GPUFLEET_DISABLE_TELEMETRY=true`; use `-telemetry-url` or `GPUFLEET_TELEMETRY_URL` to point at a self-hosted collector.
+Anonymous aggregate telemetry is enabled by default. The server reports once per day with jitter to `https://gpufleet-telemetry.stlin256.workers.dev/v1/report`, sending only the version, server OS/architecture, total and active Agent counts, and total and active GPU counts. Reporting reuses the server proxy configured in Settings. Disable it with `-disable-telemetry` or `GPUFLEET_DISABLE_TELEMETRY=true`; use `-telemetry-url` or `GPUFLEET_TELEMETRY_URL` to point at a self-hosted collector.
 
 ## Documentation
 

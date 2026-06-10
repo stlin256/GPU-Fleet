@@ -1084,6 +1084,7 @@ func (a *App) diagnosticsReport(r *http.Request) diagnosticsReport {
 
 	service := a.serviceStatus(r)
 	service.UpdateProxy = redactURLCredentials(service.UpdateProxy)
+	telemetry := a.diagnosticsTelemetry()
 
 	dataDir := a.config.DataDir
 	if abs, err := filepath.Abs(a.config.DataDir); err == nil {
@@ -1140,12 +1141,31 @@ func (a *App) diagnosticsReport(r *http.Request) diagnosticsReport {
 			NumGC:            mem.NumGC,
 		},
 		Service:   service,
+		Telemetry: telemetry,
 		Storage:   storage,
 		Devices:   devices,
 		GPUs:      gpus,
 		Processes: processes,
 		Update:    a.cachedDiagnosticsUpdateStatus(),
 		Audit:     diagnosticsAuditEvents(a.meta.RecentAuditEvents(100)),
+	}
+}
+
+func (a *App) diagnosticsTelemetry() diagnosticsTelemetry {
+	state := a.meta.TelemetryState()
+	proxy := a.meta.ServiceConfig().UpdateProxy
+	lastError := ""
+	if strings.TrimSpace(state.LastError) != "" {
+		lastError = redactTelemetryError(state.LastError, proxy)
+	}
+	return diagnosticsTelemetry{
+		Enabled:         !a.config.DisableTelemetry && strings.TrimSpace(a.config.TelemetryEndpoint) != "",
+		Endpoint:        redactURLCredentials(a.config.TelemetryEndpoint),
+		ProxyConfigured: strings.TrimSpace(proxy) != "",
+		LastReportAt:    state.LastReportAt,
+		LastSuccessAt:   state.LastSuccessAt,
+		NextReportAfter: state.NextReportAfter,
+		LastError:       lastError,
 	}
 }
 
@@ -2424,6 +2444,7 @@ type diagnosticsReport struct {
 	UptimeSeconds int64                    `json:"uptime_seconds"`
 	Runtime       diagnosticsRuntime       `json:"runtime"`
 	Service       serviceStatus            `json:"service"`
+	Telemetry     diagnosticsTelemetry     `json:"telemetry"`
 	Storage       diagnosticsStorage       `json:"storage"`
 	Devices       []diagnosticsDevice      `json:"devices"`
 	GPUs          []diagnosticsGPU         `json:"gpus"`
@@ -2444,6 +2465,16 @@ type diagnosticsRuntime struct {
 	HeapObjects      uint64 `json:"heap_objects"`
 	NextGCBytes      uint64 `json:"next_gc_bytes"`
 	NumGC            uint32 `json:"num_gc"`
+}
+
+type diagnosticsTelemetry struct {
+	Enabled         bool      `json:"enabled"`
+	Endpoint        string    `json:"endpoint,omitempty"`
+	ProxyConfigured bool      `json:"proxy_configured"`
+	LastReportAt    time.Time `json:"last_report_at,omitempty"`
+	LastSuccessAt   time.Time `json:"last_success_at,omitempty"`
+	NextReportAfter time.Time `json:"next_report_after,omitempty"`
+	LastError       string    `json:"last_error,omitempty"`
 }
 
 type diagnosticsStorage struct {
