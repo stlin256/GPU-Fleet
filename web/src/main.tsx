@@ -1770,15 +1770,21 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
   const height = 58;
   const pad = 4;
   const clean = useMemo(() => prepareSparklineSamples(samples, width - pad * 2), [samples]);
-  const hasLine = clean.length >= 2;
   const cappedMax = Math.max(1, max);
+  const timeBounds = sparklineTimeBounds(clean);
+  const gapThresholdMs = sparklineGapThresholdMs(clean);
   const pointData = clean.map((sample, index) => {
-    const x = clean.length === 1 ? width - pad : pad + (index / (clean.length - 1)) * (width - pad * 2);
+    const sampleTime = sparklineTimestampMs(sample);
+    const previousTime = index > 0 ? sparklineTimestampMs(clean[index - 1]) : undefined;
+    const x = timeBounds && sampleTime !== undefined
+      ? pad + ((sampleTime - timeBounds.start) / Math.max(1, timeBounds.end - timeBounds.start)) * (width - pad * 2)
+      : clean.length === 1 ? width - pad : pad + (index / (clean.length - 1)) * (width - pad * 2);
     const y = height - pad - (Math.max(0, Math.min(cappedMax, sample.value)) / cappedMax) * (height - pad * 2);
-    return { ...sample, x, y };
+    const gapBefore = previousTime !== undefined && sampleTime !== undefined && sampleTime > previousTime && sampleTime - previousTime > gapThresholdMs;
+    return { ...sample, x, y, gapBefore };
   });
-  const line = sparklineLinePath(pointData);
-  const area = sparklineAreaPath(pointData, height - pad);
+  const segments = sparklineSegments(pointData);
+  const hasLine = segments.some((segment) => segment.length >= 2);
   const active = hoverIndex !== null ? pointData[hoverIndex] : undefined;
   const tooltipPlacement = active
     ? active.x < 64 ? 'edge-left' : active.x > width - 64 ? 'edge-right' : 'edge-center'
@@ -1796,12 +1802,21 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
   }
 
   function revealPoint(event: React.PointerEvent<HTMLDivElement>) {
-    if (clean.length === 0) return;
+    if (pointData.length === 0) return;
     clearTouchHold();
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 1;
-    const index = Math.max(0, Math.min(clean.length - 1, Math.round(ratio * (clean.length - 1))));
-    setHoverIndex(index);
+    const targetX = Math.max(0, Math.min(width, ratio * width));
+    let nearestIndex = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    pointData.forEach((point, index) => {
+      const distance = Math.abs(point.x - targetX);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    });
+    setHoverIndex(nearestIndex);
   }
 
   function onPointerLeave(event: React.PointerEvent<HTMLDivElement>) {
@@ -1828,8 +1843,12 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
         <polyline className="spark-grid" points={`${pad},${height - pad} ${width - pad},${height - pad}`} />
         {hasLine && (
           <>
-            <path className="spark-area" d={area} />
-            <path className="spark-line" d={line} />
+            {segments.map((segment, index) => segment.length >= 2 && (
+              <path className="spark-area" d={sparklineAreaPath(segment, height - pad)} key={`area-${index}`} />
+            ))}
+            {segments.map((segment, index) => segment.length >= 2 && (
+              <path className="spark-line" d={sparklineLinePath(segment)} key={`line-${index}`} />
+            ))}
           </>
         )}
         {active && (
@@ -1866,6 +1885,47 @@ function prepareSparklineSamples(samples: Array<{ value: number; timestamp?: str
   return Array.from(buckets.entries())
     .sort(([left], [right]) => left - right)
     .map(([, bucket]) => ({ value: bucket.value / bucket.count, timestamp: bucket.timestamp }));
+}
+
+function sparklineTimestampMs(sample: { timestamp?: string }) {
+  if (!sample.timestamp) return undefined;
+  const time = new Date(sample.timestamp).getTime();
+  return Number.isFinite(time) ? time : undefined;
+}
+
+function sparklineTimeBounds(samples: Array<{ timestamp?: string }>) {
+  const times = samples.map(sparklineTimestampMs).filter((time): time is number => typeof time === 'number');
+  if (times.length < 2) return undefined;
+  const start = Math.min(...times);
+  const end = Math.max(...times);
+  if (end <= start) return undefined;
+  return { start, end };
+}
+
+function sparklineGapThresholdMs(samples: Array<{ timestamp?: string }>) {
+  const deltas: number[] = [];
+  for (let index = 1; index < samples.length; index += 1) {
+    const previous = sparklineTimestampMs(samples[index - 1]);
+    const current = sparklineTimestampMs(samples[index]);
+    if (previous === undefined || current === undefined || current <= previous) continue;
+    deltas.push(current - previous);
+  }
+  if (deltas.length === 0) return Number.POSITIVE_INFINITY;
+  deltas.sort((left, right) => left - right);
+  const typical = deltas[Math.floor(deltas.length / 2)];
+  return Math.max(typical * 1.75, 15 * 60 * 1000);
+}
+
+function sparklineSegments<T extends { gapBefore?: boolean }>(points: T[]) {
+  const segments: T[][] = [];
+  for (const point of points) {
+    if (point.gapBefore || segments.length === 0) {
+      segments.push([point]);
+    } else {
+      segments[segments.length - 1].push(point);
+    }
+  }
+  return segments;
 }
 
 function sparklineLinePath(points: Array<{ x: number; y: number }>) {

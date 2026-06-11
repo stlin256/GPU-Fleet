@@ -13,6 +13,8 @@ User-facing changes are recorded here. Versions follow semantic-versioning ideas
 
 ### Fixed / 修复
 
+- zh-CN: 前端迷你趋势图现在按采样时间定位并在明显掉线缺口处断开折线，GPU 掉线后重新上线不会把离线区间渲染成连续曲线。
+- en-US: Frontend sparklines now position points by sample time and break the line across clear offline gaps, so a GPU returning online no longer renders the offline interval as a continuous curve.
 - zh-CN: 指标冷分段压缩改为备份、替换、失败回滚流程，避免替换失败或进程异常时丢失原始冷数据段。
 - en-US: Metric cold-segment compaction now uses backup, replace, and rollback steps so failed replacement or crashes do not discard the original segment.
 
