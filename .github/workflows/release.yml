@@ -117,6 +117,8 @@ jobs:
             }
             Write-Host "Tag $env:RELEASE_TAG already exists at this commit."
           } else {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git tag -a $env:RELEASE_TAG -m "GPUFleet $env:RELEASE_TAG"
             git push origin $env:RELEASE_TAG
           }
