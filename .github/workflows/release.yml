@@ -4,29 +4,66 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version without the v prefix. Leave empty to use internal/version."
-        required: false
-        default: ""
+        description: "Fixed release version, for example 1.0.15. Must match internal/version, web/package.json, and CHANGELOG.md."
+        required: true
+        type: string
       target_set:
-        description: "Build target set: full or core."
+        description: "Build target set."
         required: false
         default: "full"
-  push:
-    tags:
-      - "v*"
+        type: choice
+        options:
+          - full
+          - core
+      targets:
+        description: "Optional comma-separated GOOS/GOARCH targets, for example windows/amd64,linux/amd64,linux/arm64."
+        required: false
+        default: ""
+        type: string
+      draft:
+        description: "Create or update the GitHub Release as a draft."
+        required: false
+        default: false
+        type: boolean
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
 jobs:
-  build:
-    name: Build release artifacts
+  build-and-release:
+    name: Build and publish release
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Normalize release version
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}".Trim()
+          if ($version.StartsWith("v")) {
+            $version = $version.Substring(1)
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') {
+            throw "Invalid release version '$version'. Use a fixed semver value such as 1.0.15."
+          }
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_TAG=v$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Validate release version
+        shell: pwsh
+        run: ./scripts/validate-release-version.ps1 -Version $env:RELEASE_VERSION
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -44,16 +81,21 @@ jobs:
       - name: Build release packages
         shell: pwsh
         run: |
-          $version = "${{ github.event.inputs.version }}"
-          $targetSet = "${{ github.event.inputs.target_set }}"
+          $targetSet = "${{ inputs.target_set }}"
           if (!$targetSet) {
             $targetSet = "full"
           }
-          if ($version) {
-            ./scripts/build-release.ps1 -Version $version -TargetSet $targetSet
+          $targets = "${{ inputs.targets }}".Trim()
+          if ($targets) {
+            $targetList = $targets.Split(",", [System.StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+            ./scripts/build-release.ps1 -Version $env:RELEASE_VERSION -TargetSet $targetSet -Targets $targetList
           } else {
-            ./scripts/build-release.ps1 -TargetSet $targetSet
+            ./scripts/build-release.ps1 -Version $env:RELEASE_VERSION -TargetSet $targetSet
           }
+
+      - name: Generate release notes from changelog
+        shell: pwsh
+        run: ./scripts/get-changelog-release-notes.ps1 -Version $env:RELEASE_VERSION -OutputPath dist/release-notes.md
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
@@ -62,11 +104,31 @@ jobs:
           path: dist/release/*
           if-no-files-found: error
 
+      - name: Create immutable release tag
+        shell: pwsh
+        run: |
+          git fetch --tags --force
+          $tagRef = "refs/tags/$env:RELEASE_TAG"
+          $existing = git rev-parse -q --verify $tagRef 2>$null
+          if ($LASTEXITCODE -eq 0 -and $existing) {
+            $tagCommit = (git rev-list -n 1 $env:RELEASE_TAG).Trim()
+            if ($tagCommit -ne "${{ github.sha }}") {
+              throw "Tag $env:RELEASE_TAG already points to $tagCommit, not ${{ github.sha }}. Bump the version or delete the wrong tag manually."
+            }
+            Write-Host "Tag $env:RELEASE_TAG already exists at this commit."
+          } else {
+            git tag -a $env:RELEASE_TAG -m "GPUFleet $env:RELEASE_TAG"
+            git push origin $env:RELEASE_TAG
+          }
+
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: GPUFleet ${{ env.RELEASE_TAG }}
+          body_path: dist/release-notes.md
           files: dist/release/*
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+          fail_on_unmatched_files: true
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}

@@ -4,6 +4,20 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in an active preview stage.
 
+## [1.0.15] - 2026-06-14
+
+### Title / 标题
+
+- zh-CN: 手动固定版本 Release 工作流
+- en-US: Manual fixed-version Release workflow
+
+### Added / 新增
+
+- zh-CN: GitHub Release 工作流改为手动输入固定版本后发布，自动校验 `internal/version`、前端 package metadata 与 `CHANGELOG.md` 的版本一致性，并可选择 full/core 或指定目标矩阵。
+- en-US: The GitHub Release workflow now publishes from a manually supplied fixed version, validates `internal/version`, frontend package metadata, and `CHANGELOG.md`, and supports full/core or explicit target matrices.
+- zh-CN: 新增从 `CHANGELOG.md` 指定版本条目生成 GitHub Release 发布说明的脚本，发布页会直接使用项目维护的双语 changelog 内容。
+- en-US: Added a script that extracts the selected version entry from `CHANGELOG.md` for GitHub Release notes, so releases use the maintained bilingual project changelog.
+
 ## [1.0.14] - 2026-06-14
 
 ### Title / 标题

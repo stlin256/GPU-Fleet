@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Version   = "1.0.14"
+	Version   = "1.0.15"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -207,6 +207,20 @@ func containsCJK(value string) bool {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "1.0.15",
+			Date:    "2026-06-14",
+			Title:   "手动固定版本 Release 工作流",
+			TitleEN: "Manual fixed-version Release workflow",
+			Added: []string{
+				"GitHub Release 工作流改为手动输入固定版本后发布，自动校验 `internal/version`、前端 package metadata 与 `CHANGELOG.md` 的版本一致性，并可选择 full/core 或指定目标矩阵。",
+				"新增从 `CHANGELOG.md` 指定版本条目生成 GitHub Release 发布说明的脚本，发布页会直接使用项目维护的双语 changelog 内容。",
+			},
+			AddedEN: []string{
+				"The GitHub Release workflow now publishes from a manually supplied fixed version, validates `internal/version`, frontend package metadata, and `CHANGELOG.md`, and supports full/core or explicit target matrices.",
+				"Added a script that extracts the selected version entry from `CHANGELOG.md` for GitHub Release notes, so releases use the maintained bilingual project changelog.",
+			},
+		},
 		{
 			Version: "1.0.14",
 			Date:    "2026-06-14",

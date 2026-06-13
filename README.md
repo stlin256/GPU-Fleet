@@ -28,7 +28,7 @@ English documentation: [README-en.md](README-en.md)<br>
 
 ## 当前状态
 
-GPUFleet 当前版本是 `1.0.14`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
+GPUFleet 当前版本是 `1.0.15`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
 
 ## 产品截图
 
@@ -368,7 +368,7 @@ flowchart TD
 
 ### 发布包
 
-完整发布包由 `scripts/build-release.ps1` 或 GitHub Release 工作流生成。默认 `full` 矩阵会尽量覆盖 Go 可稳定交叉编译的 Windows、Linux、macOS 和 FreeBSD 架构，包括 Linux armv5/armv6/armv7 等 ARM 变体；Windows/Linux 是 NVIDIA GPU Agent 的主要支持系统，macOS/FreeBSD 包主要用于完整性和具备 `nvidia-smi` 环境时的诊断。
+完整发布包由 `scripts/build-release.ps1` 或手动触发的 GitHub Release 工作流生成。默认 `full` 矩阵会尽量覆盖 Go 可稳定交叉编译的 Windows、Linux、macOS 和 FreeBSD 架构，包括 Linux armv5/armv6/armv7 等 ARM 变体；Windows/Linux 是 NVIDIA GPU Agent 的主要支持系统，macOS/FreeBSD 包主要用于完整性和具备 `nvidia-smi` 环境时的诊断。
 
 ```text
 gpufleet-server_<version>_windows_amd64.zip
@@ -399,11 +399,13 @@ gpufleet_<version>_checksums.txt
 .\scripts\build-release.ps1 -Targets windows/amd64,linux/amd64,linux/arm64
 ```
 
-推送标签后 GitHub Actions 会构建并发布 Release：
+固定版本号后，在 GitHub Actions 手动运行 `Release` 工作流。工作流会校验 `internal/version`、`web/package.json`、`web/package-lock.json` 和 `CHANGELOG.md` 中的版本一致性，根据所选目标矩阵构建 Server/Agent 包，并用对应 changelog 条目生成 GitHub Release 发布说明：
 
-```sh
-git tag v1.0.14
-git push origin v1.0.14
+```text
+Actions -> Release -> Run workflow
+version: 1.0.15
+target_set: full
+targets: 留空，或 windows/amd64,linux/amd64,linux/arm64
 ```
 
 ## 服务端在线更新
@@ -529,7 +531,7 @@ node scripts\verify-frontend-chrome.mjs `
   --url http://127.0.0.1:8088 `
   --password demo-admin `
   --out logs\frontend-verify-manual `
-  --expected-version v1.0.14 `
+  --expected-version v1.0.15 `
   --min-fleet-cards 5 `
   --require-offline-mask true `
   --require-dual-device true
