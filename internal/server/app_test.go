@@ -1332,15 +1332,15 @@ func TestEnergySeriesBucketUsesLatestPointOnce(t *testing.T) {
 
 	addEnergySeriesBuckets(buckets, []SeriesPoint{
 		{Timestamp: base.Add(2 * time.Minute), PowerDrawWatts: &firstPower},
-		{Timestamp: base.Add(52 * time.Minute), PowerDrawWatts: &latestPower},
+		{Timestamp: base.Add(12 * time.Minute), PowerDrawWatts: &latestPower},
 	}, settings, 168)
 	addEnergySeriesBuckets(buckets, []SeriesPoint{
-		{Timestamp: base.Add(20 * time.Minute), PowerDrawWatts: &otherPower},
+		{Timestamp: base.Add(8 * time.Minute), PowerDrawWatts: &otherPower},
 	}, settings, 168)
 
 	series := finishEnergySeries(buckets, 168)
 	if len(series) != 1 {
-		t.Fatalf("expected one hourly energy bucket, got %+v", series)
+		t.Fatalf("expected one 15-minute energy bucket, got %+v", series)
 	}
 	if series[0].PowerWatts != latestPower+otherPower || series[0].GPUSampleCount != 2 {
 		t.Fatalf("expected latest same-GPU point to replace earlier bucket value, got %+v", series[0])
@@ -2352,6 +2352,60 @@ func TestMetricsStoreSeriesRollupCoversThirtyDayBoundary(t *testing.T) {
 	}
 	if points[0].UtilizationGPUPercent == nil || *points[0].UtilizationGPUPercent != util {
 		t.Fatalf("unexpected rollup point: %+v", points[0])
+	}
+}
+
+func TestMetricsStoreSeriesRollupUsesQuarterHourForSevenDays(t *testing.T) {
+	root := t.TempDir()
+	store, err := NewMetricsStore(filepath.Join(root, "metrics"), 1, 30*24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstUtil := 25.0
+	secondUtil := 75.0
+	now := time.Now().UTC()
+	firstAt := now.Add(-48 * time.Hour).Truncate(time.Hour).Add(4 * time.Minute)
+	secondAt := firstAt.Add(15 * time.Minute)
+	if err := store.AppendBatch(model.SampleBatch{
+		DeviceID:     "rig-quarter-rollup",
+		AgentVersion: model.AgentVersion,
+		Samples: []model.GPUSample{
+			{
+				Timestamp: firstAt,
+				GPUs: []model.GPUStatus{{
+					GPUID:                 "0",
+					Name:                  "NVIDIA Quarter GPU",
+					UtilizationGPUPercent: &firstUtil,
+				}},
+			},
+			{
+				Timestamp: secondAt,
+				GPUs: []model.GPUStatus{{
+					GPUID:                 "0",
+					Name:                  "NVIDIA Quarter GPU",
+					UtilizationGPUPercent: &secondUtil,
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "metrics", "samples-"+firstAt.Format("2006010215")+".jsonl.gz")); err != nil {
+		t.Fatal(err)
+	}
+
+	points, err := store.SeriesRollup("rig-quarter-rollup", "0", now.Add(-7*24*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 2 {
+		t.Fatalf("expected 7-day query to use 15-minute rollup buckets, got %+v", points)
+	}
+	if !points[0].Timestamp.Equal(firstAt.Truncate(15*time.Minute)) || !points[1].Timestamp.Equal(secondAt.Truncate(15*time.Minute)) {
+		t.Fatalf("unexpected quarter-hour timestamps: %+v", points)
+	}
+	if points[0].UtilizationGPUPercent == nil || *points[0].UtilizationGPUPercent != firstUtil || points[1].UtilizationGPUPercent == nil || *points[1].UtilizationGPUPercent != secondUtil {
+		t.Fatalf("unexpected quarter-hour rollup values: %+v", points)
 	}
 }
 

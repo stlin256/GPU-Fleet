@@ -29,7 +29,7 @@ Installation guide: [docs/14-installation.md](docs/14-installation.md)
 
 ## Current Status
 
-GPUFleet is currently at `1.0.13`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, anonymous aggregate telemetry, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
+GPUFleet is currently at `1.0.14`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, anonymous aggregate telemetry, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
 
 ## Product Screenshots
 

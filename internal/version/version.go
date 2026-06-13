@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	Version   = "1.0.13"
+	Version   = "1.0.14"
 	Commit    = "dev"
 	BuildTime = ""
 )
@@ -207,6 +207,20 @@ func containsCJK(value string) bool {
 
 func Changelog() []ChangelogEntry {
 	entries := []ChangelogEntry{
+		{
+			Version: "1.0.14",
+			Date:    "2026-06-14",
+			Title:   "提升长周期趋势采样密度",
+			TitleEN: "Increase long-range trend sample density",
+			Changed: []string{
+				"7D GPU 与能耗趋势改为使用 15 分钟 rollup，避免长周期曲线只剩小时级稀疏点。",
+				"前端 Sparkline 默认保留 24H/7D/30D 常规曲线的完整点数，只在极端大数据量时按桶保留高低点降采样。",
+			},
+			ChangedEN: []string{
+				"7D GPU and energy trends now use 15-minute rollups so long-range charts are no longer limited to sparse hourly points.",
+				"Frontend Sparklines now keep the full normal 24H/7D/30D point density and only downsample extreme datasets by preserving per-bucket lows and highs.",
+			},
+		},
 		{
 			Version: "1.0.13",
 			Date:    "2026-06-13",

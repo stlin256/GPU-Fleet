@@ -1871,20 +1871,37 @@ function Sparkline({ samples, max, label, formatValue, className = '' }: { sampl
 
 function prepareSparklineSamples(samples: Array<{ value: number; timestamp?: string }>, targetPixels: number) {
   const clean = samples.filter((sample) => typeof sample.value === 'number' && Number.isFinite(sample.value));
-  const maxPoints = Math.max(24, Math.floor(targetPixels));
+  const maxPoints = Math.max(1440, Math.floor(targetPixels * 12));
   if (clean.length <= maxPoints) return clean;
-  const buckets = new Map<number, { value: number; timestamp?: string; count: number }>();
-  clean.forEach((sample, index) => {
-    const bucketIndex = Math.min(maxPoints - 1, Math.floor((index / Math.max(1, clean.length - 1)) * maxPoints));
-    const bucket = buckets.get(bucketIndex) ?? { value: 0, timestamp: sample.timestamp, count: 0 };
-    bucket.value += sample.value;
-    bucket.count += 1;
-    bucket.timestamp = sample.timestamp;
-    buckets.set(bucketIndex, bucket);
-  });
-  return Array.from(buckets.entries())
-    .sort(([left], [right]) => left - right)
-    .map(([, bucket]) => ({ value: bucket.value / bucket.count, timestamp: bucket.timestamp }));
+  const bucketCount = Math.max(1, Math.floor((maxPoints - 2) / 2));
+  const out: Array<{ value: number; timestamp?: string }> = [];
+  const push = (sample: { value: number; timestamp?: string }) => {
+    if (out[out.length - 1] !== sample) out.push(sample);
+  };
+  push(clean[0]);
+  const middleCount = clean.length - 2;
+  for (let bucketIndex = 0; bucketIndex < bucketCount; bucketIndex += 1) {
+    const start = 1 + Math.floor((bucketIndex * middleCount) / bucketCount);
+    const end = 1 + Math.floor(((bucketIndex + 1) * middleCount) / bucketCount);
+    if (start >= end) continue;
+    let minIndex = start;
+    let maxIndex = start;
+    for (let index = start + 1; index < end; index += 1) {
+      if (clean[index].value < clean[minIndex].value) minIndex = index;
+      if (clean[index].value > clean[maxIndex].value) maxIndex = index;
+    }
+    if (minIndex < maxIndex) {
+      push(clean[minIndex]);
+      push(clean[maxIndex]);
+    } else if (maxIndex < minIndex) {
+      push(clean[maxIndex]);
+      push(clean[minIndex]);
+    } else {
+      push(clean[minIndex]);
+    }
+  }
+  push(clean[clean.length - 1]);
+  return out;
 }
 
 function sparklineTimestampMs(sample: { timestamp?: string }) {

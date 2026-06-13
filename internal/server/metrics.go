@@ -27,6 +27,7 @@ const (
 	compactSegmentBackup  = ".bak"
 	rawIndexAge           = time.Hour
 	minuteRollupAge       = 24 * time.Hour
+	quarterHourRollupAge  = 7 * 24 * time.Hour
 	hourRollupAge         = 30 * 24 * time.Hour
 	rollupBoundarySlack   = 5 * time.Minute
 )
@@ -42,6 +43,7 @@ type MetricsStore struct {
 	latest         map[string]StoredGPU
 	rawIndex       map[string][]SeriesPoint
 	minuteRollups  map[string]map[int64]*metricRollupBucket
+	quarterRollups map[string]map[int64]*metricRollupBucket
 	hourRollups    map[string]map[int64]*metricRollupBucket
 	indexReady     bool
 	lastCleanup    time.Time
@@ -92,14 +94,15 @@ func NewMetricsStore(dir string, minFreeBytes uint64, retention time.Duration) (
 		return nil, err
 	}
 	store := &MetricsStore{
-		dir:           dir,
-		minFree:       minFreeBytes,
-		retention:     retention,
-		latest:        map[string]StoredGPU{},
-		rawIndex:      map[string][]SeriesPoint{},
-		minuteRollups: map[string]map[int64]*metricRollupBucket{},
-		hourRollups:   map[string]map[int64]*metricRollupBucket{},
-		segmentLocks:  map[string]*sync.RWMutex{},
+		dir:            dir,
+		minFree:        minFreeBytes,
+		retention:      retention,
+		latest:         map[string]StoredGPU{},
+		rawIndex:       map[string][]SeriesPoint{},
+		minuteRollups:  map[string]map[int64]*metricRollupBucket{},
+		quarterRollups: map[string]map[int64]*metricRollupBucket{},
+		hourRollups:    map[string]map[int64]*metricRollupBucket{},
+		segmentLocks:   map[string]*sync.RWMutex{},
 	}
 	if err := store.loadLatest(); err != nil {
 		return nil, err
@@ -362,8 +365,10 @@ func (s *MetricsStore) indexSampleLocked(sample StoredSample) {
 		}
 		s.rawIndex[key] = append(s.rawIndex[key], point)
 		minuteBucket := sample.Timestamp.UTC().Truncate(time.Minute).Unix()
+		quarterBucket := sample.Timestamp.UTC().Truncate(15 * time.Minute).Unix()
 		hourBucket := sample.Timestamp.UTC().Truncate(time.Hour).Unix()
 		s.rollupForLocked(s.minuteRollups, key, minuteBucket, sample.DeviceID, gpu.GPUID).add(sample.Timestamp, gpu)
+		s.rollupForLocked(s.quarterRollups, key, quarterBucket, sample.DeviceID, gpu.GPUID).add(sample.Timestamp, gpu)
 		s.rollupForLocked(s.hourRollups, key, hourBucket, sample.DeviceID, gpu.GPUID).add(sample.Timestamp, gpu)
 	}
 }
@@ -402,6 +407,7 @@ func (s *MetricsStore) pruneIndexLocked(now time.Time) {
 		}
 	}
 	pruneRollups(s.minuteRollups, now.Add(-minuteRollupAge))
+	pruneRollups(s.quarterRollups, now.Add(-quarterHourRollupAge))
 	pruneRollups(s.hourRollups, now.Add(-hourRollupAge))
 }
 
@@ -461,6 +467,8 @@ func (s *MetricsStore) seriesRollupFromIndex(deviceID, gpuID string, since time.
 	var source map[string]map[int64]*metricRollupBucket
 	if !since.Before(now.Add(-minuteRollupAge - rollupBoundarySlack)) {
 		source = s.minuteRollups
+	} else if !since.Before(now.Add(-quarterHourRollupAge - rollupBoundarySlack)) {
+		source = s.quarterRollups
 	} else if !since.Before(now.Add(-hourRollupAge - rollupBoundarySlack)) {
 		source = s.hourRollups
 	} else {
@@ -480,6 +488,8 @@ func (s *MetricsStore) statsFromIndex(deviceID string, since time.Time) ([]GPUSt
 	var source map[string]map[int64]*metricRollupBucket
 	if !since.Before(now.Add(-minuteRollupAge - rollupBoundarySlack)) {
 		source = s.minuteRollups
+	} else if !since.Before(now.Add(-quarterHourRollupAge - rollupBoundarySlack)) {
+		source = s.quarterRollups
 	} else if !since.Before(now.Add(-hourRollupAge - rollupBoundarySlack)) {
 		source = s.hourRollups
 	} else {

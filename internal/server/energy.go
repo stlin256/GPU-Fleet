@@ -15,6 +15,7 @@ const (
 	defaultIdlePowerWatts         = 30
 	maxEnergyCurrencyLength       = 12
 	energySeriesMinuteRangeHours  = 24
+	energySeriesQuarterRangeHours = 168
 	energyThermalCriticalDeltaC   = 5
 	minDisplayIdleWasteKWh        = 0.005
 )
@@ -481,10 +482,14 @@ func latestEnergyPointPerBucket(points []SeriesPoint, hours int) []SeriesPoint {
 }
 
 func energySeriesBucketTime(timestamp time.Time, hours int) time.Time {
-	if hours > energySeriesMinuteRangeHours {
-		return timestamp.UTC().Truncate(time.Hour)
+	utc := timestamp.UTC()
+	if hours <= energySeriesMinuteRangeHours {
+		return utc.Truncate(time.Minute)
 	}
-	return timestamp.UTC().Truncate(time.Minute)
+	if hours <= energySeriesQuarterRangeHours {
+		return utc.Truncate(15 * time.Minute)
+	}
+	return utc.Truncate(time.Hour)
 }
 
 func finishEnergySeries(buckets map[int64]*energySeriesBucket, hours int) []energySeriesPoint {

@@ -13,8 +13,8 @@ Download the matching `gpufleet-server_<version>_linux_<arch>.tar.gz`, extract i
 下载匹配的 `gpufleet-server_<version>_linux_<arch>.tar.gz`，解压后以 root 执行安装脚本。发布包包含预编译服务端二进制，因此服务器不需要安装 Go。
 
 ```sh
-tar -xzf gpufleet-server_1.0.13_linux_amd64.tar.gz
-cd gpufleet-server_1.0.13_linux_amd64
+tar -xzf gpufleet-server_1.0.14_linux_amd64.tar.gz
+cd gpufleet-server_1.0.14_linux_amd64
 
 ADDR="0.0.0.0:9008" \
 DATA_DIR="/var/lib/gpufleet" \
@@ -371,8 +371,8 @@ Publish a GitHub Release by pushing a version tag:
 推送版本标签发布 GitHub Release：
 
 ```sh
-git tag v1.0.13
-git push origin v1.0.13
+git tag v1.0.14
+git push origin v1.0.14
 ```
 
 ## Build Requirements / 构建要求

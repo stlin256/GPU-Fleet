@@ -4,6 +4,20 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in an active preview stage.
 
+## [1.0.14] - 2026-06-14
+
+### Title / 标题
+
+- zh-CN: 提升长周期趋势采样密度
+- en-US: Increase long-range trend sample density
+
+### Changed / 变更
+
+- zh-CN: 7D GPU 与能耗趋势改为使用 15 分钟 rollup，避免长周期曲线只剩小时级稀疏点。
+- en-US: 7D GPU and energy trends now use 15-minute rollups so long-range charts are no longer limited to sparse hourly points.
+- zh-CN: 前端 Sparkline 默认保留 24H/7D/30D 常规曲线的完整点数，只在极端大数据量时按桶保留高低点降采样。
+- en-US: Frontend Sparklines now keep the full normal 24H/7D/30D point density and only downsample extreme datasets by preserving per-bucket lows and highs.
+
 ## [1.0.13] - 2026-06-13
 
 ### Title / 标题
