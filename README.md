@@ -263,13 +263,19 @@ http://127.0.0.1:8088
 
 ## 服务安装
 
-Windows Service：
+Windows 计划任务（推荐使用发布包，无需在客户端安装 Go）：
 
 ```powershell
 .\scripts\install-agent-windows.ps1 `
   -ServerUrl "https://your-server:8443" `
   -DeviceId "device_xxx" `
   -Secret "replace-with-device-secret"
+```
+
+安装脚本会校验 `gpufleet-agent.exe` 版本，默认执行一次性上报预检，把凭据写入 `C:\ProgramData\GPUFleet\agent.env`，并创建名为 `GPUFleetAgent` 的开机自启计划任务。日志位置：
+
+```powershell
+Get-Content "C:\ProgramData\GPUFleet\logs\agent.log" -Tail 100
 ```
 
 Linux systemd：
@@ -357,6 +363,46 @@ flowchart TD
   Source --> UI["设置页\n版本与变更"]
   Source --> Docs["CHANGELOG.md\n人工维护发布说明"]
   Build["go build -ldflags"] --> Source
+```
+
+### 发布包
+
+完整发布包由 `scripts/build-release.ps1` 或 GitHub Release 工作流生成。默认 `full` 矩阵会尽量覆盖 Go 可稳定交叉编译的 Windows、Linux、macOS 和 FreeBSD 架构，包括 Linux armv5/armv6/armv7 等 ARM 变体；Windows/Linux 是 NVIDIA GPU Agent 的主要支持系统，macOS/FreeBSD 包主要用于完整性和具备 `nvidia-smi` 环境时的诊断。
+
+```text
+gpufleet-server_<version>_windows_amd64.zip
+gpufleet-agent_<version>_windows_amd64.zip
+gpufleet-server_<version>_windows_arm64.zip
+gpufleet-agent_<version>_windows_arm64.zip
+gpufleet-server_<version>_linux_amd64.tar.gz
+gpufleet-agent_<version>_linux_amd64.tar.gz
+gpufleet-server_<version>_linux_arm64.tar.gz
+gpufleet-agent_<version>_linux_arm64.tar.gz
+gpufleet-server_<version>_darwin_arm64.tar.gz
+gpufleet-agent_<version>_darwin_arm64.tar.gz
+gpufleet-server_<version>_freebsd_amd64.tar.gz
+gpufleet-agent_<version>_freebsd_amd64.tar.gz
+gpufleet_<version>_checksums.txt
+```
+
+本地构建发布包：
+
+```powershell
+.\scripts\build-release.ps1
+```
+
+只构建核心矩阵或指定目标：
+
+```powershell
+.\scripts\build-release.ps1 -TargetSet core
+.\scripts\build-release.ps1 -Targets windows/amd64,linux/amd64,linux/arm64
+```
+
+推送标签后 GitHub Actions 会构建并发布 Release：
+
+```sh
+git tag v1.0.12
+git push origin v1.0.12
 ```
 
 ## 服务端在线更新

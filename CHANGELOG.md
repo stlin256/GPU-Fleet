@@ -4,6 +4,30 @@
 
 User-facing changes are recorded here. Versions follow semantic-versioning ideas (`MAJOR.MINOR.PATCH`), while GPUFleet is still in an active preview stage.
 
+## [1.0.12] - 2026-06-13
+
+### Title / 标题
+
+- zh-CN: Windows Agent 安装与发布包强化
+- en-US: Windows Agent installation and release packaging hardening
+
+### Added / 新增
+
+- zh-CN: 新增跨平台发布构建脚本和 GitHub Release 工作流，统一产出 Windows/Linux 的 Server、Agent 包和 SHA256 校验文件。
+- en-US: Added a cross-platform release build script and GitHub Release workflow that produce Windows/Linux Server and Agent packages plus SHA256 checksums.
+
+### Changed / 变更
+
+- zh-CN: Windows Agent 安装脚本改为默认注册计划任务常驻运行，凭据写入受 ACL 保护的 ProgramData 配置文件，并保留旧 Windows Service 清理逻辑。
+- en-US: The Windows Agent installer now registers a persistent scheduled task by default, stores credentials in an ACL-protected ProgramData config file, and keeps cleanup for older Windows Service installs.
+- zh-CN: Windows Agent 安装前会校验二进制版本、可选执行一次性上报预检，避免旧版 Agent 被误装后因不支持新参数而反复退出。
+- en-US: Windows Agent installation now validates the binary version and can run a one-shot upload preflight, preventing old Agent binaries from being installed and then exiting repeatedly because they lack newer flags.
+
+### Fixed / 修复
+
+- zh-CN: 修复 Windows 安装脚本把普通控制台 Agent 直接注册为 Windows Service 后无法启动且缺少可读日志的问题。
+- en-US: Fixed the Windows installer registering the console Agent directly as a Windows Service, which could fail to start and leave little usable diagnostic output.
+
 ## [1.0.11] - 2026-06-10
 
 ### Title / 标题

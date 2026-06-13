@@ -6,14 +6,10 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-if ! command -v go >/dev/null 2>&1; then
-  echo "Missing go. Install Go first, then rerun this script." >&2
-  exit 1
-fi
-
 REPO_DIR="${REPO_DIR:-$(pwd -P)}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/gpufleet}"
 BIN_PATH="${BIN_PATH:-${INSTALL_DIR}/gpufleet-server}"
+PREBUILT_BIN="${PREBUILT_BIN:-${REPO_DIR}/bin/gpufleet-server}"
 DATA_DIR="${DATA_DIR:-/var/lib/gpufleet}"
 WEB_DIR="${WEB_DIR:-${REPO_DIR}/web/dist}"
 ADDR="${ADDR:-0.0.0.0:9008}"
@@ -24,9 +20,21 @@ ENV_DIR="${ENV_DIR:-/etc/gpufleet}"
 ENV_FILE="${ENV_FILE:-${ENV_DIR}/server.env}"
 UNIT_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
-if [ ! -f "${REPO_DIR}/go.mod" ] || [ ! -d "${REPO_DIR}/cmd/gpufleet-server" ]; then
-  echo "REPO_DIR must point to a GPUFleet Git checkout. Current value: ${REPO_DIR}" >&2
-  exit 1
+USE_PREBUILT=0
+if [ -f "${PREBUILT_BIN}" ]; then
+  USE_PREBUILT=1
+fi
+
+if [ "${USE_PREBUILT}" -eq 0 ]; then
+  if ! command -v go >/dev/null 2>&1; then
+    echo "Missing go and no prebuilt server binary found at ${PREBUILT_BIN}." >&2
+    echo "Install Go for source deployments, or run this script from a release package." >&2
+    exit 1
+  fi
+  if [ ! -f "${REPO_DIR}/go.mod" ] || [ ! -d "${REPO_DIR}/cmd/gpufleet-server" ]; then
+    echo "REPO_DIR must point to a GPUFleet Git checkout when no prebuilt binary is present. Current value: ${REPO_DIR}" >&2
+    exit 1
+  fi
 fi
 
 if [ ! -f "${WEB_DIR}/index.html" ]; then
@@ -43,14 +51,19 @@ if command -v git >/dev/null 2>&1; then
 fi
 BUILD_TIME="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 
-echo "Building GPUFleet server from ${REPO_DIR}..."
-(
-  cd "${REPO_DIR}"
-  go build \
-    -ldflags "-X gpufleet/internal/version.Commit=${COMMIT} -X gpufleet/internal/version.BuildTime=${BUILD_TIME}" \
-    -o "${BIN_PATH}" \
-    ./cmd/gpufleet-server
-)
+if [ "${USE_PREBUILT}" -eq 1 ]; then
+  echo "Installing prebuilt GPUFleet server from ${PREBUILT_BIN}..."
+  cp "${PREBUILT_BIN}" "${BIN_PATH}"
+else
+  echo "Building GPUFleet server from ${REPO_DIR}..."
+  (
+    cd "${REPO_DIR}"
+    go build \
+      -ldflags "-X gpufleet/internal/version.Commit=${COMMIT} -X gpufleet/internal/version.BuildTime=${BUILD_TIME}" \
+      -o "${BIN_PATH}" \
+      ./cmd/gpufleet-server
+  )
+fi
 chmod 0755 "${BIN_PATH}"
 
 cat >"${ENV_FILE}" <<EOF

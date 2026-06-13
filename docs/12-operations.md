@@ -50,7 +50,7 @@ go build `
   -o bin\gpufleet-server.exe .\cmd\gpufleet-server
 ```
 
-## Windows Agent 服务
+## Windows Agent 计划任务
 
 以管理员 PowerShell 运行：
 
@@ -59,6 +59,12 @@ go build `
   -ServerUrl "https://your-server:8443" `
   -DeviceId "device_xxx" `
   -Secret "replace-with-device-secret"
+```
+
+安装脚本会创建名为 `GPUFleetAgent` 的计划任务，配置写入 `C:\ProgramData\GPUFleet\agent.env`，日志写入：
+
+```powershell
+Get-Content "C:\ProgramData\GPUFleet\logs\agent.log" -Tail 100
 ```
 
 卸载：

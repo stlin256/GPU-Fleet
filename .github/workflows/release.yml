@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without the v prefix. Leave empty to use internal/version."
+        required: false
+        default: ""
+      target_set:
+        description: "Build target set: full or core."
+        required: false
+        default: "full"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build release packages
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          $targetSet = "${{ github.event.inputs.target_set }}"
+          if (!$targetSet) {
+            $targetSet = "full"
+          }
+          if ($version) {
+            ./scripts/build-release.ps1 -Version $version -TargetSet $targetSet
+          } else {
+            ./scripts/build-release.ps1 -TargetSet $targetSet
+          }
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpufleet-release
+          path: dist/release/*
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
