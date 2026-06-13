@@ -4,6 +4,7 @@
 </h1>
 
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/)
+[![Release](https://img.shields.io/github/v/release/stlin256/GPU-Fleet?sort=semver)](https://github.com/stlin256/GPU-Fleet/releases/latest)
 [![Active GPUs](https://img.shields.io/endpoint?url=https%3A%2F%2Fgpufleet-telemetry.stlin256.workers.dev%2Fbadge)](https://gpufleet-telemetry.stlin256.workers.dev/summary)
 
 GPUFleet 是一个面向多台 NVIDIA GPU 机器的运行观察与运维面板。它把分散在家庭宽带、办公室、云主机或远程机房里的 Windows/Linux 设备接到同一个公网服务端，用一张 Web 面板看清每张卡现在忙不忙、过去一段时间怎么变化、哪些设备掉线、哪些 GPU 温度或 PCIe 状态需要关注，以及当前有哪些进程占用了显存。
@@ -27,7 +28,7 @@ English documentation: [README-en.md](README-en.md)<br>
 
 ## 当前状态
 
-GPUFleet 当前版本是 `1.0.11`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
+GPUFleet 当前版本是 `1.0.13`。核心链路、Web 面板、设备管理、访客模式、长期统计、只读能耗与热状态展示、服务端在线更新、签名校验的 Agent 自更新策略、匿名聚合遥测、诊断包、备份恢复和前端浏览器级 smoke 验证都已经落地。VictoriaMetrics、SQLite、告警规则配置、CSV 导出和 SSE 实时推送仍作为后续增强项保留。
 
 ## 产品截图
 
@@ -528,7 +529,7 @@ node scripts\verify-frontend-chrome.mjs `
   --url http://127.0.0.1:8088 `
   --password demo-admin `
   --out logs\frontend-verify-manual `
-  --expected-version v1.0.11 `
+  --expected-version v1.0.13 `
   --min-fleet-cards 5 `
   --require-offline-mask true `
   --require-dual-device true

@@ -4,6 +4,7 @@
 </h1>
 
 [![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stlin256/GPU-Fleet/)
+[![Release](https://img.shields.io/github/v/release/stlin256/GPU-Fleet?sort=semver)](https://github.com/stlin256/GPU-Fleet/releases/latest)
 [![Active GPUs](https://img.shields.io/endpoint?url=https%3A%2F%2Fgpufleet-telemetry.stlin256.workers.dev%2Fbadge)](https://gpufleet-telemetry.stlin256.workers.dev/summary)
 
 GPUFleet is an operations dashboard for NVIDIA GPU machines spread across different networks. It lets a public server collect read-only reports from Windows/Linux Agents, then shows which GPUs are online, how busy they are, how utilization, memory, temperature, and power changed over time, which devices went offline, and which processes are currently using GPU memory.
@@ -28,7 +29,7 @@ Installation guide: [docs/14-installation.md](docs/14-installation.md)
 
 ## Current Status
 
-GPUFleet is currently at `1.0.11`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, anonymous aggregate telemetry, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
+GPUFleet is currently at `1.0.13`. The core reporting path, dashboard, device management, guest access, long-range statistics, read-only energy and thermal visibility, online update, anonymous aggregate telemetry, diagnostics package, backup/restore scripts, and browser-level frontend smoke verification are implemented. VictoriaMetrics, SQLite, configurable alert rules, CSV export, and SSE live refresh remain planned enhancements.
 
 ## Product Screenshots
 
